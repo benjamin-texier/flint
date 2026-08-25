@@ -1,0 +1,21 @@
+# Overlay for when ClickHouse listens on the host's loopback only.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.host.yml up --build
+#
+# `host.docker.internal` reaches the host's *routable* address, so it cannot
+# see a service bound to 127.0.0.1 — which is what a `kubectl port-forward` or
+# a Tilt forward gives you by default. Host networking puts Flint in the host's
+# network namespace instead, so `localhost` means what you expect.
+#
+# Linux only. On Docker Desktop, host networking is not the same thing and
+# `host.docker.internal` already works, so the base file is enough there.
+
+services:
+  flint:
+    network_mode: host
+    # Published ports are meaningless in the host namespace: Flint binds
+    # FLINT_PORT on the host directly.
+    ports: []
+    environment:
+      FLINT_CLICKHOUSE_URL: ${FLINT_CLICKHOUSE_URL:-http://localhost:8123}
+      FLINT_PORT: ${FLINT_PORT:-8080}

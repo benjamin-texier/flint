@@ -1,0 +1,106 @@
+# Development: hot reload on both sides, against a throwaway ClickHouse seeded
+# with the demo schema in contrib/.
+#
+#   docker compose -f docker-compose.dev.yml up --build
+#
+# Then open http://localhost:5173 — the Vite dev server, which proxies /api to
+# the backend. The backend is also on http://localhost:8080 if you want to hit
+# the API directly.
+#
+# The throwaway ClickHouse is published on :8125, not its usual :8123, because
+# anyone working on Flint almost certainly already has a ClickHouse on 8123 and
+# the stack would refuse to start. Every published port here can be overridden
+# (FLINT_DEV_CLICKHOUSE_PORT, FLINT_DEV_API_PORT, FLINT_DEV_WEB_PORT).
+#
+# To develop against your own ClickHouse instead, drop the clickhouse service
+# from `depends_on` and point FLINT_CLICKHOUSE_URL at it.
+#
+# The cargo-registry and cargo-target volumes are what make this bearable: they
+# keep the dependency build between runs, so `up` after the first one is fast.
+
+name: flint-dev
+
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    environment:
+      CLICKHOUSE_PASSWORD: flint
+    volumes:
+      # The official image applies everything in this directory on first boot.
+      - ./contrib/demo-schema.sql:/docker-entrypoint-initdb.d/10-demo-schema.sql:ro
+      - clickhouse-data:/var/lib/clickhouse
+    ports:
+      - '${FLINT_DEV_CLICKHOUSE_PORT:-8125}:8123'
+    # Probed over the container's own network interface, not its loopback.
+    # While the entrypoint applies the init scripts it runs a temporary server
+    # bound to 127.0.0.1: a loopback check goes green there, several seconds
+    # before any sibling container can connect, and `depends_on` would release
+    # the API into a connection refused. Measured at 1s resolution, the gap is
+    # about three seconds.
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - clickhouse-client --host "$$(hostname)" --password flint --query "SELECT 1"
+      interval: 2s
+      timeout: 3s
+      retries: 40
+      start_period: 3s
+
+  api:
+    build:
+      context: .
+      target: dev
+    working_dir: /app
+    command: cargo watch --why -w src -w Cargo.toml -x run
+    environment:
+      FLINT_HOST: 0.0.0.0
+      FLINT_CLICKHOUSE_URL: http://clickhouse:8123
+      FLINT_CLICKHOUSE_PASSWORD: flint
+      FLINT_CLICKHOUSE_DATABASE: analytics
+      # Writes are allowed in development: you want to be able to try them.
+      FLINT_READONLY: 'false'
+      # The dev server is a different origin, so the API has to allow it.
+      FLINT_CORS_ORIGIN: http://localhost:5173
+      FLINT_LOG: flint=debug,tower_http=warn
+      CARGO_TARGET_DIR: /target
+    volumes:
+      - ./src:/app/src:ro
+      - ./build.rs:/app/build.rs:ro
+      - ./Cargo.toml:/app/Cargo.toml:ro
+      # Writable so cargo can refresh it if a dependency moves; Cargo.toml
+      # stays read-only, so nothing changes it from inside by accident.
+      - ./Cargo.lock:/app/Cargo.lock
+      # rust-embed needs this to exist at compile time; build.rs writes a
+      # placeholder into it, and the real UI is served by Vite in this setup.
+      - flint-dist:/app/frontend/dist
+      - cargo-registry:/usr/local/cargo/registry
+      - cargo-target:/target
+    ports:
+      - '${FLINT_DEV_API_PORT:-8080}:8080'
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+
+  web:
+    image: node:22-bookworm-slim
+    working_dir: /app/frontend
+    # `pnpm install` runs on every start because the lockfile may have changed
+    # since the volume was populated; it is a no-op when nothing moved.
+    command: bash -lc "corepack enable && pnpm install && pnpm dev"
+    environment:
+      # Inside compose the API is a sibling service, not localhost.
+      FLINT_API_PROXY: http://api:8080
+    volumes:
+      - ./frontend:/app/frontend
+      - frontend-modules:/app/frontend/node_modules
+    ports:
+      - '${FLINT_DEV_WEB_PORT:-5173}:5173'
+    depends_on:
+      - api
+
+volumes:
+  clickhouse-data:
+  cargo-registry:
+  cargo-target:
+  frontend-modules:
+  flint-dist:

@@ -1,0 +1,18 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "ignorePatterns": ["dist", "coverage"],
+  "categories": { "correctness": "error", "suspicious": "warn" },
+  "plugins": ["react", "typescript"],
+  "rules": {
+    "react/react-in-jsx-scope": "off",
+    "react-hooks/rules-of-hooks": "error",
+    "typescript/no-unused-vars": ["error", { "args": "none", "varsIgnorePattern": "^_" }],
+    "react-hooks/exhaustive-deps": "warn",
+    "react/exhaustive-effect-dependencies": "warn",
+    "react/memo-dependencies": "warn",
+    "react/set-state-in-effect": "warn",
+    "react/use-memo": "warn",
+    "react/refs": "warn",
+    "react/incompatible-library": "warn"
+  }
+}

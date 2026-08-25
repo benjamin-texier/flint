@@ -1,0 +1,5927 @@
+/* ═══ Shell ═══════════════════════════════════════════════════════════════
+ * Two persistent surfaces: a rail that never navigates away, and a work area.
+ * That shape is what makes Flint a workspace rather than a website. */
+
+.shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.shell__body {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+}
+
+.shell__main {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+}
+
+/* ═══ Chrome ══════════════════════════════════════════════════════════════ */
+
+.chrome {
+  display: flex;
+  align-items: center;
+  gap: var(--s5);
+  height: var(--chrome-h);
+  flex: none;
+  padding: 0 var(--s4) 0 var(--s5);
+  background: var(--rail);
+  border-bottom: 1px solid var(--line);
+  position: relative;
+  z-index: 3;
+}
+
+.chrome__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  color: var(--spark);
+}
+
+.mark {
+  width: 15px;
+  height: 15px;
+}
+
+.chrome__word {
+  font-size: 1.0625rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+.chrome__nav {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  padding: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--fill);
+}
+
+/* Three jobs, one bar. The rule is what separates them: read the data, make
+ * something of it, run the server. */
+.chrome__group {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+}
+
+.chrome__navsep {
+  width: 1px;
+  height: 16px;
+  margin: 0 var(--s2);
+  background: var(--line-strong);
+}
+
+.chrome__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 var(--s4);
+  border-radius: var(--radius-pill);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  transition: color var(--motion-fast) var(--ease),
+    background var(--motion-base) var(--ease);
+}
+.chrome__link:hover {
+  color: var(--text-primary);
+}
+.chrome__link.active {
+  color: var(--accent-ink);
+  background: var(--accent);
+}
+
+.chrome__spacer {
+  flex: 1;
+}
+
+.chrome__facts {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  /* Never squeezed: `localhost:81` is worse than nothing at all, so the block
+   * keeps its natural width and the media queries below decide what it still
+   * contains. The thresholds are measured, not guessed. */
+  flex: none;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.chrome__fact {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The facts give way one at a time as the bar narrows, least useful first: the
+ * uptime, then the version, then the user. The host stays longest — it is the
+ * one thing on this bar you cannot work out from the page you are looking at.
+ * All of it is on the Diagnose page in full. */
+@media (max-width: 1320px) {
+  .chrome__fact--uptime {
+    display: none;
+  }
+}
+/* Version and user go together: at this width the pair no longer fits beside
+ * the host without one of them being clipped. */
+@media (max-width: 1270px) {
+  .chrome__fact--version,
+  .chrome__fact--user {
+    display: none;
+  }
+}
+/* Below this even the host cannot be shown without pushing the nav off the bar,
+ * and the nav is what the bar is for. All of it is on the Diagnose page. */
+@media (max-width: 1120px) {
+  .chrome__facts {
+    display: none;
+  }
+}
+/* Narrower than any laptop: the eight destinations no longer fit on one line,
+ * so the bar takes a second one rather than cutting the last of them off. */
+@media (max-width: 940px) {
+  .chrome {
+    height: auto;
+    flex-wrap: wrap;
+    row-gap: var(--s2);
+    padding-top: var(--s2);
+    padding-bottom: var(--s2);
+  }
+}
+.chrome__fact--warn {
+  color: var(--alarm);
+}
+
+.chrome__sep {
+  width: 1px;
+  height: 11px;
+  background: var(--line-strong);
+}
+
+.chrome__theme {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  color: var(--chalk-faint);
+  font-size: 0.9375rem;
+  line-height: 1;
+}
+.chrome__theme:hover {
+  color: var(--chalk);
+  background: var(--slab-raised);
+}
+
+/* ═══ Explorer rail ══════════════════════════════════════════════════════
+ * One database at a time, with a switcher above it. A tree of every database
+ * is unusable on a server with thirty of them, and costs two levels of
+ * indentation even on a small one. */
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  width: var(--rail-w);
+  flex: none;
+  background: var(--rail);
+  border-right: 1px solid var(--line);
+}
+
+.switch {
+  position: relative;
+  padding: var(--s4) var(--s4) var(--s3);
+}
+
+.switch__button {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  width: 100%;
+  text-align: left;
+  border-radius: var(--radius-sm);
+}
+
+.switch__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 1.0625rem;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--chalk);
+}
+
+.switch__caret {
+  flex: none;
+  width: 0;
+  height: 0;
+  border-top: 4px solid var(--chalk-faint);
+  border-left: 3.5px solid transparent;
+  border-right: 3.5px solid transparent;
+  transition: transform var(--motion-base) var(--ease);
+}
+.switch__button[aria-expanded='true'] .switch__caret {
+  transform: rotate(180deg);
+}
+.switch__button:hover .switch__caret {
+  border-top-color: var(--chalk);
+}
+
+.switch__facts {
+  margin: 3px 0 0;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.switch__menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% - var(--s1));
+  left: var(--s2);
+  right: var(--s2);
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: var(--s1);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--slab-raised);
+  box-shadow: var(--shadow-3);
+  animation: popIn var(--motion-fast) var(--ease) both;
+}
+
+@keyframes popIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+.switch__divider {
+  margin: var(--s2) 0 var(--s1);
+  padding: 0 var(--s2);
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+.switch__option {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  width: 100%;
+  height: 28px;
+  padding: 0 var(--s2);
+  border-radius: var(--radius-sm);
+  text-align: left;
+}
+.switch__option:hover {
+  background: var(--slab-hover);
+}
+.switch__option.is-on {
+  color: var(--spark);
+}
+
+.switch__optname {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+}
+
+.switch__optmeta {
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.rail__search {
+  position: relative;
+  padding: 0 var(--s4) var(--s3);
+}
+
+.rail__glass {
+  position: absolute;
+  left: 28px;
+  top: 10px;
+  width: 13px;
+  height: 13px;
+  color: var(--chalk-faint);
+  pointer-events: none;
+}
+
+.rail__input {
+  width: 100%;
+  height: 32px;
+  padding: 0 var(--s3) 0 30px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  font-size: var(--size-body);
+  transition: border-color var(--motion-fast) var(--ease-out);
+}
+.rail__input::placeholder {
+  color: var(--chalk-faint);
+}
+/* One focus ring for the whole app: a control may add to it, never replace it.
+   This used to drop the ring and stand in a 1px tinted border, which measures
+   2.9:1 against white — under the 3:1 a non-text indicator needs, and the only
+   control on the page not showing the ring every other one shows. The tint is
+   kept for the pointer, where there is nothing to indicate. */
+.rail__input:focus {
+  border-color: var(--spark-line);
+}
+.rail__input:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* The kind filters are also the key for the shapes in the list below. */
+.kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1);
+  padding: 0 var(--s4) var(--s3);
+}
+
+.kinds__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 11px;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+  transition: color var(--motion-fast) var(--ease-out), background var(--motion-fast) var(--ease-out);
+}
+.kinds__item:hover {
+  color: var(--chalk-dim);
+  background: var(--slab);
+}
+.kinds__item.is-on {
+  color: var(--chalk);
+  background: var(--slab-raised);
+}
+
+.kinds__n {
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+}
+
+.kinds__label {
+  white-space: nowrap;
+}
+
+/* ── The shape family ───────────────────────────────────────────────────
+ * Square = a table, which stores rows. Diamond = a materialized view, which
+ * transforms them on the way in. Ring = a view, which stores nothing. Disc =
+ * a dictionary, held in memory. Four silhouettes stay apart at 8px in a way
+ * four glyphs never do. */
+.glyph {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--k-table);
+}
+.glyph--materialized_view {
+  border-radius: 1px;
+  background: var(--k-matview);
+  transform: rotate(45deg) scale(0.86);
+}
+.glyph--view {
+  border-radius: 50%;
+  background: none;
+  box-shadow: inset 0 0 0 1.5px var(--k-view);
+}
+.glyph--dictionary {
+  border-radius: 50%;
+  background: var(--k-dictionary);
+}
+
+.rail__scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: var(--s4);
+}
+
+.rail__none {
+  margin: var(--s2) var(--s4);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.objnode {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  height: 28px;
+  padding: 0 var(--s4);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk-dim);
+  box-shadow: inset 2px 0 0 transparent;
+  transition: color var(--motion-fast) var(--ease-out), background var(--motion-fast) var(--ease-out),
+    box-shadow var(--motion-fast) var(--ease-out);
+}
+.objnode:hover {
+  color: var(--chalk);
+  background: var(--slab);
+}
+.objnode.is-active {
+  color: var(--chalk);
+  background: var(--slab);
+  box-shadow: inset 2px 0 0 var(--spark);
+}
+
+/* The name gives way in the middle, not at the end: two objects in the same
+   schema usually share their prefix and differ in their last segment, which is
+   exactly what tail truncation throws away. */
+.objnode__name {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+.objnode__head {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.objnode__tail {
+  flex: none;
+  white-space: nowrap;
+}
+
+.objnode__rows {
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+/* The plumbing, folded away: present, countable, one click from visible, and
+ * not in the way of the objects somebody wrote. Set as a footnote to the kind
+ * chips, since it is what accounts for the difference between their counts and
+ * the database's own. */
+.rail__plumbing {
+  display: block;
+  margin: 0 var(--s4) var(--s2);
+  padding: 2px 0;
+  text-align: left;
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  color: var(--chalk-faint);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 35%, transparent);
+  text-underline-offset: 3px;
+}
+.rail__plumbing:hover {
+  color: var(--chalk);
+}
+
+.rail__foot {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex: none;
+  height: 38px;
+  padding: 0 var(--s4);
+  border-top: 1px solid var(--line);
+  font-size: var(--size-data);
+  color: var(--chalk-faint);
+  transition: color var(--motion-fast) var(--ease-out);
+}
+.rail__foot:hover {
+  color: var(--chalk);
+}
+.rail__footarrow {
+  transition: transform var(--motion-base) var(--ease);
+}
+.rail__foot:hover .rail__footarrow {
+  transform: translateX(3px);
+}
+
+/* ═══ Page scaffolding ═══════════════════════════════════════════════════ */
+
+/* The cap is there to protect reading: 1560px keeps a paragraph and a metric
+   line at a sane measure. What it must not do is pile every leftover pixel into
+   one void on the right — on a 2560px screen that was 736px of nothing on one
+   side and none on the other, which reads as a broken layout rather than as
+   margin. Centred, the same leftover becomes two gutters. */
+.page {
+  max-width: 1560px;
+  margin-inline: auto;
+  padding: var(--s7) var(--s7) var(--s8);
+}
+
+/* A page whose content is a diagram and a nine-column table has no line length
+   to protect, so it takes the room the text cap gives up. Bounded all the same:
+   without a limit the diagram frame becomes a letterbox on an ultrawide. */
+.page--wide {
+  max-width: 2100px;
+}
+
+.page__head {
+  margin-bottom: var(--s6);
+}
+
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin: 0 0 var(--s2);
+  font-size: var(--size-label);
+  font-weight: 500;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+.eyebrow__sep {
+  color: var(--chalk-faint);
+  opacity: 0.5;
+}
+
+.page__titlerow {
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
+  flex-wrap: wrap;
+}
+
+.page__title {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  font-size: var(--size-hero);
+  line-height: 1.1;
+  letter-spacing: -0.025em;
+}
+.page__title--hero {
+  font-size: 2.375rem;
+}
+
+.page__actions {
+  display: flex;
+  gap: var(--s2);
+}
+
+.page__sub {
+  margin: var(--s2) 0 0;
+  font-size: var(--size-body);
+  color: var(--chalk-dim);
+}
+
+/* The one-sentence answer to "what am I looking at". Wide measure, relaxed
+ * leading — it is prose, not a label. */
+.page__lead {
+  margin: var(--s3) 0 0;
+  max-width: 62ch;
+  font-size: var(--size-body);
+  line-height: 1.65;
+  color: var(--chalk-dim);
+}
+
+.section {
+  margin-top: var(--s8);
+}
+
+.section__bar {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s4);
+  margin-bottom: var(--s4);
+}
+
+.section__title {
+  margin-bottom: var(--s4);
+  font-size: var(--size-head);
+  color: var(--chalk);
+}
+.section__title--bare {
+  flex: 1;
+  margin: 0;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+}
+
+.segmented {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--fill);
+}
+
+.segmented__item {
+  height: 26px;
+  padding: 0 var(--s3);
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  transition: color var(--motion-fast) var(--ease),
+    background var(--motion-fast) var(--ease);
+}
+.segmented__item:hover {
+  color: var(--text-primary);
+}
+.segmented__item.is-on {
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-card);
+}
+
+/* The name and the headline figures are one band, closed by a hairline; the
+ * schema and the object list are the work below it. Without the rule the
+ * figures floated between the two and belonged to neither. */
+.page--database .page__head {
+  margin-bottom: var(--s5);
+}
+.page--database .metrics {
+  padding-bottom: var(--s5);
+  border-bottom: 1px solid var(--border);
+}
+.page--database .schema {
+  margin-top: var(--s5);
+}
+.page--database .section {
+  margin-top: var(--s6);
+}
+
+/* ═══ Metric line ═════════════════════════════════════════════════════════
+ * Deliberately not KPI cards. Figures sit on one hairline-divided line so the
+ * numbers carry the emphasis, not chrome around them. */
+
+/* No box, no rules between: spacing alone separates the figures, and the
+ * numbers get to be the loudest thing on the page. */
+.metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s3) var(--s8);
+  margin: 0;
+  padding: 0;
+}
+
+.metrics__item {
+  padding: 0;
+}
+
+.metrics__value {
+  margin: 0;
+  font-size: var(--size-metric);
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  color: var(--chalk);
+}
+.metrics__value--accent {
+  color: var(--accent);
+}
+
+.metrics__unit {
+  margin-left: 3px;
+  font-size: 0.8125rem;
+  font-weight: 400;
+  color: var(--chalk-faint);
+}
+
+.metrics__label {
+  margin-top: 5px;
+  font-size: var(--size-label);
+  font-weight: 500;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+/* ═══ Schema canvas ══════════════════════════════════════════════════════
+ * The hero. A ClickHouse schema is a pipeline, so it is drawn as one: sources
+ * on the left, what consumes them to the right, data flowing along the edges.
+ * The flow is the single piece of ambient motion in the product — everything
+ * else moves only in response to a pointer. */
+
+.schema {
+  margin-top: var(--s8);
+}
+
+.schema__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  margin-bottom: var(--s3);
+}
+
+.schema__title {
+  font-size: var(--size-head);
+  color: var(--chalk);
+}
+
+.schema__sub {
+  margin: 0;
+  font-size: var(--size-data);
+  color: var(--chalk-faint);
+}
+
+/* ═══ Diagram frame ══════════════════════════════════════════════════════
+ * One instrument rather than three things stacked on a page: the caption, the
+ * toolbar, the canvas and the details panel are rows and columns of a single
+ * card, divided by hairlines. They travel together, so going full screen takes
+ * the diagram *and* the controls that steer it. */
+
+.frame {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+}
+
+.frame:fullscreen {
+  border: none;
+  border-radius: 0;
+  background: var(--bg-surface);
+}
+.frame:fullscreen .canvas {
+  flex: 1;
+  height: auto;
+}
+
+/* The canvas and its details panel sit side by side, so inspecting an object
+ * never costs you the view you built up. Both are the same height: a short
+ * diagram beside a long panel used to leave a hole under the canvas. */
+.frame__body {
+  display: flex;
+  min-height: 0;
+  /* Not animated: the diagram re-fits itself against this height, and a value
+   * that is still moving is a value it fits to wrongly. */
+  height: var(--body-h);
+}
+.frame__body > .canvas {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: none;
+  border-radius: 0;
+}
+.frame:fullscreen .frame__body {
+  flex: 1;
+  height: auto;
+}
+
+/* The two header rows: what is drawn, then how it is drawn. */
+.frame__lead,
+.frame__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  padding: var(--s3) var(--s4);
+  border-bottom: 1px solid var(--divider);
+}
+
+.frame__lead {
+  background: var(--bg-surface-2);
+}
+
+.frame__search,
+.searchbox {
+  position: relative;
+  flex: 0 1 240px;
+}
+.searchbox {
+  flex: 0 1 220px;
+}
+
+.frame__glass,
+.searchbox__glass {
+  position: absolute;
+  left: 11px;
+  top: 9px;
+  width: 13px;
+  height: 13px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.frame__input,
+.searchbox__input {
+  width: 100%;
+  height: 32px;
+  padding: 0 var(--s3) 0 30px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  font-size: 13px;
+  transition: border-color var(--motion-fast) var(--ease);
+}
+.frame__input::placeholder,
+.searchbox__input::placeholder {
+  color: var(--text-muted);
+}
+.frame__input:focus,
+.searchbox__input:focus {
+  border-color: var(--accent);
+}
+.frame__input:focus:not(:focus-visible),
+.searchbox__input:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.frame__bar .segmented__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ── Database boxes ─────────────────────────────────────────────────────
+ * Kiali boxes a mesh graph by namespace; the same idea for a schema that
+ * reaches across databases, where the boundary is itself information. */
+.gbox {
+  position: absolute;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--text-muted) 4%, transparent);
+  pointer-events: none;
+}
+
+.gbox__label {
+  position: absolute;
+  top: 5px;
+  left: 12px;
+  font-family: var(--font-mono);
+  font-size: var(--size-label);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+}
+
+/* ── Node details panel ────────────────────────────────────────────────── */
+.npanel {
+  flex: 0 0 320px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  padding: var(--s4);
+  max-height: 100%;
+  overflow-y: auto;
+  background: var(--bg-surface);
+  border-left: 1px solid var(--border);
+  animation: panelIn var(--motion-base) var(--ease) both;
+}
+
+@keyframes panelIn {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+}
+
+.npanel__head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+}
+
+.npanel__title {
+  flex: 1;
+  min-width: 0;
+}
+
+.npanel__name {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 500;
+  word-break: break-word;
+  color: var(--text-primary);
+}
+
+.npanel__kind {
+  margin: 2px 0 0;
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+.npanel__close {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-sm);
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--text-muted);
+}
+.npanel__close:hover {
+  color: var(--text-primary);
+  background: var(--fill);
+}
+
+.npanel__lead {
+  margin: 0;
+  font-size: var(--size-label);
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.npanel__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2) var(--s4);
+  margin: 0;
+  padding: var(--s3) 0;
+  border-top: 1px solid var(--divider);
+  border-bottom: 1px solid var(--divider);
+}
+
+.npanel__statval {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+.npanel__statval.is-accent {
+  color: var(--accent);
+}
+
+.npanel__statlabel {
+  margin-top: 1px;
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.npanel__shape {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.npanel__key {
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.npanel__value {
+  margin: 1px 0 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  word-break: break-word;
+  color: var(--text-primary);
+}
+
+.npanel__section {
+  border-top: 1px solid var(--divider);
+  padding-top: var(--s3);
+}
+
+.npanel__sectiontitle {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin-bottom: var(--s2);
+  font-size: var(--size-label);
+  font-weight: 600;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.npanel__n {
+  font-family: var(--font-mono);
+  font-weight: 500;
+}
+
+.npanel__none {
+  margin: 0;
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+.npanel__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.npanel__link {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 4px 6px;
+  margin-left: -6px;
+  border-radius: var(--radius-sm);
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.npanel__link:hover {
+  background: var(--fill);
+  color: var(--text-primary);
+}
+
+.npanel__linkname {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.npanel__linkdb {
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+.npanel__actions {
+  position: sticky;
+  bottom: calc(-1 * var(--s4));
+  display: flex;
+  gap: var(--s2);
+  margin: auto calc(-1 * var(--s4)) calc(-1 * var(--s4));
+  padding: var(--s3) var(--s4) var(--s4);
+  background: var(--bg-surface);
+  border-top: 1px solid var(--divider);
+}
+
+/* ── The first row, in the panel ────────────────────────────────────────
+ * Turned on its side: field names down the left, the values beside them. A
+ * 320px column cannot hold a grid, but it holds a record comfortably. */
+.sample {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+}
+
+.sample__field {
+  display: grid;
+  grid-template-columns: minmax(0, 11ch) minmax(0, 1fr);
+  gap: var(--s2);
+  align-items: baseline;
+}
+
+.sample__col,
+.sample__val {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-data);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.sample__col {
+  color: var(--text-muted);
+}
+
+.sample__val {
+  margin: 0;
+  color: var(--text-primary);
+}
+/* A NULL and an empty string are absences, and should not read as loudly as a
+   value. */
+.sample__val.is-void {
+  color: var(--text-muted);
+}
+
+.sample__note {
+  margin: var(--s2) 0 0;
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+/* ── Node context menu ─────────────────────────────────────────────────
+ * Fixed to the cursor rather than to the diagram: the canvas clips and
+ * transforms its own contents, and a menu belongs to the screen. */
+.nmenu {
+  position: fixed;
+  z-index: 40;
+  min-width: 168px;
+  padding: var(--s1);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--slab-raised);
+  box-shadow: var(--shadow-3);
+  animation: popIn var(--motion-fast) var(--ease) both;
+}
+
+.nmenu__head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  padding: var(--s1) var(--s2) var(--s2);
+  border-bottom: 1px solid var(--divider);
+}
+
+.nmenu__name {
+  min-width: 0;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+
+.nmenu__kind {
+  margin-left: auto;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.nmenu__item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 28px;
+  margin-top: 2px;
+  padding: 0 var(--s2);
+  border-radius: var(--radius-sm);
+  text-align: left;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.nmenu__item:hover,
+.nmenu__item:focus-visible {
+  background: var(--slab-hover);
+  color: var(--text-primary);
+}
+
+/* Sits over the canvas rather than replacing it, so the toolbar stays put and
+ * you can widen the filter without the frame jumping. */
+.canvas__nomatch {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: var(--s2);
+  text-align: center;
+  background: color-mix(in srgb, var(--bg-canvas) 82%, transparent);
+}
+
+/* The controls above a focused schema: what it is centred on, how far out it
+ * reaches, and the way back to the whole thing. */
+/* A caption for the diagram, not a toolbar over it. It says which slice you are
+   looking at; the two controls that change that slice sit at the end of the
+   sentence rather than in a panel of their own. */
+.focusbar {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  flex: 1;
+  padding: 0 2px;
+  font-size: var(--size-data);
+  color: var(--chalk-dim);
+}
+
+.focusbar__rest {
+  color: var(--chalk-faint);
+}
+
+.focusbar__unit {
+  margin-left: calc(var(--s3) * -1 + var(--s1));
+}
+
+/* The name of the centre *is* the picker. A real `select` lies invisible over
+   the name, so the keyboard and the screen reader get a proper listbox while
+   the width comes from the one name on show rather than from the longest of a
+   hundred and seventy. */
+.focusbar__centre {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+}
+.focusbar__centre:hover {
+  background: var(--fill);
+}
+.focusbar__centre:focus-within {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.focusbar__name {
+  max-width: 30ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-data);
+  font-weight: 500;
+  color: var(--chalk);
+}
+
+.focusbar__caret {
+  width: 0;
+  height: 0;
+  border-left: 3.5px solid transparent;
+  border-right: 3.5px solid transparent;
+  border-top: 4px solid var(--chalk-faint);
+}
+
+.focusbar__select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.canvas {
+  position: relative;
+  height: min(58vh, 620px);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-canvas);
+  cursor: grab;
+  touch-action: none;
+  contain: paint;
+}
+.canvas:active {
+  cursor: grabbing;
+}
+
+.canvas--empty,
+.canvas--loading {
+  display: grid;
+  place-content: center;
+  gap: var(--s2);
+  text-align: center;
+  cursor: default;
+  height: 280px;
+}
+
+.canvas__emptytitle {
+  margin: 0;
+  font-size: var(--size-head);
+  color: var(--chalk-dim);
+}
+.canvas__emptyhint {
+  margin: 0;
+  max-width: 46ch;
+  font-size: var(--size-data);
+  color: var(--chalk-faint);
+}
+
+.canvas__stage {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  /* The dot grid scales with the view, so zooming reads as moving through
+   * space rather than resizing a picture. */
+  background-image: radial-gradient(var(--grid-dot) 1px, transparent 1px);
+  background-size: var(--grid, 26px) var(--grid, 26px);
+}
+
+.canvas__edges {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.canvas__band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, var(--line-strong), transparent 92%);
+}
+
+.canvas__bandlabel {
+  position: absolute;
+  top: 8px;
+  left: 0;
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+.canvas__hud {
+  position: absolute;
+  inset: auto var(--s3) var(--s3) var(--s3);
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--s3);
+  pointer-events: none;
+}
+
+.canvas__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1) var(--s3);
+  padding: 6px var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--slab) 88%, transparent);
+  backdrop-filter: blur(6px);
+}
+
+/* A legend that is also the filter, so it has to look pressable without
+   becoming a row of buttons under the picture — and it has to *be* clickable,
+   which a span in a `pointer-events: none` HUD did not need to be. */
+.lgd {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  font-size: var(--size-label);
+  color: var(--chalk-dim);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--motion-fast) var(--ease-out),
+    background var(--motion-fast) var(--ease-out);
+}
+.lgd:hover {
+  color: var(--chalk);
+  background: var(--slab-hover);
+}
+/* Switched off: still counted, still clickable, plainly not drawn. */
+.lgd.is-off {
+  color: var(--chalk-faint);
+  opacity: 0.55;
+}
+.lgd.is-off .glyph {
+  filter: grayscale(1);
+}
+
+.lgd .glyph {
+  width: 7px;
+  height: 7px;
+}
+
+.canvas__zoom {
+  display: flex;
+  gap: 1px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--slab) 88%, transparent);
+  backdrop-filter: blur(6px);
+  pointer-events: auto;
+}
+
+.iconbtn {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 22px;
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  line-height: 1;
+  color: var(--chalk-dim);
+  transition: color var(--motion-fast) var(--ease-out), background var(--motion-fast) var(--ease-out);
+}
+.iconbtn:hover {
+  color: var(--chalk);
+  background: var(--slab-hover);
+}
+.iconbtn--wide {
+  width: auto;
+  padding: 0 var(--s2);
+  font-size: var(--size-label);
+}
+
+.canvas__hint {
+  position: absolute;
+  top: var(--s3);
+  right: var(--s3);
+  margin: 0;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--motion-base) var(--ease-out);
+}
+.canvas:hover .canvas__hint {
+  opacity: 1;
+}
+
+/* ── Nodes ─────────────────────────────────────────────────────────────── */
+
+.gnode {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px 11px 9px 13px;
+  text-align: left;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--slab-raised);
+  box-shadow: var(--shadow-1), var(--lip);
+  overflow: hidden;
+  animation: nodeIn var(--motion-chart) var(--ease) both;
+  animation-delay: var(--delay, 0ms);
+  transition: transform var(--motion-fast) var(--ease), box-shadow var(--motion-fast) var(--ease),
+    border-color var(--motion-fast) var(--ease), opacity var(--motion-base) var(--ease-out);
+}
+
+/* The kind stripe down the leading edge: the diagram's colour key. */
+.gnode::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--k-table);
+}
+.gnode--view::before {
+  background: var(--k-view);
+}
+.gnode--materialized_view::before {
+  background: var(--k-matview);
+}
+.gnode--dictionary::before {
+  background: var(--k-dictionary);
+}
+
+.gnode:hover,
+.gnode:focus-visible {
+  transform: translateY(-2px);
+  border-color: var(--spark-line);
+  box-shadow: var(--shadow-2), var(--lip);
+  /* The lift says "this one"; the ring says "and the keyboard is here". */
+  outline-offset: 2px;
+}
+
+.gnode.is-focused {
+  border-color: var(--spark);
+  box-shadow: var(--shadow-2), 0 0 0 3px var(--spark-wash), var(--lip);
+}
+
+.gnode.is-dim {
+  opacity: 0.26;
+  box-shadow: none;
+}
+
+.gnode--external {
+  border-style: dashed;
+}
+
+.gnode__top {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.gnode__name {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  font-weight: 500;
+  color: var(--chalk);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gnode__db {
+  flex: none;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.gnode__engine {
+  font-size: var(--size-label);
+  letter-spacing: 0.02em;
+  color: var(--chalk-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gnode__facts {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: auto;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-dim);
+}
+
+.gnode__sep {
+  width: 1px;
+  height: 9px;
+  background: var(--line-strong);
+}
+
+@keyframes nodeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+}
+
+/* ── Edges ─────────────────────────────────────────────────────────────── */
+
+.gedge {
+  transition: opacity var(--motion-base) var(--ease-out);
+}
+
+.gedge__line {
+  fill: none;
+  stroke: var(--edge);
+  stroke-width: 1.5;
+  opacity: 0.9;
+}
+
+.gedge__head {
+  fill: var(--edge);
+  stroke: none;
+}
+
+/* The one ambient motion in the product: data moving along the pipes. It is
+ * true to the subject — a materialized view really is a live pipeline — and it
+ * is the reason the schema feels awake rather than printed. */
+.gedge__flow {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2.25;
+  stroke-linecap: round;
+  stroke-dasharray: 2 23;
+  opacity: 0.75;
+  animation: flow var(--loop-flow) linear infinite;
+}
+.gedge--loads .gedge__flow {
+  stroke-dasharray: 2 40;
+  animation-duration: calc(var(--loop-flow) * 2);
+  opacity: 0.3;
+}
+.gedge--writes .gedge__line {
+  stroke-width: 2;
+}
+
+.gedge.is-lit .gedge__line {
+  stroke: var(--accent);
+}
+.gedge.is-lit .gedge__head {
+  fill: var(--spark);
+}
+.gedge.is-lit .gedge__flow {
+  opacity: 1;
+  animation-duration: var(--loop-shimmer);
+}
+
+.canvas.is-still .gedge__flow {
+  display: none;
+}
+
+.gedge.is-dim {
+  opacity: 0.12;
+}
+.gedge.is-dim .gedge__flow {
+  opacity: 0;
+}
+
+@keyframes flow {
+  to {
+    stroke-dashoffset: -25;
+  }
+}
+.gedge--loads .gedge__flow {
+  animation-name: flowLong;
+}
+@keyframes flowLong {
+  to {
+    stroke-dashoffset: -42;
+  }
+}
+
+/* ═══ Shape strip: the clauses that decide how a table reads ═════════════ */
+
+.shape {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--s5);
+  margin: var(--s6) 0 0;
+  padding: var(--s5);
+  background: var(--slab-sunk);
+  border-radius: var(--radius-lg);
+}
+
+/* The teaching lines are the same six sentences on every table in the server.
+   Worth reading once, so they are on by default; worth being able to put away,
+   so this is remembered. Parked in the corner rather than given a row: it is a
+   control, not one of the clauses. */
+.shape__toggle {
+  position: absolute;
+  top: var(--s2);
+  right: var(--s3);
+  padding: 2px 4px;
+  border: 0;
+  background: none;
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  color: var(--chalk-faint);
+  cursor: pointer;
+}
+.shape__toggle:hover {
+  color: var(--spark);
+}
+
+.shape__item {
+  min-width: 0;
+}
+.shape__item--wide {
+  flex-basis: 100%;
+}
+
+.shape__key {
+  margin-bottom: 3px;
+  font-size: var(--size-label);
+  font-weight: 500;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+.shape__value {
+  margin: 0;
+  font-family: var(--font-data);
+  font-size: var(--size-body);
+  color: var(--chalk);
+  word-break: break-word;
+}
+
+/* The teaching line. Sits under the expression, never over it: the expert
+ * reads the value and stops, the newcomer reads one sentence more. */
+.shape__why {
+  margin: 5px 0 0;
+  max-width: 44ch;
+  font-size: var(--size-label);
+  line-height: 1.55;
+  color: var(--chalk-faint);
+}
+
+.shape__lineage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+
+.lineage {
+  padding: 2px 7px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  font-size: var(--size-label);
+  color: var(--chalk-dim);
+  transition: color var(--motion-fast) var(--ease-out), border-color var(--motion-fast) var(--ease-out);
+}
+.lineage:hover {
+  color: var(--chalk);
+  border-color: var(--chalk-faint);
+}
+.lineage--down {
+  border-color: var(--spark-line);
+  color: var(--spark);
+}
+
+/* ═══ Tables ═════════════════════════════════════════════════════════════
+ * Dashfile's grid, in Flint's colours: a white panel, a 40px header on the
+ * raised surface, sentence-case column names with a type mark in front, and
+ * dividers light enough to guide the eye without ruling the data into boxes. */
+
+.panel {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.panel__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
+  padding: var(--s3) var(--s4);
+  border-bottom: 1px solid var(--divider);
+}
+
+.panel__count {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.panel__spacer {
+  flex: 1;
+}
+
+.panel__hint {
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+.panel__toggle {
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.panel__toggle:hover {
+  color: var(--text-primary);
+}
+
+.panel__nomatch {
+  margin: 0;
+  padding: var(--s6) var(--s4);
+  text-align: center;
+  font-size: var(--size-data);
+  color: var(--text-muted);
+}
+
+.panel__scroll {
+  overflow-x: auto;
+}
+
+/* ── The shared grammar of Flint's two kinds of table ───────────────────────
+   The reference tables (`.tbl`) and the results grid (`.grid`) are different
+   machines and cannot share a component: one is a `<table>` of forty rich rows
+   with pills and bars in its cells, the other a windowed grid of ten thousand
+   absolutely-placed scalar cells. They can share these, so that moving a header
+   height moves both rather than leaving the two to drift a pixel at a time.
+
+   `--table-row-h` has a twin in `ResultsGrid.tsx`: the virtualizer needs the row
+   height as a number to do its arithmetic, so that one value is stated in both
+   places and has to agree. */
+:root {
+  --table-head-h: 34px;
+  --table-row-h: 25px;
+  --table-refrow-h: 30px;
+  --table-pad: 11px;
+  --table-head-bg: var(--slab-raised);
+  --table-head-rule: var(--line-strong);
+  --table-col-rule: var(--line);
+  --table-row-rule: var(--divider);
+}
+
+/* The reference tables — columns, partitions, projections, databases — read in
+   the same language as the results grid: a raised header keeping its vertical
+   dividers, a body that has none, and one whisper of a rule between rows. The
+   header face is the one deliberate difference. The grid's header holds
+   identifiers, so it is set in the data face; these hold English labels, so
+   they are set in the interface one. */
+.tbl {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--size-data);
+}
+
+.tbl th {
+  height: var(--table-head-h);
+  padding: 0 var(--table-pad);
+  text-align: left;
+  white-space: nowrap;
+  background: var(--table-head-bg);
+  border-bottom: 1px solid var(--table-head-rule);
+  border-right: 1px solid var(--table-col-rule);
+  font-family: var(--font-sans);
+  font-size: var(--size-data);
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-secondary);
+}
+.tbl th:last-child {
+  border-right: none;
+}
+
+.tbl td {
+  height: var(--table-refrow-h);
+  padding: 0 var(--table-pad);
+  border-bottom: 1px solid var(--table-row-rule);
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+}
+.tbl tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.tbl tbody tr {
+  transition: background var(--motion-fast) var(--ease);
+}
+.tbl tbody tr:hover td {
+  background: var(--slab-hover);
+}
+.tbl tbody tr.is-muted .tbl__key {
+  color: var(--text-muted);
+}
+
+/* Columns that sort themselves, as in the results grid: the header label *is*
+ * the control, and the arrow shows which way. */
+.tblsort {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: inherit;
+  color: inherit;
+  text-align: inherit;
+}
+.tblsort:hover {
+  color: var(--text-primary);
+}
+.tblsort.is-on {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.tbl--n .tblsort {
+  width: 100%;
+  justify-content: flex-end;
+}
+
+.tblsort__arrow {
+  width: 8px;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--spark);
+}
+
+.tbl--n {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.tbl__head {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tbl__key {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.objlink {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tbl__pos {
+  width: 4ch;
+  text-align: right;
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+.tbl__note {
+  display: block;
+  margin-top: 2px;
+  font-family: var(--font-sans);
+  font-size: var(--size-label);
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.tbl__expr {
+  max-width: 30ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Pills sit inline rather than in a flex <td>: making a table cell a flex
+ * container takes it out of the row's border flow and leaves a broken rule. */
+.tbl__keys {
+  white-space: nowrap;
+}
+.tbl__keys .pill + .pill {
+  margin-left: 3px;
+}
+
+.tbl__bar {
+  width: 15%;
+  min-width: 108px;
+}
+
+.dash {
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+/* A true zero, as opposed to a value that was never reported. Quiet, but there
+   — the difference between "no tables" and "we did not ask" is worth a glance. */
+.zero {
+  color: var(--text-muted);
+}
+
+.link {
+  color: var(--text-primary);
+  transition: color var(--motion-fast) var(--ease);
+}
+.link:hover {
+  color: var(--accent);
+}
+
+.type {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+/* Type marks in a header or beside a column name. */
+.ticon {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+.ticon--aa {
+  font-size: 9.5px;
+}
+.ticon__svg {
+  flex: none;
+  width: 11px;
+  height: 11px;
+}
+
+.codec {
+  margin-left: 7px;
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+.nullable {
+  margin-left: 1px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.glyph--lg {
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+}
+.glyph--materialized_view.glyph--lg {
+  transform: rotate(45deg) scale(0.88);
+}
+.glyph--view.glyph--lg {
+  box-shadow: inset 0 0 0 2px var(--k-view);
+}
+
+/* ═══ Stratum bar: storage, drawn as columns ══════════════════════════════
+ * Ghost outline = uncompressed extent, solid fill = bytes on disk, both scaled
+ * to the largest column. A long ghost with a sliver of fill is a column that
+ * compresses beautifully; a solid bar is what your disk actually is. */
+
+.stratum {
+  position: relative;
+  height: 9px;
+  width: 100%;
+}
+
+/* A column past the scale: the bar is full width, and this edge says it does
+ * not stop there. Accent-coloured because it is the one thing in the bar that
+ * is a statement about the scale rather than about the data. */
+.stratum.is-over::after {
+  content: '';
+  position: absolute;
+  top: -1px;
+  right: 0;
+  bottom: -1px;
+  width: 2px;
+  background: var(--spark);
+}
+
+.stratum__ghost,
+.stratum__fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: 2px;
+}
+
+.stratum__ghost {
+  background: var(--bar-ghost);
+}
+
+.stratum__fill {
+  background: var(--bar);
+  transition: background var(--motion-fast) var(--ease-out);
+}
+
+.stratum--empty {
+  visibility: hidden;
+}
+
+tr:hover .stratum__fill {
+  background: var(--spark);
+}
+
+/* ═══ Tabs ═══════════════════════════════════════════════════════════════ */
+
+.tabs {
+  display: flex;
+  gap: var(--s1);
+  margin-top: var(--s8);
+  border-bottom: 1px solid var(--line);
+}
+
+.tabs__tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: var(--s3) var(--s3);
+  font-size: var(--size-body);
+  color: var(--chalk-faint);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color var(--motion-fast) var(--ease-out), border-color var(--motion-fast) var(--ease-out);
+}
+.tabs__tab:hover {
+  color: var(--chalk-dim);
+}
+.tabs__tab.is-active {
+  color: var(--chalk);
+  border-bottom-color: var(--spark);
+}
+
+.tabs__n {
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.tabpanel {
+  padding-top: var(--s5);
+}
+
+/* ═══ Profile ════════════════════════════════════════════════════════════
+ * Roles first: which column is the time, which are the measurements, which are
+ * the categories. The per-column numbers come after. */
+
+.roles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(232px, 1fr));
+  gap: var(--s3);
+}
+
+.role {
+  padding: var(--s3) var(--s4);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--chart-8);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+.role--time { border-left-color: var(--chart-3); }
+.role--metric { border-left-color: var(--chart-2); }
+.role--category { border-left-color: var(--chart-6); }
+.role--dimension { border-left-color: var(--chart-1); }
+.role--identifier { border-left-color: var(--chart-5); }
+.role--geographic { border-left-color: var(--chart-4); }
+.role--structure { border-left-color: var(--chart-7); }
+
+.role__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  font-size: var(--size-label);
+  font-weight: 600;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.role__n {
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+
+.role__why {
+  margin: 5px 0 var(--s2);
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.role__cols {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1);
+}
+
+.role__col {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--fill);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-primary);
+}
+
+.rolepill {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-sans);
+  font-size: var(--size-label);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  background: var(--fill);
+  color: var(--text-secondary);
+}
+.rolepill--time { background: color-mix(in srgb, var(--chart-3) 22%, transparent); }
+.rolepill--metric { background: color-mix(in srgb, var(--chart-2) 22%, transparent); }
+.rolepill--category { background: color-mix(in srgb, var(--chart-6) 22%, transparent); }
+.rolepill--dimension { background: color-mix(in srgb, var(--chart-1) 22%, transparent); }
+.rolepill--identifier { background: color-mix(in srgb, var(--chart-5) 22%, transparent); }
+.rolepill--geographic { background: color-mix(in srgb, var(--chart-4) 22%, transparent); }
+.rolepill--structure { background: color-mix(in srgb, var(--chart-7) 22%, transparent); }
+
+.nullbar {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  justify-content: flex-end;
+}
+
+.nullbar__value {
+  font-variant-numeric: tabular-nums;
+}
+
+.nullbar__track {
+  width: 44px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--bar-ghost);
+  overflow: hidden;
+}
+
+.nullbar__fill {
+  display: block;
+  height: 100%;
+  background: var(--chart-4);
+}
+
+.tops {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  max-width: 34ch;
+}
+
+.top {
+  max-width: 15ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background: var(--fill);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+/* ═══ Cards & code ═══════════════════════════════════════════════════════ */
+
+.card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+}
+
+.card__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s3) var(--s4);
+  border-bottom: 1px solid var(--divider);
+}
+
+.card__title {
+  flex: 1;
+  font-size: var(--size-body);
+  color: var(--chalk-dim);
+}
+
+.card__line {
+  display: flex;
+  gap: var(--s2);
+  align-items: baseline;
+  margin: 0;
+  padding: var(--s2) var(--s4);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+}
+
+.code {
+  margin: 0;
+  padding: var(--s4);
+  overflow-x: auto;
+  font-size: var(--size-data);
+  line-height: 1.75;
+  color: var(--chalk-dim);
+  tab-size: 2;
+}
+.code--wrap {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* A formatted statement: the breaks are meaningful, so they are kept, and a
+   line too long for the panel wraps under its own indentation rather than
+   pushing a horizontal scrollbar under the whole thing. */
+.code--sql {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+  color: var(--chalk);
+}
+
+/* The same palette the editor's highlighter uses, so a statement read here and
+   the same statement pasted there are the same colours. */
+.sql--keyword {
+  color: var(--t-bool);
+  font-weight: 500;
+}
+.sql--type {
+  color: var(--t-nested);
+}
+.sql--function {
+  color: var(--t-time);
+}
+.sql--string {
+  color: var(--t-string);
+}
+.sql--number {
+  color: var(--t-number);
+}
+.sql--quoted,
+.sql--name {
+  color: var(--chalk);
+}
+.sql--comment {
+  color: var(--chalk-faint);
+  font-style: italic;
+}
+.sql--punct {
+  color: var(--chalk-dim);
+}
+
+/* A panel that starts closed. Used for the full CREATE statement, which is the
+   definition above it plus what ClickHouse added. */
+.fold {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+}
+.fold__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  padding: var(--s3) var(--s4);
+  font-size: var(--size-body);
+  font-weight: 500;
+  color: var(--chalk);
+  cursor: pointer;
+}
+.fold[open] .fold__head {
+  border-bottom: 1px solid var(--divider);
+}
+.fold__hint {
+  flex: 1;
+  min-width: 12ch;
+  font-size: var(--size-label);
+  font-weight: 400;
+  color: var(--chalk-faint);
+}
+.fold .card {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.card__head--bare {
+  justify-content: flex-end;
+}
+
+/* ── A view's sources ───────────────────────────────────────────────────── */
+
+.src__alias {
+  font-weight: 400;
+  color: var(--chalk-faint);
+}
+
+.src__facts {
+  flex: none;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+/* An engine name is an identifier. `SystemColumns` upper-cased into
+   SYSTEMCOLUMNS is a different word. */
+.src__engine {
+  font-family: var(--font-data);
+  color: var(--chalk-dim);
+}
+
+.src__feeds {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk-dim);
+}
+.src__feed {
+  white-space: nowrap;
+}
+
+/* Said only when the type changes on the way through — which is the whole
+   point of saying it. */
+.src__cast {
+  color: var(--t-nested);
+}
+
+/* A column read by a join or a filter but never returned. It is still a
+   dependency — dropping it breaks the view — so it is listed, quietly. */
+.src__only {
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.src__note {
+  margin: 0;
+  padding: var(--s3) var(--s4);
+  border-top: 1px solid var(--divider);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.src__rest {
+  border-top: 1px solid var(--divider);
+}
+.src__resthead {
+  padding: var(--s2) var(--s4);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+  cursor: pointer;
+}
+.src__resthead:hover {
+  color: var(--chalk-dim);
+}
+.src__restlist {
+  margin: 0;
+  padding: 0 var(--s4) var(--s3);
+  font-size: var(--size-label);
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+/* Where a view's column came from. One source per line: a single expression can
+   draw on three columns of two tables, and a comma-separated run of those is
+   not readable at this width. */
+.origin {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.origin__ref {
+  white-space: nowrap;
+}
+.origin__dot {
+  color: var(--chalk-faint);
+}
+.origin__unplaced {
+  color: var(--chalk-faint);
+}
+
+.shape__source {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--chalk-faint);
+}
+
+.plain {
+  margin: 0;
+  padding: var(--s4);
+  list-style: none;
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+}
+
+/* ═══ Notes ══════════════════════════════════════════════════════════════ */
+
+.note {
+  padding: var(--s4);
+  border-radius: var(--radius-lg);
+  font-size: var(--size-body);
+}
+
+.note--error {
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+  background: var(--danger-weak);
+}
+
+.note--empty {
+  border: 1px dashed var(--line-strong);
+  color: var(--chalk-dim);
+}
+
+.note__head {
+  margin-bottom: var(--s2);
+}
+
+.note__title {
+  margin: 0;
+  font-size: var(--size-head);
+  color: var(--chalk);
+}
+
+.note__message {
+  margin: 0;
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.note__hint {
+  margin: var(--s2) 0 0;
+  color: var(--chalk-dim);
+  max-width: 68ch;
+}
+
+.note .btn {
+  margin-top: var(--s3);
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s3);
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+/* The sentence a long wait earns. Set as prose rather than as a label: it is an
+ * explanation, not a status word, and it arrives quietly. */
+.loading__slow {
+  font-family: var(--font-ui);
+  font-size: var(--size-body);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--chalk-dim);
+  animation: fadeIn var(--motion-base) var(--ease) both;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+}
+
+.loading__spark {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--spark);
+  animation: pulse var(--loop-sweep) var(--ease-out) infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+
+/* ═══ Results grid ═══════════════════════════════════════════════════════ */
+
+/* The grid is drawn rather than laid out. Both axes are windowed, so every cell
+   is placed absolutely at a measured offset, and two consequences are worth
+   knowing before reading the rest. The frozen block — row number, then any
+   pinned columns — is sticky at the left edge and paints an opaque background,
+   because scrolled cells pass underneath it. And the body has no vertical
+   rules: alignment already says where a column is, and twenty filets across a
+   wide result read as graph paper rather than as data. The header keeps its
+   dividers, which is the one place a column boundary needs stating. */
+
+.gridshell {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  height: 100%;
+  min-height: 0;
+  gap: var(--s2);
+}
+
+.gridshell__bar {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  flex: none;
+  min-height: 15px;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.gridshell__state {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  min-width: 0;
+  color: var(--chalk-dim);
+}
+.gridshell__sorted {
+  color: var(--chalk);
+}
+
+/* The figures over a selected block. Data, so they are set in the data face and
+ * in the primary colour: the label beside each one is what is quiet. */
+.gridshell__sel {
+  white-space: nowrap;
+}
+
+/* The totals row. Sticky at the foot of the scroller, so it stays under the
+ * numbers it adds up however far down the result you are. */
+.grid__totals {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  height: 26px;
+  background: var(--slab-raised);
+  box-shadow: 0 -1px 0 var(--line-strong);
+}
+
+.grid__cell--total {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  height: 26px;
+}
+
+.grid__totalbtn {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  max-width: 100%;
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  font-variant-numeric: tabular-nums;
+  color: var(--chalk);
+}
+.grid__totalbtn:hover .grid__totalkind {
+  color: var(--spark);
+}
+
+/* The calculation names itself, because a figure in a footer with no label is a
+ * number nobody can check. */
+.grid__totalkind {
+  font-family: var(--font-ui);
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+/* Which columns are drawn. A popover rather than a modal: choosing columns is
+ * something you do while looking at them. */
+.gridshell__picker {
+  position: relative;
+  flex: none;
+}
+
+.colpick {
+  position: absolute;
+  z-index: 20;
+  /* Anchored to the button's left edge, because the button sits at the left of
+   * the bar: hung from the right it reached off the shell and got clipped. */
+  top: calc(100% + var(--s1));
+  left: 0;
+  width: 280px;
+  padding: var(--s2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--slab-raised);
+  box-shadow: var(--shadow-3);
+  animation: popIn var(--motion-fast) var(--ease) both;
+}
+
+.colpick__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  padding: var(--s1) var(--s2) var(--s2);
+  border-bottom: 1px solid var(--divider);
+}
+
+.colpick__count {
+  flex: 1;
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+.colpick__all {
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--spark);
+}
+.colpick__all:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.colpick__list {
+  max-height: 280px;
+  overflow-y: auto;
+  padding-top: var(--s1);
+}
+
+.colpick__item {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 3px var(--s2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.colpick__item:hover {
+  background: var(--slab-hover);
+}
+
+.colpick__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-data);
+  font-size: 12px;
+  color: var(--chalk);
+}
+
+.colpick__type {
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+}
+
+/* A switch that lives in the grid's own bar rather than in a menu: it changes
+ * how the numbers read, so it belongs beside them. */
+.gridshell__toggle {
+  flex: none;
+  padding: 2px var(--s2);
+  border-radius: var(--radius-pill);
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+.gridshell__toggle:hover {
+  color: var(--chalk);
+  background: var(--slab-hover);
+}
+.gridshell__toggle.is-on {
+  color: var(--accent-strong);
+  background: var(--spark-wash);
+}
+
+.gridshell__stats {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--s1) var(--s4);
+  min-width: 0;
+}
+
+.gridshell__stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  white-space: nowrap;
+  font-family: var(--font-data);
+  color: var(--chalk);
+}
+.gridshell__stat.is-dim {
+  color: var(--chalk-faint);
+}
+
+.gridshell__statkey {
+  font-family: var(--font-ui);
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+.gridshell__caveat::before {
+  content: '· ';
+}
+.gridshell__clear {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--spark);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.gridshell__hint {
+  margin-left: auto;
+  flex: none;
+  font-family: var(--font-data);
+  white-space: nowrap;
+}
+.gridshell__hint.is-flash {
+  color: var(--spark);
+}
+
+.gridshell__main {
+  display: flex;
+  gap: var(--s2);
+  flex: 1;
+  min-height: 0;
+}
+
+.grid {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  background: var(--slab);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.grid:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+.grid__canvas {
+  position: relative;
+  min-width: 100%;
+  font-family: var(--font-data);
+}
+
+/* The measuring span. Same font as a cell, never seen. */
+.grid__probe {
+  position: absolute;
+  top: -200px;
+  left: -2000px;
+  visibility: hidden;
+  white-space: pre;
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+}
+
+.grid__head {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  width: 100%;
+  height: var(--table-head-h);
+  background: var(--table-head-bg);
+  border-bottom: 1px solid var(--table-head-rule);
+}
+
+.grid__body {
+  position: relative;
+  width: 100%;
+}
+
+.grid__row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: var(--table-row-h);
+  /* A whisper, not a rule: enough to hold a row together across twenty
+     columns, quiet enough that two hundred of them are not a texture. */
+  box-shadow: inset 0 -1px 0 var(--table-row-rule);
+}
+.grid__row:hover {
+  background: var(--slab-hover);
+}
+
+.grid__frozen {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  display: flex;
+  height: 100%;
+  background: var(--slab);
+  box-shadow: 1px 0 0 var(--line);
+}
+.grid__head .grid__frozen {
+  background: var(--slab-raised);
+}
+.grid__row:hover .grid__frozen {
+  background: var(--slab-hover);
+}
+/* Once anything has scrolled under it, the frozen block says so. */
+.grid__canvas.is-lifted .grid__frozen {
+  box-shadow:
+    1px 0 0 var(--line),
+    7px 0 11px -7px rgb(0 0 0 / 22%);
+}
+
+.grid__cell {
+  box-sizing: border-box;
+  /* The windowed cells are placed absolutely and the frozen block beside them
+     is not, so without this their static position falls a whole row below the
+     one they belong to. Ignored by the frozen cells, which are in flow. */
+  top: 0;
+  height: var(--table-row-h);
+  line-height: var(--table-row-h);
+  padding: 0 var(--table-pad);
+  font-size: var(--size-data);
+  color: var(--chalk);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.grid__cell--num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A NULL and a zero-length string both render as nothing unless told not to,
+   and in ClickHouse they are not the same answer. */
+.grid__cell--null {
+  color: var(--chalk-faint);
+  font-style: italic;
+}
+.grid__cell--empty {
+  color: var(--chalk-faint);
+}
+
+.grid__cell--gutter {
+  flex: none;
+  text-align: right;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+  cursor: pointer;
+}
+.grid__cell--corner {
+  cursor: default;
+}
+
+.grid__cell.is-sel {
+  background: var(--spark-wash);
+}
+.grid__cell.is-active {
+  background: var(--spark-wash);
+  box-shadow: inset 0 0 0 1.5px var(--spark);
+}
+
+.grid__headcell {
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  height: var(--table-head-h);
+  padding: 0;
+  border-right: 1px solid var(--table-col-rule);
+}
+.grid__headcell.is-activecol {
+  background: var(--slab-hover);
+}
+
+.grid__sort {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0 var(--table-pad);
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--chalk);
+  text-align: left;
+  cursor: pointer;
+}
+
+.grid__colname {
+  font-weight: 500;
+  color: var(--chalk);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.grid__coltype {
+  flex: none;
+  font-size: var(--size-label);
+}
+
+.grid__sortmark {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-left: auto;
+  color: var(--spark);
+}
+
+/* Which level this column is, when the sort is a stack. Nothing is shown for a
+ * single level: a lone "1" is a number with nothing to be first of. */
+.grid__sortlevel {
+  flex: none;
+  margin-left: 2px;
+  font-family: var(--font-data);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  color: var(--spark);
+}
+
+.grid__pin {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin-right: 3px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--chalk-faint);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
+.grid__pin svg {
+  width: 11px;
+  height: 11px;
+}
+.grid__headcell:hover .grid__pin,
+.grid__pin:focus-visible,
+.grid__pin.is-on {
+  opacity: 1;
+}
+.grid__pin.is-on {
+  color: var(--spark);
+}
+
+.grid__resize {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  z-index: 2;
+  width: 7px;
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
+}
+.grid__resize:hover::after,
+.grid__resize:active::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 3px;
+  width: 2px;
+  height: 100%;
+  background: var(--spark);
+}
+
+/* ── The cell inspector ─────────────────────────────────────────────────── */
+
+.inspect {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  width: 320px;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--slab);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.inspect__head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+  flex: none;
+  padding: var(--s3);
+  border-bottom: 1px solid var(--line);
+}
+
+.inspect__id {
+  flex: 1;
+  min-width: 0;
+}
+
+.inspect__name {
+  font-family: var(--font-data);
+  font-size: var(--size-body);
+  font-weight: 500;
+  color: var(--chalk);
+  overflow-wrap: anywhere;
+}
+
+.inspect__type {
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  overflow-wrap: anywhere;
+}
+
+.inspect__close {
+  flex: none;
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--chalk-faint);
+  cursor: pointer;
+}
+.inspect__close:hover {
+  color: var(--chalk);
+}
+
+.inspect__meta {
+  flex: none;
+  padding: var(--s2) var(--s3) 0;
+}
+
+.inspect__value {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: var(--s2) var(--s3) var(--s3);
+  overflow: auto;
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  line-height: 1.55;
+  color: var(--chalk);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  tab-size: 2;
+}
+.inspect__value--absent {
+  color: var(--chalk-faint);
+  font-style: italic;
+}
+
+.inspect__foot {
+  flex: none;
+  padding: var(--s2) var(--s3);
+  border-top: 1px solid var(--line);
+}
+
+/* ═══ Query builder ══════════════════════════════════════════════════════
+ * A configuration panel beside the work, as in Dashfile: the form on the left
+ * follows the shape of a SELECT, and the statement it produces is always on
+ * screen so nobody has to trust it blindly. */
+
+.builder {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+}
+
+.builder__panel {
+  flex: 0 0 320px;
+  overflow-y: auto;
+  padding: var(--s4);
+  border-right: 1px solid var(--border);
+  background: var(--bg-sidebar);
+}
+
+.bgroup {
+  padding-bottom: var(--s4);
+  margin-bottom: var(--s4);
+  border-bottom: 1px solid var(--divider);
+}
+.bgroup:last-child {
+  border-bottom: none;
+}
+
+.bgroup__label {
+  margin-bottom: var(--s2);
+  font-size: var(--size-label);
+  font-weight: 600;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.bhint {
+  margin: 0 0 var(--s2);
+  font-size: var(--size-label);
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+.bfield {
+  width: 100%;
+  height: 30px;
+  margin-bottom: var(--s2);
+}
+.bfield--sm {
+  width: auto;
+  /* Wide enough for the longest operator label ("does not contain"), which was
+   * being clipped to something that read as its opposite. */
+  flex: 0 1 auto;
+  min-width: 9ch;
+}
+
+.brow {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  margin-bottom: var(--s2);
+}
+
+/* The window shortcuts, wrapping under their own row. Solid when chosen, so the
+ * active window reads at a glance. */
+/* Its own line under the column and the operator: six chips beside two selects
+ * in a 300px rail wrap into a staircase. */
+.bwin {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s1);
+  flex-basis: 100%;
+  min-width: 0;
+  order: 1;
+}
+
+.bpill--sm {
+  height: 22px;
+  padding: 0 var(--s2);
+  margin-bottom: 0;
+  font-size: 11px;
+}
+.bpill.is-on {
+  border-style: solid;
+  border-color: var(--accent);
+  color: var(--accent-strong);
+  background: var(--spark-wash);
+}
+
+/* The values a column actually holds, on their own line under the row. */
+.bvals {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s1);
+  flex-basis: 100%;
+  min-width: 0;
+  order: 1;
+}
+
+.bvals__ask {
+  order: 1;
+}
+
+/* One sentence where a distinction actually bites. */
+.bhint {
+  margin: var(--s1) 0 0;
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--chalk-faint);
+}
+
+.bhint--inline {
+  margin: 0 0 0 var(--s1);
+}
+.brow .bfield {
+  margin-bottom: 0;
+}
+
+/* The column name gets its own line. Sharing one with two dropdowns squeezed
+ * it to nothing exactly when a row had the most to say. */
+.brow--proj {
+  display: block;
+  padding: var(--s2);
+  border-radius: var(--radius-sm);
+  background: var(--fill);
+}
+
+/* A filter row wraps rather than crushing its value box. */
+.brow--cond {
+  flex-wrap: wrap;
+}
+.brow--cond .bfield {
+  flex: 1 1 7ch;
+}
+
+.brow__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+}
+
+.brow__controls {
+  display: flex;
+  gap: var(--s1);
+  margin-top: 5px;
+}
+.brow__controls:empty {
+  display: none;
+}
+.brow__controls .bfield {
+  margin-bottom: 0;
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.brow__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.brow__x {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-sm);
+  font-size: 0.9375rem;
+  line-height: 1;
+  color: var(--text-muted);
+}
+.brow__x:hover {
+  color: var(--danger-text);
+  background: var(--fill);
+}
+
+.bpill {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 var(--s3);
+  margin-bottom: var(--s2);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  color: var(--text-secondary);
+  transition: color var(--motion-fast) var(--ease), border-color var(--motion-fast) var(--ease);
+}
+.bpill:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.bpill--quiet {
+  border-style: solid;
+  margin-bottom: 0;
+}
+
+.bcols {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1);
+}
+
+.bcol {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  background: var(--fill);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  max-width: 100%;
+  transition: background var(--motion-fast) var(--ease), color var(--motion-fast) var(--ease);
+}
+.bcol:hover {
+  background: var(--accent-weak);
+  color: var(--accent-strong);
+}
+
+.bcol__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.builder__work {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.builder__sql {
+  flex: none;
+  border-bottom: 1px solid var(--border);
+}
+
+.builder__sqlbar {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s2) var(--s3);
+}
+
+.builder__sqllabel {
+  font-size: var(--size-label);
+  font-weight: 600;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* The query in words, between its label and its SQL: the same statement said
+ * twice, once in the language that catches a wrong grouping. */
+.builder__sentence {
+  margin: 0;
+  padding: var(--s2) var(--s4) 0;
+  font-size: var(--size-body);
+  line-height: 1.55;
+  color: var(--chalk-dim);
+}
+
+.builder__saved {
+  margin-left: var(--s2);
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--success);
+}
+.builder__saved--bad {
+  color: var(--alarm);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.builder__code {
+  max-height: 22vh;
+  overflow-y: auto;
+  padding: 0 var(--s3) var(--s3);
+  color: var(--text-primary);
+}
+
+.builder__results {
+  flex: 1;
+  min-height: 0;
+  padding: var(--s3);
+  overflow: hidden;
+}
+.builder__results .note {
+  max-width: 68ch;
+}
+
+@media (max-width: 1180px) {
+  .builder__panel {
+    flex-basis: 272px;
+  }
+}
+
+.rview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  height: 100%;
+  min-height: 0;
+}
+
+.rview__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex: none;
+}
+
+.rview__why {
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+.rview__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* ═══ Dashboards ═════════════════════════════════════════════════════════
+ * A twelve-column grid. A tile spans whole columns, so widths stay commensurate
+ * and two tiles side by side always line up. */
+
+.page--dash {
+  max-width: none;
+}
+
+.dash {
+  display: grid;
+  gap: var(--s4);
+  margin-top: var(--s5);
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+  transition: opacity var(--motion-base) var(--ease);
+}
+.tile.is-editing {
+  border-color: var(--accent);
+}
+/* Hold the previous render while refetching: no skeleton, no layout jump. */
+.tile.is-busy .tile__body {
+  opacity: 0.55;
+}
+
+.tile__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s2) var(--s3);
+  border-bottom: 1px solid var(--divider);
+}
+
+.tile__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tile__meta {
+  font-family: var(--font-mono);
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+.tile__width {
+  height: 22px;
+  font-size: var(--size-label);
+}
+
+.tile__body {
+  flex: 1;
+  min-height: 200px;
+  padding: var(--s3);
+  overflow: auto;
+}
+/* A chart inside a tile is already framed by the tile. */
+.tile__body .chart {
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  background: none;
+}
+
+.saveform--bare {
+  border-bottom: none;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.dashadded {
+  margin: 0 0 var(--s2);
+  font-size: var(--size-body);
+  color: var(--text-secondary);
+}
+
+@media (max-width: 900px) {
+  /* Below this a twelve-column split is theatre — every tile gets the width. */
+  .dash > .tile {
+    grid-column: 1 / -1 !important;
+  }
+}
+
+/* A two-pane diagram needs room: below this the canvas is about four hundred
+ * pixels — a diagram of two boxes — and the panel is squeezed until object
+ * names wrap mid-word. Stacked, each gets the full width, and the canvas
+ * re-fits itself because the observer that watches its box drives the fit. */
+@media (max-width: 1080px) {
+  .frame__body {
+    flex-direction: column;
+    height: auto;
+  }
+  .frame__body > .canvas {
+    /* The row is a column here, so the canvas's `flex: 1` would put its basis
+     * on the vertical axis and collapse it to nothing. */
+    flex: none;
+    height: var(--body-h);
+  }
+  .frame__body > .npanel {
+    flex: none;
+    max-height: 340px;
+    border-left: none;
+    border-top: 1px solid var(--border);
+    animation: none;
+  }
+}
+
+/* ═══ Charts ═════════════════════════════════════════════════════════════
+ * Every number in here is a spec, not a preference: 2px lines, bars capped at
+ * 24px with a 4px rounded data-end, markers at 8px carrying a 2px surface ring,
+ * hairline solid gridlines one step off the surface, area fills at a 10% wash.
+ * Text wears text tokens — a categorical hue is illegible as type. */
+
+.chart {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  margin: 0;
+  /* Sized to include the x-axis band, so the card never grows a nested
+   * scrollbar just to show its labels. */
+  padding: var(--s4);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+}
+
+/* Always present for two or more series; absent for one, where the title
+ * already says what is plotted. */
+.chart__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2) var(--s4);
+  font-size: var(--size-label);
+  color: var(--text-secondary);
+}
+
+.chart__key {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chart__swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.chart__omitted {
+  color: var(--text-muted);
+}
+
+.chart__body {
+  position: relative;
+}
+
+.chart__svg {
+  display: block;
+  overflow: visible;
+}
+
+.chart__grid,
+.chart__axis {
+  stroke: var(--divider);
+  stroke-width: 1;
+}
+.chart__axis {
+  stroke: var(--border-strong);
+}
+
+.chart__tick {
+  fill: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The value at the tip. Text token, never the series colour. */
+.chart__value {
+  fill: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart__line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.chart__area {
+  opacity: 0.1;
+  stroke: none;
+}
+
+/* The ring is what keeps a marker legible where it crosses its own line, and
+ * it is part of the hit target rather than decoration. */
+.chart__end,
+.chart__dot {
+  stroke: var(--bg-surface);
+  stroke-width: 2;
+}
+.chart__dot {
+  opacity: 0.85;
+  transition: opacity var(--motion-fast) var(--ease);
+}
+.chart__dot.is-lit {
+  opacity: 1;
+  stroke: var(--text-primary);
+}
+
+.chart__bar {
+  transition: opacity var(--motion-fast) var(--ease);
+}
+.chart__bar.is-lit {
+  opacity: 0.78;
+}
+
+.chart__cross {
+  stroke: var(--border-strong);
+  stroke-width: 1;
+}
+
+.facet + .facet {
+  margin-top: var(--s2);
+}
+
+.facet__name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: var(--size-label);
+  color: var(--text-secondary);
+}
+
+/* One shared x axis under the stack, since every panel spans the same range. */
+.chart__facetaxis {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
+.chart__note,
+.chart__none {
+  margin: 0;
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+/* Values lead, names follow — the legend's hierarchy inverted, because here the
+ * reader already has the series and wants the number. */
+.chartip {
+  position: absolute;
+  top: 0;
+  z-index: 4;
+  min-width: 108px;
+  padding: var(--s2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-pop);
+  pointer-events: none;
+}
+
+.chartip__x {
+  margin: 0 0 5px;
+  font-family: var(--font-mono);
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+.chartip__row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0;
+}
+
+/* A short stroke, not a filled box: at tooltip density a box is data-weight ink
+ * doing a label's job. */
+.chartip__key {
+  width: 10px;
+  height: 2px;
+  border-radius: 1px;
+  transform: translateY(-3px);
+}
+
+.chartip__value {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.chartip__name {
+  font-size: var(--size-label);
+  color: var(--text-secondary);
+}
+
+/* The figure form. Proportional figures, because tabular ones make a large
+ * standalone number look loose, and the interface sans — never a display face. */
+.hero {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: var(--s4) 0;
+}
+
+.hero__value {
+  font-size: 3rem;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: var(--text-primary);
+}
+
+.hero__label {
+  font-family: var(--font-mono);
+  font-size: var(--size-body);
+  color: var(--text-secondary);
+}
+
+.hero__exact {
+  font-family: var(--font-mono);
+  font-size: var(--size-label);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+/* ═══ Editor ═════════════════════════════════════════════════════════════ */
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.editor__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex: none;
+  padding: var(--s2) var(--s3);
+  border-bottom: 1px solid var(--line);
+  background: var(--rail);
+}
+
+.editor__spacer {
+  flex: 1;
+}
+
+.editor__actions {
+  display: flex;
+  gap: var(--s2);
+}
+
+.picker {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  font-size: var(--size-label);
+  font-weight: 500;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+.picker__select {
+  height: 28px;
+  padding: 0 var(--s2);
+  background: var(--slab-raised);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+
+.explain__select {
+  height: 32px;
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  border-color: var(--border);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* A plan is a tree, so it keeps its indentation. */
+.plan {
+  height: 100%;
+  overflow: auto;
+  margin: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  line-height: 1.6;
+  color: var(--text-primary);
+}
+
+.setgroup {
+  margin: var(--s3) 0 var(--s2);
+  font-size: var(--size-label);
+  font-weight: 600;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.setgroup:first-child {
+  margin-top: 0;
+}
+
+.settbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.settbl td {
+  padding: 3px var(--s2);
+  border-bottom: 1px solid var(--divider);
+  vertical-align: baseline;
+}
+.settbl tr:last-child td {
+  border-bottom: none;
+}
+.settbl__k {
+  color: var(--text-secondary);
+}
+.settbl__v {
+  width: 1%;
+  white-space: nowrap;
+  text-align: right;
+  color: var(--text-primary);
+}
+
+.tabstrip {
+  display: flex;
+  align-items: stretch;
+  gap: 1px;
+  flex: none;
+  padding: 0 var(--s2);
+  background: var(--rail);
+  border-bottom: 1px solid var(--line);
+}
+
+.tabstrip__tab {
+  display: flex;
+  align-items: center;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.tabstrip__tab.is-active {
+  border-bottom-color: var(--spark);
+  background: var(--slab);
+}
+
+.tabstrip__pick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 var(--s2);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk-faint);
+  max-width: 22ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tabstrip__tab.is-active .tabstrip__pick {
+  color: var(--chalk);
+}
+
+.tabstrip__running {
+  width: 5px;
+  height: 5px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--spark);
+  animation: pulse var(--loop-sweep) var(--ease-out) infinite;
+}
+
+.tabstrip__close,
+.tabstrip__add {
+  width: 22px;
+  height: 28px;
+  color: var(--chalk-faint);
+  font-size: 0.9375rem;
+  line-height: 1;
+}
+.tabstrip__close:hover,
+.tabstrip__add:hover {
+  color: var(--chalk);
+}
+
+.editor__code {
+  min-height: 96px;
+  overflow: hidden;
+  background: var(--slab);
+  border-bottom: 1px solid var(--line);
+}
+.editor__code > div,
+.editor__code .cm-editor {
+  height: 100%;
+}
+
+.editor__grip {
+  flex: none;
+  height: 6px;
+  margin-top: -3px;
+  cursor: row-resize;
+  position: relative;
+  z-index: 1;
+}
+.editor__grip::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 2px;
+  width: 32px;
+  height: 2px;
+  border-radius: 1px;
+  transform: translateX(-50%);
+  background: transparent;
+  transition: background var(--motion-fast) var(--ease);
+}
+.editor__grip:hover::after,
+.editor__grip:focus-visible::after {
+  background: var(--accent);
+}
+
+/* While a query is in flight an ember travels this strip. Nothing else in the
+ * editor moves. */
+.stats {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  position: relative;
+  flex: none;
+  height: 28px;
+  padding: 0 var(--s3);
+  overflow: hidden;
+  background: var(--rail);
+  border-bottom: 1px solid var(--line);
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-dim);
+}
+
+.stats__state {
+  font-family: var(--font-ui);
+  font-weight: 500;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+.stats--running .stats__state {
+  color: var(--spark);
+}
+
+.stats__fact--warn {
+  color: var(--alarm);
+}
+
+.stats--running::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 34%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--spark), transparent);
+  animation: travel var(--loop-sweep) linear infinite;
+}
+
+@keyframes travel {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(calc(100vw + 100%));
+  }
+}
+
+.editor__results {
+  flex: 1;
+  min-height: 0;
+  padding: var(--s3);
+  overflow: hidden;
+}
+.editor__results .note {
+  max-width: 70ch;
+}
+
+.preview__note {
+  margin: 0 0 var(--s2);
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+.preview {
+  display: flex;
+  flex-direction: column;
+  /* A fraction of the viewport, but never so short that the grid stops being
+     one — sixteen rows is the floor for reading a result rather than peeking. */
+  height: max(62vh, 420px);
+}
+
+/* ═══ History panel ══════════════════════════════════════════════════════ */
+
+.btn.is-on {
+  color: var(--chalk);
+  border-color: var(--chalk-faint);
+}
+
+.history {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--slab);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.history__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s2) var(--s3);
+  border-bottom: 1px solid var(--line);
+}
+
+.history__title {
+  flex: 1;
+  font-size: var(--size-label);
+  font-weight: 500;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+.history__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--s2);
+}
+
+.saveform {
+  display: flex;
+  gap: var(--s2);
+  padding: var(--s3);
+  border-bottom: 1px solid var(--divider);
+}
+
+.saveform__name {
+  flex: 1;
+  min-width: 0;
+}
+
+.savedrow {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 5px var(--s2);
+  border-radius: var(--radius-sm);
+  border-left: 2px solid transparent;
+}
+.savedrow:hover {
+  background: var(--bg-surface-2);
+  border-left-color: var(--accent);
+}
+.savedrow.is-editing {
+  border-left-color: var(--accent);
+  background: var(--accent-weak);
+}
+
+.savedrow__open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  text-align: left;
+}
+
+.savedrow__name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.savedrow__sql {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+.savedrow__meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--size-label);
+  color: var(--text-secondary);
+}
+
+.savedrow__when {
+  color: var(--text-muted);
+}
+
+.savedrow__act {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  line-height: 1;
+  color: var(--text-muted);
+}
+.savedrow__act:hover {
+  color: var(--text-primary);
+  background: var(--fill);
+}
+.savedrow__act--del:hover {
+  color: var(--danger-text);
+}
+
+.histrow {
+  display: grid;
+  grid-template-columns: 6em 1fr auto;
+  gap: var(--s3);
+  align-items: baseline;
+  width: 100%;
+  padding: 6px var(--s2);
+  text-align: left;
+  border-radius: var(--radius-sm);
+  border-left: 2px solid transparent;
+}
+.histrow:hover {
+  background: var(--slab-hover);
+  border-left-color: var(--spark);
+}
+
+.histrow__when {
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.histrow__sql {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk-dim);
+}
+.histrow:hover .histrow__sql {
+  color: var(--chalk);
+}
+
+.histrow__facts {
+  display: flex;
+  gap: var(--s3);
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+  white-space: nowrap;
+}
+
+.histrow--failed .histrow__sql {
+  color: var(--chalk-faint);
+}
+
+.histrow__failed {
+  color: var(--alarm);
+}
+
+/* ═══ Narrow viewports ═══════════════════════════════════════════════════
+ * Flint is a desktop tool, but a rail eating half a laptop screen is still
+ * wrong. Below 1180px the rail narrows; below 820px it stacks. */
+
+@media (max-width: 1180px) {
+  :root {
+    --rail-w: 232px;
+  }
+  .page {
+    padding: var(--s5) var(--s5) var(--s8);
+  }
+  .page__title--hero {
+    font-size: 1.875rem;
+  }
+  .tbl__bar {
+    display: none;
+  }
+}
+
+@media (max-width: 820px) {
+  .shell__body {
+    flex-direction: column;
+  }
+  .rail {
+    width: 100%;
+    max-height: 34vh;
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+  }
+  .metrics__item {
+    padding: 0 var(--s4);
+  }
+  .chrome__facts {
+    display: none;
+  }
+  .canvas {
+    height: 48vh;
+  }
+}
+
+/* ── Provenance, in the diagram's side panel ────────────────────────────── */
+
+/* Output name over its sources rather than beside them: the panel is 320px and
+   an expression can draw on three columns of two tables. */
+.prov {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  margin: 0;
+}
+
+.prov__row {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.prov__out {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+  overflow-wrap: anywhere;
+}
+
+.prov__in {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-dim);
+}
+
+.prov__ref {
+  overflow-wrap: anywhere;
+}
+
+/* The table is context, the column is the answer. */
+.prov__table {
+  color: var(--chalk-faint);
+}
+
+/* ═══ Reduced motion ═════════════════════════════════════════════════════
+ * The diagram's travelling dots are ambient rather than triggered, which is
+ * exactly the kind of motion a reader may have asked their system to stop.
+ * Everything still arrives — it arrives at once. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ── Diagnostics ───────────────────────────────────────────────────────────
+   A console of sections that each answer one question and each know how to be
+   unavailable, because on a locked-down role most of them are. */
+.page--diagnose {
+  max-width: 1180px;
+}
+
+.diag__filter {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin-top: var(--s3);
+}
+
+.diag__filternote {
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+.diag {
+  margin-top: var(--s6);
+}
+
+.diag__head {
+  margin-bottom: var(--s3);
+}
+
+.diag__title {
+  font-family: var(--font-sans);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
+.diag__sub {
+  margin-top: 3px;
+  max-width: 76ch;
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+/* The healthy answer, stated. An empty container makes the reader wonder
+   whether the question was asked at all. */
+.diag__quiet {
+  padding: var(--s3) 0;
+  font-size: var(--size-data);
+  color: var(--text-secondary);
+}
+
+.diag__sql {
+  display: block;
+  max-width: 62ch;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Clicking a row opens the statement rather than truncating it. */
+.diag__sql--full {
+  max-width: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.diag__msg {
+  display: block;
+  max-width: 58ch;
+  overflow: hidden;
+  font-size: var(--size-label);
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diag__share {
+  margin-right: var(--s2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+.tbl tbody tr.is-open {
+  background: var(--bg-surface-2);
+}
+
+/* The one action an open statement offers. Sits under the SQL, in the accent,
+ * because it leaves the page. */
+.diag__open {
+  display: inline-block;
+  margin-top: var(--s2);
+  font-size: var(--size-label);
+  font-weight: 500;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--spark);
+}
+.diag__open:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* A verdict rides beside the number it is about, never instead of it. */
+.says {
+  display: block;
+  max-width: 34ch;
+  margin-top: 2px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.4;
+  letter-spacing: 0;
+  text-align: left;
+  white-space: normal;
+}
+.says--watch,
+.says--delay {
+  color: var(--warning);
+}
+.says--throw {
+  color: var(--danger-text);
+}
+
+.flag {
+  display: inline-block;
+  margin-left: var(--s2);
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-sans);
+  font-size: var(--size-label);
+  font-weight: 600;
+}
+.flag--watch,
+.flag--delay {
+  background: var(--warning-weak);
+  color: var(--warning);
+}
+.flag--throw {
+  background: var(--danger-weak);
+  color: var(--danger-text);
+}
+.flag--ok {
+  background: var(--fill);
+  color: var(--text-secondary);
+}
+
+.diag__shutout {
+  margin-top: var(--s6);
+  text-align: left;
+}
+
+.diag__obstacles {
+  margin: var(--s2) 0;
+  padding-left: var(--s4);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  list-style: disc;
+}
+
+/* Traffic on the diagram: a magnitude on its own channel, so it never competes
+   with the hue that says what kind of object this is. */
+.gnode__traffic {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  height: 9px;
+  margin-top: 3px;
+}
+
+/* An empty track is what makes "read by nothing" visible at a glance: the
+   difference between a bar at 3% and no bar at all is invisible, while the
+   difference between an empty track and a filled one is not. */
+.gnode__track {
+  flex: 1;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--fill);
+}
+
+.gnode__trafficbar {
+  display: block;
+  height: 3px;
+  min-width: 3px;
+  border-radius: 2px;
+  background: var(--bar);
+}
+
+.gnode__trafficnum {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--size-label);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+.gnode__trafficnone {
+  flex: none;
+  font-family: var(--font-sans);
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+.canvas__hint--traffic {
+  max-width: 78ch;
+}
+
+/* ── Alerts ────────────────────────────────────────────────────────────────
+   One screen: the list, one form, and the log of what changed. */
+.page--alerts {
+  max-width: 940px;
+}
+
+.page__lead {
+  margin-top: var(--s2);
+  max-width: 74ch;
+  font-size: var(--size-body);
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+/* The app has no shared form control — every context had grown its own. This is
+   one, defined once, taking the global focus ring rather than replacing it. */
+.input {
+  width: 100%;
+  min-height: 32px;
+  padding: 6px var(--s3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--size-body);
+  transition: border-color var(--motion-fast) var(--ease-out);
+}
+.input::placeholder {
+  color: var(--chalk-faint);
+}
+.input--area {
+  min-height: 84px;
+  font-family: var(--font-mono);
+  font-size: var(--size-data);
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.aform {
+  margin-top: var(--s5);
+  padding: var(--s4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--slab-raised);
+  box-shadow: var(--shadow-card);
+}
+
+.aform__head {
+  margin-bottom: var(--s3);
+}
+
+.aform__field {
+  display: block;
+  margin-top: var(--s3);
+}
+.aform__field .label {
+  display: block;
+  margin-bottom: 4px;
+}
+.aform__field--narrow {
+  flex: 1 1 150px;
+  min-width: 0;
+}
+.aform__field--tiny {
+  flex: 0 1 92px;
+  min-width: 0;
+}
+
+.aform__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s3);
+  align-items: flex-end;
+}
+
+/* Read it back before arming it. */
+.aform__says {
+  margin-top: var(--s4);
+  font-size: var(--size-body);
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.aform__hint {
+  margin-top: 4px;
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+.aform__actions {
+  display: flex;
+  gap: var(--s2);
+  margin-top: var(--s4);
+}
+
+.alist {
+  margin-top: var(--s5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  list-style: none;
+}
+
+.arow {
+  padding: var(--s3) var(--s4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--slab-raised);
+}
+/* Paused is dimmed, not hidden: an alert you switched off is still a decision
+   you made, and it belongs where you will see it again. */
+.arow--off {
+  background: var(--bg-surface-2);
+}
+.arow--off .arow__name {
+  color: var(--text-secondary);
+}
+
+.arow__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.arow__name {
+  font-family: var(--font-sans);
+  font-size: var(--size-body);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.arow__says {
+  margin-top: var(--s2);
+  font-size: var(--size-data);
+  color: var(--text-secondary);
+}
+
+.arow__sql {
+  margin-top: var(--s2);
+  padding: var(--s2) var(--s3);
+  overflow-x: auto;
+  border-radius: var(--radius-sm);
+  background: var(--fill);
+  font-family: var(--font-mono);
+  font-size: var(--size-data);
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.arow__foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s3);
+  margin-top: var(--s2);
+  font-size: var(--size-label);
+}
+
+.arow__last {
+  margin-top: 4px;
+  font-size: var(--size-label);
+  color: var(--text-secondary);
+}
+
+/* Alert tones. Firing is the only one that gets the alarm colour; "cannot run"
+   is amber because it is a broken question rather than a bad answer. */
+.flag--firing {
+  background: var(--danger-weak);
+  color: var(--danger-text);
+}
+.flag--error {
+  background: var(--warning-weak);
+  color: var(--warning);
+}
+.flag--idle {
+  background: var(--fill);
+  color: var(--text-secondary);
+}
+.flag--ok {
+  background: var(--success-weak);
+  color: var(--success-text);
+}
+
+/* ── Reports ───────────────────────────────────────────────────────────────
+   A dashboard shows now; a report keeps then. So the editions are as prominent
+   as the definitions, and opening one shows what it found at the time. */
+.page--reports {
+  max-width: 1080px;
+}
+
+.rsections {
+  margin-top: var(--s2);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  list-style: none;
+  counter-reset: rsection;
+}
+
+.rsections__item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  min-width: 0;
+}
+
+.rsections__title {
+  flex: none;
+  font-size: var(--size-data);
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.rsections__sql {
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: var(--size-label);
+  color: var(--text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rform__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  margin-top: var(--s3);
+  padding: var(--s3);
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface-2);
+}
+
+.rform__sectionhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* An edition, opened. Given the weight of a document rather than a modal: it is
+   the artefact the whole feature exists to produce. */
+.snap {
+  margin-top: var(--s6);
+  padding: var(--s4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--slab-raised);
+  box-shadow: var(--shadow-card);
+}
+
+.snap__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s3);
+  padding-bottom: var(--s3);
+  border-bottom: 1px solid var(--divider);
+}
+
+.snap__title {
+  font-family: var(--font-sans);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--text-primary);
+}
+
+.snap__when {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin-top: 4px;
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+.snap__section {
+  margin-top: var(--s5);
+}
+
+.snap__sectionhead {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin-bottom: var(--s2);
+}
+
+/* A snapshot's table scrolls inside its section rather than stretching it: the
+   grid is windowed, and a windowed grid in an unbounded parent renders its
+   whole virtual height and wins nothing. */
+.snap__grid {
+  display: flex;
+  margin-top: var(--s2);
+}
+
+/* The ceiling goes on the scroller itself, not on a wrapper. `.grid` already
+   has `overflow: auto`, so a max-height there does exactly what is wanted: six
+   rows take six rows' worth of room, five hundred scroll. On the wrapper it did
+   neither — a flex item does not shrink below its content height on the cross
+   axis, so the grid overflowed the ceiling and the rows past it were clipped
+   with no way to reach them. */
+.snap__grid .grid {
+  max-height: min(420px, 55vh);
+}
+
+/* ── Published endpoints ───────────────────────────────────────────────────
+   Two facts have to be unmissable: which parameters a caller must supply, and
+   whether the address alone is enough to get the data. */
+.page--publish {
+  max-width: 1000px;
+}
+
+.pub__url {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin-top: var(--s2);
+  font-family: var(--font-mono);
+  font-size: var(--size-data);
+  color: var(--text-primary);
+}
+
+.pub__method {
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--fill);
+  font-size: var(--size-label);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.pub__try {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+  margin-top: var(--s2);
+}
+
+.pub__curl {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  padding: var(--s2) var(--s3);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface-2);
+  border: 1px solid var(--divider);
+  font-family: var(--font-mono);
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--text-secondary);
+  white-space: pre;
+}
+
+.pub__token {
+  margin-top: var(--s2);
+  padding: var(--s2) var(--s3);
+  overflow-x: auto;
+  border-radius: var(--radius-sm);
+  background: var(--warning-weak);
+  font-family: var(--font-mono);
+  font-size: var(--size-label);
+  color: var(--text-primary);
+}
+
+.pub__params {
+  margin-top: var(--s3);
+  padding: var(--s3);
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface-2);
+}
+
+.pub__param {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin-top: var(--s2);
+}
+
+.pub__param code {
+  flex: none;
+  min-width: 9ch;
+  font-family: var(--font-mono);
+  font-size: var(--size-data);
+  color: var(--text-primary);
+}
+
+/* ── The caller's panel ──────────────────────────────────────────────────
+ *
+ * Two halves of the same question: what this endpoint takes, and a way to ask
+ * it something. Sunk into the card rather than floated over it, because it is
+ * part of the endpoint rather than a dialogue about it. */
+/* The one link out of this page, and it sits in a paragraph rather than under
+ * a figure — so it does not borrow `.diag__open`, whose 11px accent measures
+ * 4.22:1 on this ground and misses AA. Body size and the stronger accent. */
+.pub__doclink {
+  font-size: var(--size-body);
+  font-weight: 500;
+  color: var(--accent-strong);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.call {
+  margin-top: var(--s3);
+  padding: var(--s4);
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface-2);
+}
+
+.call__cols {
+  display: grid;
+  /* The reference is read once and the builder is worked in, so the builder
+   * gets the room. Under 900px they stack, reference first — you read the
+   * columns before you can filter on one. */
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  gap: var(--s5);
+}
+
+@media (max-width: 900px) {
+  .call__cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.call__side {
+  min-width: 0;
+}
+
+.call__build {
+  min-width: 0;
+  border-left: 1px solid var(--divider);
+  padding-left: var(--s5);
+}
+
+@media (max-width: 900px) {
+  .call__build {
+    border-left: none;
+    padding-left: 0;
+    border-top: 1px solid var(--divider);
+    padding-top: var(--s4);
+  }
+}
+
+.call__head {
+  margin: 0 0 var(--s3);
+  font-family: var(--font-ui);
+  font-size: var(--size-head);
+  font-weight: 600;
+  color: var(--chalk);
+}
+
+.call__group {
+  margin-bottom: var(--s4);
+}
+
+.call__group > .label {
+  display: block;
+  margin-bottom: var(--s2);
+}
+
+.call__row {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin-bottom: var(--s2);
+}
+
+.call__row--wrap {
+  flex-wrap: wrap;
+}
+
+.call__row .input {
+  flex: 1 1 8ch;
+  min-width: 0;
+}
+
+/* The operator never needs the room a value does, and a select that stretches
+ * to fill one reads as the more important half of the row. */
+.call__op {
+  flex: 0 1 auto;
+  min-width: 14ch;
+}
+
+.call__key {
+  flex: none;
+  min-width: 7ch;
+  font-family: var(--font-mono);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+
+.call__num {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.call__num .input {
+  width: 11ch;
+}
+
+.call__check {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  font-size: var(--size-body);
+  color: var(--chalk-dim);
+}
+
+.call__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.call__list li {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  padding: 3px 0;
+  border-bottom: 1px solid var(--divider);
+  font-size: var(--size-body);
+}
+
+.call__list li:last-child {
+  border-bottom: none;
+}
+
+.call__list code {
+  font-family: var(--font-mono);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+
+.call__list .says {
+  margin-top: 0;
+}
+
+.call__note {
+  margin: var(--s2) 0 0;
+  font-size: var(--size-label);
+  line-height: 1.6;
+  color: var(--chalk-dim);
+}
+
+.call__note code {
+  font-family: var(--font-mono);
+  color: var(--chalk);
+}
+
+.call__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1);
+}
+
+/* The picker sits on the line above the snippet, not beside it: four labels
+ * and a 90-character line of shell do not share a row at any width. */
+.call__take {
+  display: flex;
+  align-items: center;
+  margin-top: var(--s4);
+}
+
+/* Wide enough for the longest label. `.call__num`'s 11ch clipped
+ * "Spreadsheet" to "Spreadsh", which reads as a rendering fault. */
+.call__take .input {
+  width: auto;
+  min-width: 14ch;
+}
+
+/* A verdict beside a figure is 34ch wide for a reason; a caveat under a
+ * full-width snippet is not, and wrapping it into a narrow ragged column made
+ * it look like something had gone wrong with the layout. */
+.call > .says {
+  max-width: 76ch;
+  margin-top: var(--s2);
+}
+
+.call__curl {
+  margin-top: var(--s2);
+  background: var(--bg-canvas);
+}
+
+.call__actions {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s3);
+  margin-top: var(--s3);
+}
+
+/* The status line, and everything the headers said. A CSV caller gets only
+ * these, so the panel shows exactly what it would see.
+ *
+ * It takes the rest of the row rather than sharing one with the button: six
+ * headers wrap to three lines, and wrapping them *around* the button made the
+ * button look like part of the sentence. */
+.call__verdict {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--s2) var(--s3);
+  margin: 0;
+  padding-top: 7px;
+  font-size: var(--size-label);
+  line-height: 1.5;
+}
+
+.call__verdict .flag {
+  font-family: var(--font-mono);
+}
+
+.call__body {
+  max-height: 22rem;
+  margin-top: var(--s3);
+  padding: var(--s3);
+  overflow: auto;
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-sm);
+  background: var(--bg-canvas);
+  font-family: var(--font-mono);
+  font-size: var(--size-label);
+  line-height: 1.55;
+  color: var(--chalk-dim);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* A select styled as a toolbar button, for the "send this somewhere" control.
+   It is an action list, not a setting, so it reads as a button and resets to
+   its prompt after each use. */
+.btn--select {
+  padding-right: var(--s3);
+  font-family: var(--font-sans);
+  cursor: pointer;
+}
+
+.editor__pick {
+  display: inline-flex;
+}
+
+/* ── Try it before you arm it ──────────────────────────────────────────────
+   Attached to the form it belongs to, not a separate screen: the point is to
+   look at the answer while the thing that produced it is still in front of
+   you. */
+.check {
+  margin-top: var(--s3);
+}
+
+.check__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+}
+
+/* The verdict is the answer for an alert; the rows are only how it got there. */
+.check__verdict {
+  margin-top: var(--s2);
+  font-size: var(--size-data);
+  font-weight: 500;
+}
+.check__verdict--firing {
+  color: var(--danger-text);
+}
+.check__verdict--ok {
+  color: var(--success-text);
+}
+.check__verdict--error {
+  color: var(--warning);
+}
+
+.check__table {
+  margin-top: var(--s2);
+  max-height: 240px;
+  overflow: auto;
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-sm);
+}
+
+.check__more {
+  padding: 4px var(--s3);
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+/* ── Find anything ─────────────────────────────────────────────────────────
+   A rail filter finds a table in the database you are already in. On a server
+   with forty databases that is the wrong question. */
+.chrome__find {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  margin-left: var(--s3);
+  padding: 4px var(--s3) 4px var(--s2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface);
+  font-family: var(--font-sans);
+  font-size: var(--size-label);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: border-color 140ms var(--ease-out);
+}
+.chrome__find:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.chrome__glass {
+  width: 13px;
+  height: 13px;
+  color: var(--text-muted);
+}
+
+/* Under a laptop's width the bar has to choose, and eight destinations beat two
+ * words: Find keeps its glass and gives up its label. The shortcut goes with
+ * it — a hint nobody can read is width spent on nothing. */
+@media (max-width: 1100px) {
+  .chrome__find {
+    padding: 4px var(--s2);
+  }
+  .chrome__findlabel,
+  .chrome__findkbd {
+    display: none;
+  }
+}
+
+.pal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  justify-content: center;
+  /* Row direction means the cross axis is vertical, so the default `stretch`
+     pulled the box to the full viewport height and it sat at its own ceiling
+     with nine results in it. */
+  align-items: flex-start;
+  padding-top: 12vh;
+  background: color-mix(in srgb, var(--solid) 32%, transparent);
+  backdrop-filter: blur(2px);
+}
+
+.pal__box {
+  display: flex;
+  flex-direction: column;
+  width: min(680px, 92vw);
+  max-height: 70vh;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-pop);
+}
+
+.pal__input {
+  padding: var(--s4);
+  border: none;
+  border-bottom: 1px solid var(--divider);
+  background: transparent;
+  font-family: var(--font-sans);
+  font-size: 17px;
+  color: var(--text-primary);
+}
+.pal__input::placeholder {
+  color: var(--chalk-faint);
+}
+.pal__input:focus-visible {
+  outline: none;
+}
+
+.pal__empty {
+  padding: var(--s4);
+  max-width: 62ch;
+  font-size: var(--size-label);
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+.pal__list {
+  /* Grow only as far as the results need, shrink when there are more than fit.
+     `flex: 1` stretched the box to its full ceiling and left half of it empty
+     under nine rows. */
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--s2);
+  list-style: none;
+}
+
+.pal__hit {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  width: 100%;
+  padding: 6px var(--s3);
+  border-radius: var(--radius-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.pal__hit.is-on {
+  background: var(--accent-weak);
+}
+
+/* The kind first and in a fixed column: it is what tells you whether the row
+   you are about to open is the table or one of its columns. */
+.pal__kind {
+  flex: none;
+  width: 11ch;
+  font-family: var(--font-sans);
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+.pal__label {
+  font-family: var(--font-mono);
+  font-size: var(--size-data);
+  color: var(--text-primary);
+}
+
+.pal__context {
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: var(--size-label);
+  color: var(--text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pal__foot {
+  padding: var(--s2) var(--s4);
+  border-top: 1px solid var(--divider);
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+/* ── What Flint is watching ────────────────────────────────────────────────
+   Only the unhappy ones. A list of things that are fine is a vanity number. */
+.watch {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  list-style: none;
+}
+
+.watch__item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  padding: 6px var(--s3);
+  border-left: 2px solid var(--line-strong);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--bg-surface-2);
+}
+/* Firing is the alarm; the rest are amber, because "ran with gaps" and "cannot
+   run" are problems with the watching rather than with the thing watched. */
+.watch__item--firing {
+  border-left-color: var(--danger);
+}
+.watch__item--broken,
+.watch__item--failed,
+.watch__item--partial,
+.watch__item--erroring {
+  border-left-color: var(--warning);
+}
+
+.watch__name {
+  flex: none;
+  font-family: var(--font-sans);
+  font-size: var(--size-data);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.watch__name:hover {
+  color: var(--accent-strong);
+}
+
+.watch__says {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--size-data);
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chrome__badge {
+  display: inline-block;
+  min-width: 17px;
+  margin-left: 5px;
+  padding: 0 4px;
+  border-radius: var(--radius-pill);
+  background: var(--danger-weak);
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  color: var(--danger-text);
+}
+
+/* ── Pipelines ─────────────────────────────────────────────────────────────
+   One card per materialized view, verdict first: the numbers are how it was
+   reached, not the answer. */
+.pipe {
+  margin-top: var(--s3);
+  padding: var(--s3) var(--s4);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--slab-raised);
+}
+.pipe--broken {
+  border-left-color: var(--danger);
+}
+.pipe--flowing {
+  border-left-color: var(--success);
+}
+.pipe--idle,
+.pipe--unknown {
+  border-left-color: var(--warning);
+}
+
+/* Replica health, on the same block. Data lost and a read-only replica are both
+   somebody-act-now; falling behind and a missing replica are both watch. */
+.pipe--lost,
+.pipe--stuck {
+  border-left-color: var(--danger);
+}
+.pipe--keeping-up {
+  border-left-color: var(--success);
+}
+.pipe--behind,
+.pipe--thin {
+  border-left-color: var(--warning);
+}
+
+.pipe__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.pipe__name {
+  font-family: var(--font-mono);
+  font-size: var(--size-data);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.pipe__says {
+  margin-top: var(--s2);
+  max-width: 88ch;
+  font-size: var(--size-data);
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.pipe__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s3);
+  margin-top: var(--s2);
+  font-size: var(--size-label);
+}
+
+.pipe__backfill {
+  margin-top: var(--s3);
+}
+
+/* The warning comes before the statement, because the statement is the
+   dangerous part. */
+.pipe__warn {
+  max-width: 86ch;
+  font-size: var(--size-label);
+  line-height: 1.55;
+  color: var(--warning);
+}
+
+.pipe__sql {
+  margin-top: var(--s2);
+  padding: var(--s2) var(--s3);
+  overflow-x: auto;
+  border-radius: var(--radius-sm);
+  background: var(--fill);
+  font-family: var(--font-mono);
+  font-size: var(--size-data);
+  color: var(--text-primary);
+  white-space: pre-wrap;
+}
+
+/* ── Access ────────────────────────────────────────────────────────────────── */
+.acc__group {
+  margin-top: var(--s5);
+  font-family: var(--font-sans);
+  font-size: var(--size-label);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.acc {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  margin-top: var(--s2);
+  list-style: none;
+}
+
+.acc__item {
+  padding: var(--s3) var(--s4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--slab-raised);
+}
+
+.acc__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.acc__name {
+  font-family: var(--font-mono);
+  font-size: var(--size-data);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.acc__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+  margin-top: var(--s2);
+}
+
+.acc__role {
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--fill);
+  font-family: var(--font-mono);
+  font-size: var(--size-label);
+  color: var(--text-secondary);
+}
+
+.acc__grants {
+  margin-top: var(--s2);
+}
+
+/* ── The whole path ────────────────────────────────────────────────────────
+   A chain, not a diagram: on an object's own page the question is sequential —
+   where do these rows come from and where do they end up — and a chain is also
+   honest about depth in a way a picture is not. */
+.lpath {
+  padding: var(--s2) 0;
+}
+
+.lpath__lead {
+  font-size: var(--size-data);
+  color: var(--text-secondary);
+}
+
+.lpath__hop {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  padding: var(--s2) 0;
+}
+
+.lpath__depth {
+  flex: none;
+  width: 7ch;
+  text-align: right;
+  color: var(--text-muted);
+}
+
+.lpath__steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+
+.lpath__step {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--slab-raised);
+  font-family: var(--font-mono);
+  font-size: var(--size-data);
+  color: var(--text-primary);
+}
+.lpath__step:hover {
+  border-color: var(--accent);
+}
+
+/* Where you are, on the axis the rows travel down. */
+.lpath__self {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin: var(--s2) 0;
+  padding: var(--s2) var(--s3);
+  border-left: 2px solid var(--accent);
+  background: var(--accent-weak);
+}
+
+.lpath__here {
+  font-family: var(--font-mono);
+  font-size: var(--size-body);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.lpath__note {
+  margin-top: var(--s3);
+  max-width: 84ch;
+  font-size: var(--size-label);
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+/* ── Looking at the rows ───────────────────────────────────────────────────
+   A small explorer over one table. Every control states what it costs, because
+   on a column store "newest first" is nearly free on one table and a full scan
+   on the next, and nothing on screen would otherwise say which. */
+.explore {
+  padding: var(--s2) 0;
+}
+
+.explore__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.explore__field {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+}
+.explore__field .input {
+  width: auto;
+  min-height: 28px;
+  padding: 3px var(--s2);
+}
+
+.explore__columns {
+  margin-top: var(--s3);
+  padding: var(--s3);
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface-2);
+}
+
+.explore__hint {
+  max-width: 84ch;
+  font-size: var(--size-label);
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+.explore__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: var(--s2);
+}
+
+.chip {
+  padding: 2px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface);
+  font-family: var(--font-mono);
+  font-size: var(--size-label);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.chip:hover {
+  border-color: var(--accent);
+}
+.chip.is-on {
+  border-color: var(--accent);
+  background: var(--accent-weak);
+  color: var(--text-primary);
+}
+
+.explore__filters {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  margin-top: var(--s3);
+}
+
+.explore__filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+}
+.explore__filter .input {
+  width: auto;
+  min-height: 28px;
+  padding: 3px var(--s2);
+}
+
+/* The cost, in the tone of what it costs. */
+.explore__cost {
+  margin-top: var(--s3);
+  max-width: 90ch;
+  font-size: var(--size-data);
+  line-height: 1.5;
+}
+.explore__cost--cheap {
+  color: var(--text-secondary);
+}
+.explore__cost--scan {
+  color: var(--warning);
+}
+
+.explore__sql {
+  margin-top: var(--s2);
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+.explore__sql summary {
+  cursor: pointer;
+}
+.explore__sql pre {
+  margin-top: var(--s2);
+  padding: var(--s2) var(--s3);
+  overflow-x: auto;
+  border-radius: var(--radius-sm);
+  background: var(--fill);
+  font-family: var(--font-mono);
+  font-size: var(--size-data);
+  color: var(--text-primary);
+}
+
+.explore__note {
+  margin-top: var(--s3);
+  color: var(--text-muted);
+}
+
+.explore__grid {
+  display: flex;
+  margin-top: var(--s2);
+}
+
+/* The ceiling belongs on the scroller, never on this wrapper: a flex item does
+   not shrink below its content on the cross axis, so a wrapper ceiling lets the
+   grid paint over whatever follows it. Same trap as the report snapshots. */
+.explore__grid .grid {
+  max-height: min(520px, 58vh);
+}
+
+.explore__rows {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: var(--s3);
+}
+
+/* One row, read down. Thirty-six columns across is not reading. */
+.rowin {
+  margin-top: var(--s3);
+  padding: var(--s3) var(--s4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--slab-raised);
+}
+
+.rowin__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: var(--s2);
+  border-bottom: 1px solid var(--divider);
+}
+
+.rowin__title {
+  font-family: var(--font-sans);
+  font-size: var(--size-body);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.rowin__body {
+  display: grid;
+  grid-template-columns: minmax(14ch, 22ch) 1fr;
+  gap: 0;
+  margin-top: var(--s2);
+}
+
+.rowin__item {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--divider);
+}
+
+.rowin__key {
+  font-family: var(--font-mono);
+  font-size: var(--size-data);
+  color: var(--text-secondary);
+}
+
+.rowin__value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: var(--size-data);
+  color: var(--text-primary);
+}
+.rowin__value--empty {
+  color: var(--text-muted);
+}
+
+/* A heading inside a diagnostics section: the section answers one question and
+   these are its parts. */
+.diag__sub2 {
+  margin-top: var(--s4);
+  font-family: var(--font-sans);
+  font-size: var(--size-body);
+  font-weight: 600;
+  color: var(--text-primary);
+}

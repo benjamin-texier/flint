@@ -1,0 +1,242 @@
+@import '@fontsource-variable/plus-jakarta-sans/index.css';
+@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/500.css';
+@import '@fontsource/jetbrains-mono/400-italic.css';
+@import './tokens.css';
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  color: var(--chalk);
+  font-family: var(--font-ui);
+  font-size: var(--size-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  background: var(--ground);
+}
+
+/* Identifiers, types, values and SQL — everywhere the characters are the
+ * content rather than a label for it. */
+.mono,
+.mono-dim,
+code,
+pre,
+kbd,
+samp {
+  font-family: var(--font-data);
+  font-variant-ligatures: none;
+}
+
+/* Tabular figures everywhere: a column of counts must line up. */
+body,
+input,
+button,
+select,
+textarea {
+  font-variant-numeric: tabular-nums;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+::selection {
+  background: var(--spark-wash);
+}
+
+/* ── Scrollbars ────────────────────────────────────────────────────────── */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 6px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--chalk-faint);
+  background-clip: content-box;
+}
+
+/* ── Shared primitives ─────────────────────────────────────────────────── */
+
+/* Small all-caps label. Used for column heads and section eyebrows. */
+.label {
+  font-size: var(--size-label);
+  font-weight: 500;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+.mono-dim {
+  color: var(--chalk-dim);
+}
+
+.num {
+  font-feature-settings: 'tnum' 1;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  height: 20px;
+  padding: 0 7px;
+  border-radius: var(--radius-pill);
+  background: var(--fill);
+  font-size: var(--size-label);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.pill--key {
+  background: var(--accent-weak);
+  color: var(--accent-strong);
+}
+
+.pill--warn {
+  color: var(--danger);
+  background: var(--danger-weak);
+}
+
+/* Buttons are quiet by default; the spark is reserved for Run. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  transition: background var(--motion-fast) var(--ease),
+    border-color var(--motion-fast) var(--ease);
+  white-space: nowrap;
+}
+.btn:hover:not(:disabled) {
+  background: var(--bg-surface-2);
+  border-color: var(--border-strong);
+}
+.btn.is-on {
+  border-color: var(--interactive);
+  color: var(--interactive);
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn--spark {
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+/* Darker on hover, never lighter. `--accent-2` is a *lighter* step, and white
+   text on it measures 2.92:1 — so the app's primary button used to drop below
+   AA exactly while the pointer was on it, which is the moment someone is
+   reading the label. */
+.btn--spark:hover:not(:disabled) {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+}
+
+/* Never dimmed: at 11px on the accent fill an opacity drop is the difference
+ * between 5:1 and 3.5:1. Size alone is enough de-emphasis. */
+.kbd {
+  font-size: var(--size-label);
+  font-weight: 500;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* Off screen until it is focused, then a plain link at the top left. Kept in
+   base.css because it is the first thing in the document and has to work even
+   if nothing else has loaded. */
+.skip {
+  position: fixed;
+  top: var(--s2);
+  left: var(--s2);
+  z-index: 100;
+  padding: var(--s2) var(--s3);
+  border-radius: var(--radius-sm);
+  background: var(--spark);
+  color: var(--accent-ink);
+  font-size: var(--size-body);
+  font-weight: 500;
+  text-decoration: none;
+  transform: translateY(calc(-100% - var(--s4)));
+  transition: transform var(--motion-fast) var(--ease-out);
+}
+.skip:focus {
+  transform: translateY(0);
+}
+
+/* Focus lands here from the skip link; it is a scroll container, not a control,
+   so it takes no ring of its own. */
+.shell__main:focus {
+  outline: none;
+}

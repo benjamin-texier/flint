@@ -1,0 +1,44 @@
+# Flint against a ClickHouse you already run.
+#
+#   docker compose up --build
+#
+# Copy .env.example to .env first, or pass the variables on the command line.
+# Defaults point at a ClickHouse on the host machine.
+#
+# For the development setup — hot reload, plus a throwaway ClickHouse with a
+# demo schema — use docker-compose.dev.yml instead.
+
+name: flint
+
+services:
+  flint:
+    build:
+      context: .
+    image: flint:local
+    restart: unless-stopped
+    ports:
+      - '${FLINT_PORT:-8080}:8080'
+    environment:
+      # `host.docker.internal` resolves to the host through the extra_hosts
+      # entry below; inside the container `localhost` is the container itself.
+      FLINT_CLICKHOUSE_URL: ${FLINT_CLICKHOUSE_URL:-http://host.docker.internal:8123}
+      FLINT_CLICKHOUSE_USER: ${FLINT_CLICKHOUSE_USER:-default}
+      FLINT_CLICKHOUSE_PASSWORD: ${FLINT_CLICKHOUSE_PASSWORD:-}
+      FLINT_CLICKHOUSE_DATABASE: ${FLINT_CLICKHOUSE_DATABASE:-default}
+      # On by default here: pointing a fresh deployment at a real database
+      # should not be able to write to it.
+      FLINT_READONLY: ${FLINT_READONLY:-true}
+      FLINT_MAX_RESULT_ROWS: ${FLINT_MAX_RESULT_ROWS:-10000}
+      FLINT_LOG: ${FLINT_LOG:-flint=info,tower_http=warn}
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    # The runtime image is distroless — no shell, no curl — so the binary
+    # checks itself. This is liveness only: if ClickHouse is down Flint is
+    # still healthy and says so on the page, and restarting it would fix
+    # nothing while making the outage harder to see.
+    healthcheck:
+      test: ['CMD', '/usr/local/bin/flint', '--health-check']
+      interval: 30s
+      timeout: 5s
+      start_period: 5s
+      retries: 3

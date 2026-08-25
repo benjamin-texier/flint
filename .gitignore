@@ -1,0 +1,23 @@
+# Build output.
+/target
+/frontend/node_modules
+/frontend/dist
+
+# pnpm's content-addressed store, when the project keeps one locally. It is
+# 130 MB of tarballs that `pnpm-lock.yaml` can rebuild byte for byte, and it
+# sits inside `frontend/` rather than inside `node_modules/`, so none of the
+# rules above catch it. This is how a repository doubles in size in one commit.
+/frontend/.pnpm-store
+
+# The real configuration, and only it. `.env.example` is the template the
+# README tells you to copy, so it stays; anything else of that shape has
+# somebody's ClickHouse password in it and does not. Stated as a pattern and a
+# negation rather than as the one filename `.env`, because the file that leaks
+# a credential is never the one you thought to name — it is `.env.local`, or
+# `.env.prod` written at four in the afternoon.
+.env
+.env.*
+!.env.example
+
+# direnv's cache for .envrc, which is itself tracked.
+.direnv/

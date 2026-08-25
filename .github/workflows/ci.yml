@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # One job: `rust-embed` reads frontend/dist at compile time, so the Rust build
+  # needs the frontend toolchain anyway — the same coupling a local `make build`
+  # has. Nothing here talks to ClickHouse: the Rust tests cover pure helpers and
+  # the frontend suite is Vitest, so CI needs no server.
+  check:
+    name: Lint + test (backend + frontend)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        working-directory: frontend
+      # Before the Rust build: build.rs and rust-embed both want frontend/dist.
+      - run: pnpm build
+        working-directory: frontend
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test
+      - run: pnpm typecheck
+        working-directory: frontend
+      - run: pnpm lint
+        working-directory: frontend
+      - run: pnpm test
+        working-directory: frontend

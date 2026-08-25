@@ -1,0 +1,32 @@
+[package]
+name = "flint"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+description = "The workspace ClickHouse doesn't ship with"
+license = "Apache-2.0"
+
+[dependencies]
+axum = { version = "0.8", features = ["macros", "http2"] }
+clap = { version = "4.5", features = ["derive", "env"] }
+dashmap = "6.2"
+mime_guess = "2.0"
+reqwest = { version = "0.13", default-features = false, features = ["json", "query", "rustls", "gzip", "charset", "http2"] }
+rust-embed = { version = "8.12", features = ["interpolate-folder-path"] }
+rustls = { version = "0.23", default-features = false, features = ["aws-lc-rs", "std", "tls12", "logging"] }
+rustls-pemfile = "2.2.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["preserve_order"] }
+thiserror = "2.0"
+tokio = { version = "1.53", features = ["full"] }
+tower-http = { version = "0.7", features = ["cors", "trace", "compression-gzip"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1.20", features = ["v4", "serde"] }
+webpki-roots = "1.0.9"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
