@@ -571,6 +571,38 @@ databases and chart forms intact. The two are nearly the same thing said about
 different moments: a tile is a statement and a chart shown now, a section is the
 same statement and chart kept.
 
+**Or out of the queries you already named.** A report is mostly a handful of
+questions somebody has asked before, so saved queries can be added as sections
+one at a time — appended rather than replacing what is there, because the point
+is to build a report from several. The editor's *send to* already covers the
+single-statement case and lands as a replacement, which is the right shape for
+one query and the wrong one for a Monday-morning summary.
+
+A saved query may hold *several* statements — the editor runs the one under the
+cursor, so nothing ever stopped anybody saving a buffer with three in it. A
+section is one statement, so it arrives as one section per statement, numbered
+after the first, rather than as one section that would fail when it ran. A
+comment-only query comes across as it was saved instead of being blanked: the
+section's own check panel will say it is not a statement, which is more use than
+a section that arrived mysteriously empty.
+
+**A report can be run by hand.** Until it has run once, nobody has seen it do
+the thing it describes, and finding out at nine tomorrow that a section names a
+column that does not exist is not a review cycle. The button goes through the
+scheduler's own runner rather than a second implementation of "run a report", so
+a manual edition is made exactly the way a scheduled one is: recorded, listed,
+and delivered to the webhook like any other. A paused report still runs by hand —
+pausing stops the schedule, and somebody pressing the button is not the schedule.
+
+It is allowed under `FLINT_READONLY`, on the same reasoning as stopping a query:
+every section runs as a read, and the edition it writes is Flint's own
+bookkeeping in its own database. Refusing it there would leave the one deployment
+shape where a report can never be checked before its first slot — which is
+exactly a look-but-do-not-touch deployment. The run id is minted by Flint rather
+than by `generateUUIDv4()` inside the insert, so the answer says *which* edition
+it just made; "it ran, go and find it in the list" is not an answer when two runs
+can land in the same second.
+
 Time is ClickHouse's. The server that stores the timestamps does the date
 arithmetic too — it hands over midnight, the day of the week and the minute of
 the day in its own timezone, and Flint compares integers. One clock, the one
@@ -743,12 +775,30 @@ And `GET /api/data/<address>/openapi.json` answers the same facts as an OpenAPI
 guarded the way the endpoint list already is, because no single token can speak
 for every endpoint — generated from the statement on every request rather than kept
 anywhere — enough for Swagger UI, Postman or a client generator to read the
-endpoint without anyone writing the document by hand. It is honest about two
-things an obvious mapping would get wrong: a 64-bit integer is documented as a
-*string*, because Flint asks ClickHouse to quote them so a JSON reader cannot
-silently round an id above 2^53; and a `DateTime` is a string with an example
-rather than `format: date-time`, because ClickHouse writes `2023-11-14 22:13:20`
-and a validator told otherwise would reject every row.
+endpoint without anyone writing the document by hand.
+
+**Every type in it was checked against the wire, not against the type's name.**
+`contrib/api-check.mjs` publishes one column of each family and compares what
+the document claims with what actually arrives, and it found three mappings
+wrong — each one the obvious reading:
+
+| ClickHouse | arrives as | why |
+| --- | --- | --- |
+| `UInt64`, `Int128`, … | `string` | Flint has ClickHouse quote wide integers, so a JSON reader cannot silently round an id past 2^53 |
+| `Decimal(38, 4)` | `number` | that setting covers *integers only*, so a decimal is not quoted — and is not exact once a client has parsed it |
+| `Tuple(UInt8, String)` | `array` | unnamed; a named `Tuple(x UInt8, …)` arrives as an object, and the document says so per column |
+| `Point`, `Polygon`, … | `array` | the geo types are aliases for nested arrays of points |
+| `DateTime` | `string`, no `format` | ClickHouse writes `2023-11-14 22:13:20`, which is not RFC 3339; a validator told otherwise rejects every row |
+
+The first was already right. The next three were not, and no amount of reading
+the type name would have shown it — only asking the server.
+
+One consequence worth knowing rather than discovering: a `Decimal` crosses as a
+JSON number, so a value wider than a double holds is no longer exact once a
+client parses it. The document says so on the column. Quoting them the way wide
+integers are quoted is one ClickHouse setting away, but it would change the wire
+format for every consumer Flint already has, including its own grid — so it is a
+decision rather than a fix.
 
 The APIs page shows all of it, read from that schema rather than from anything
 the page knows, beside a builder that writes the URL and then actually fetches
@@ -831,6 +881,8 @@ Every option is a flag or an environment variable. `flint --help` lists them.
 | `FLINT_CLICKHOUSE_PASSWORD` | *empty* | ClickHouse password |
 | `FLINT_CLICKHOUSE_DATABASE` | `default` | Database the editor starts in |
 | `FLINT_READONLY` | `false` | Send `readonly=2`: writes are refused |
+| `FLINT_TIER` | follows `FLINT_READONLY` | What this deployment may do: `read`, `data`, `ddl`, `admin` |
+| `FLINT_INFRASTRUCTURE` | `true` | Whether the Infrastructure space exists in the UI |
 | `FLINT_MAX_RESULT_ROWS` | `10000` | Row cap per query |
 | `FLINT_QUERY_TIMEOUT_SECS` | `120` | Server-side query timeout |
 | `FLINT_WORKSPACE_DATABASE` | — | Where Flint may keep its own metadata. Unset = stateless |
@@ -847,6 +899,44 @@ explore is enough. Nothing is required beyond `SELECT`.
 
 Set `FLINT_READONLY=true` to have Flint send `readonly=2` on every statement,
 so the server rejects writes even if the credentials could perform them.
+
+### The two spaces
+
+Flint is two products in one binary, and the UI keeps them apart rather than
+mixing them into one menu. **Data** works on rows — explore, query, visualise,
+expose. **Infrastructure** works on structure and on the server — health,
+pipelines, replication, access. An analyst opening Flint to answer a question
+should not pass an operator's controls on the way, and an operator should not
+walk through somebody's dashboards to reach the replication queue.
+
+`FLINT_INFRASTRUCTURE=false` removes that half **entirely**: no navigation
+entry, no route, and its code is never fetched. Off means absent, not a disabled
+button explaining what you may not do. A team that only ever queries turns it
+off and never learns the other half is there.
+
+`FLINT_TIER` is a different question — not which space is *shown* but what may
+be *done*, because everything Flint displays today is a read of `system.*` that
+changes nothing:
+
+| tier | what it permits |
+| --- | --- |
+| `read` | reads only — `readonly=2` on every statement |
+| `data` | rows may be written: insert, truncate, mutate |
+| `ddl` | structure may be written: create, alter, drop, partitions |
+| `admin` | the server may be operated: `SYSTEM`, access, backups |
+
+Unset, it follows `FLINT_READONLY`: read-only means `read`, otherwise `data`.
+Every deployment that predates the tier therefore behaves exactly as it did.
+The tiers above `data` are opt-in because they are the ones that reshape a
+schema or operate a server, and nobody should acquire those by upgrading —
+today they gate nothing beyond what is already built, and the actions they
+describe are on the roadmap. Setting `FLINT_READONLY=true` together with a tier
+that needs to write is refused at boot rather than resolved quietly in one
+direction.
+
+The tier is set in the manifest by whoever deploys Flint, never in the UI by
+whoever is looking at it: a permission a user can grant themselves is not a
+permission.
 
 ## Develop
 
@@ -1048,6 +1138,11 @@ that quotes the published statement back to whoever triggered it. The wrapper,
 the bindings and the ordering all have to reach a real ClickHouse to mean
 anything, so the check walks all 500 rows of a paged result and counts them.
 
+It also publishes a column of every type family and compares the OpenAPI
+document's claim about each with the value that actually arrives — the check
+that found three wrong mappings, none of which a unit test could have seen,
+because the authority on how ClickHouse serialises a `Decimal` is ClickHouse.
+
 ### Alerts and outbound requests
 
 An alert with a webhook makes Flint POST to an address a user typed in, carrying
@@ -1105,8 +1200,7 @@ ClickHouse's own message about privileges.
 
 Every feature in the brief is now built at least once. What is missing inside
 them: alerts and reports deliver to webhooks only — no email, which would mean
-SMTP configuration and a queue, and no per-recipient routing. A report cannot yet be built from a
-saved query, only from a dashboard or from the editor. A published endpoint
+SMTP configuration and a queue, and no per-recipient routing. A published endpoint
 accepts a statement that writes, and ClickHouse
 refuses it at call time rather than Flint refusing it at save time — judging that
 here would mean a SQL parser that would also reject legitimate statements.

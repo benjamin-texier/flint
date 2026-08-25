@@ -398,6 +398,31 @@ fn parse_filter(column: &str, raw: &str) -> Result<Filter, String> {
 
 // ── Types, as far as a filter needs to care ─────────────────────────────
 
+/// A type as ClickHouse wrote it, on one line.
+///
+/// `DESCRIBE` pretty-prints a deeply nested type across several lines, so a
+/// named tuple comes back as "Tuple(\n    x UInt8,\n    y String)". That is the
+/// same type, and it reads as a rendering fault everywhere it is shown — in the
+/// schema, in the OpenAPI document, in the panel on the APIs page.
+pub fn one_line(ty: &str) -> String {
+    let mut out = String::with_capacity(ty.len());
+    let mut spaced = false;
+    for ch in ty.trim().chars() {
+        if ch.is_whitespace() {
+            spaced = true;
+            continue;
+        }
+        // A comma supplies its own separation; anything else that followed
+        // whitespace keeps one space.
+        if spaced && !out.is_empty() && ch != ',' && !out.ends_with('(') {
+            out.push(' ');
+        }
+        spaced = false;
+        out.push(ch);
+    }
+    out
+}
+
 /// The type inside `Nullable(...)` and `LowCardinality(...)`, which are about
 /// storage rather than about what a value means.
 pub fn base_type(ty: &str) -> &str {
@@ -984,6 +1009,17 @@ mod tests {
             "{}",
             wrapped.sql
         );
+    }
+
+    #[test]
+    fn a_type_describe_pretty_printed_comes_back_on_one_line() {
+        assert_eq!(
+            one_line("Tuple(\n    x UInt8,\n    y String)"),
+            "Tuple(x UInt8, y String)"
+        );
+        assert_eq!(one_line("Nullable(String)"), "Nullable(String)");
+        assert_eq!(one_line("  String  "), "String");
+        assert_eq!(one_line("Decimal(18, 2)"), "Decimal(18, 2)");
     }
 
     #[test]

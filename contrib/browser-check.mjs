@@ -87,8 +87,15 @@ const PAGES = [
   { path: '/query', wait: 'main' },
   { path: '/dash', wait: 'main' },
   { path: '/diagnose', wait: '.tbl' },
-  // The diagnose page's other two views: each is a different set of system
-  // tables and a different way of being unavailable.
+  // Infrastructure. Each is a different set of system tables and a different
+  // way of being unavailable, which is why they are walked separately rather
+  // than trusted to behave like the page next door.
+  { path: '/infra/health', wait: 'main' },
+  { path: '/infra/pipelines', wait: 'main' },
+  { path: '/infra/access', wait: 'main' },
+  { path: '/infra/replication', wait: 'main' },
+  // The links that used to reach those views. They are in bookmarks and in
+  // already-delivered webhooks, so the redirect is part of the product.
   { path: '/diagnose?view=pipelines', wait: 'main' },
   { path: '/diagnose?view=access', wait: 'main' },
   { path: '/diagnose?view=replication', wait: 'main' },
@@ -125,6 +132,14 @@ async function discover() {
   }
 }
 
+/** Two themes over twenty pages is minutes; while working on one surface you
+ *  want that surface. `--only grid` / `--only /build` matches on the label. */
+const ONLY = (() => {
+  const i = process.argv.indexOf('--only')
+  return i > -1 ? process.argv[i + 1] : null
+})()
+const wanted = (label) => !ONLY || label.includes(ONLY)
+
 let failures = 0
 const fail = (what) => {
   failures += 1
@@ -141,9 +156,11 @@ try {
   for (const scheme of ['light', 'dark']) {
     console.log(`\n${scheme}`)
     for (const page of [...PAGES, ...discovered]) {
-      await visit(browser, page, scheme)
+      if (wanted(page.path)) await visit(browser, page, scheme)
     }
-    await palette(browser, scheme)
+    if (wanted('palette')) await palette(browser, scheme)
+    if (wanted('grid')) await resultGrid(browser, scheme)
+    if (wanted('diagram')) await diagram(browser, scheme)
   }
 } finally {
   await browser.close()
@@ -226,6 +243,100 @@ async function visit(browser, { path, wait }, colorScheme) {
   for (const n of noise) fail(`${path} ${n}`)
   if (!under.length && !noise.length) {
     console.log(`  ok   ${path.padEnd(22)} ${pairs.length} text pairs`)
+  }
+  await page.close()
+}
+
+/** The grid's own controls exist only once a result does: no URL reaches the
+ *  selection statistics, the data bars, the totals row or the column picker, so
+ *  a page load never audits them. */
+async function resultGrid(browser, colorScheme) {
+  const page = await browser.newPage({ viewport: { width: 1500, height: 1000 }, colorScheme })
+  const noise = []
+  page.on('pageerror', (e) => noise.push(`threw: ${String(e).slice(0, 120)}`))
+  page.on('console', (m) => m.type() === 'error' && noise.push(`console: ${m.text().slice(0, 120)}`))
+  const before = failures
+  try {
+    // `system.numbers` is on every server and every value is present: a block of
+    // NULLs would report no statistics, which is correct behaviour and a useless
+    // check. The text column is there so "only the declared numbers count" is
+    // exercised rather than assumed.
+    const sql =
+      'SELECT number AS n, number * 3 AS triple, toString(number) AS label FROM system.numbers LIMIT 50'
+    await page.goto(`${BASE}/query?sql=${encodeURIComponent(sql)}`, { waitUntil: 'networkidle' })
+    await page.getByRole('button', { name: /^Run/ }).click()
+    await page.waitForSelector('.grid__cell', { timeout: 20_000 })
+
+    for (const label of ['data bars', 'totals']) {
+      const button = page.getByRole('button', { name: label })
+      if (await button.count()) await button.first().click()
+    }
+    await page.waitForTimeout(600)
+    if (!(await page.locator('.grid__totals').count())) fail('grid: the totals row did not appear')
+    if (!(await page.locator('.grid__cell[style*="linear-gradient"]').count()))
+      fail('grid: data bars drew nothing')
+
+    // A block of numbers in the *body*: the totals row carries the same numeric
+    // class for alignment, and a cell there answers no pointer.
+    const numeric = page.locator('.grid__body .grid__cell--num').nth(3)
+    if (await numeric.count()) {
+      await numeric.click()
+      for (let i = 0; i < 5; i++) await page.keyboard.press('Shift+ArrowDown')
+      await page.waitForTimeout(500)
+      if ((await page.locator('.gridshell__stat').count()) < 4)
+        fail('grid: a selected block of numbers reported no statistics')
+    }
+
+    const picker = page.getByRole('button', { name: /^columns/ })
+    if (await picker.count()) {
+      await picker.first().click()
+      await page.waitForTimeout(400)
+      if (!(await page.locator('.colpick__item').count())) fail('grid: the column picker was empty')
+      await page.keyboard.press('Escape')
+      await page.waitForTimeout(300)
+      if (await page.locator('.colpick').count()) fail('grid: the column picker ignored Escape')
+    }
+
+    const pairs = await page.evaluate(AUDIT)
+    for (const p of pairs.filter((p) => p.r < p.need)) {
+      fail(`grid ${p.r.toFixed(2)}:1 (needs ${p.need}) — ${JSON.stringify(p.text)} .${p.cls}`)
+    }
+    for (const n of noise) fail(`grid ${n}`)
+    if (failures === before) console.log(`  ok   ${'result grid'.padEnd(22)} ${pairs.length} text pairs`)
+  } catch (e) {
+    fail(`result grid: ${String(e).split('\n')[0]}`)
+  }
+  await page.close()
+}
+
+/** The details panel and the node menu are both behind a pointer, so the schema
+ *  page audited on load covers neither. */
+async function diagram(browser, colorScheme) {
+  const page = await browser.newPage({ viewport: { width: 1500, height: 1000 }, colorScheme })
+  const noise = []
+  page.on('pageerror', (e) => noise.push(`threw: ${String(e).slice(0, 120)}`))
+  page.on('console', (m) => m.type() === 'error' && noise.push(`console: ${m.text().slice(0, 120)}`))
+  const before = failures
+  try {
+    await page.goto(`${BASE}/`, { waitUntil: 'networkidle' })
+    await page.waitForSelector('.gnode', { timeout: 20_000 })
+    await page.locator('.gnode').first().click()
+    await page.waitForSelector('.npanel', { timeout: 8000 })
+    await page.waitForTimeout(1200)
+
+    await page.locator('.gnode').first().click({ button: 'right' })
+    await page.waitForSelector('.nmenu', { timeout: 6000 })
+    const pairs = await page.evaluate(AUDIT)
+    for (const p of pairs.filter((p) => p.r < p.need)) {
+      fail(`diagram ${p.r.toFixed(2)}:1 (needs ${p.need}) — ${JSON.stringify(p.text)} .${p.cls}`)
+    }
+    await page.keyboard.press('Escape')
+    await page.waitForTimeout(400)
+    if (await page.locator('.nmenu').count()) fail('diagram: the node menu ignored Escape')
+    for (const n of noise) fail(`diagram ${n}`)
+    if (failures === before) console.log(`  ok   ${'diagram panel'.padEnd(22)} ${pairs.length} text pairs`)
+  } catch (e) {
+    fail(`diagram: ${String(e).split('\n')[0]}`)
   }
   await page.close()
 }

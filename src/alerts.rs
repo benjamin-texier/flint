@@ -402,6 +402,7 @@ impl Scheduler {
                     .workspace
                     .record_report_run(
                         &self.ch,
+                        &uuid::Uuid::new_v4().to_string(),
                         &report,
                         "skipped",
                         "[]",
@@ -418,7 +419,16 @@ impl Scheduler {
         Ok(())
     }
 
-    async fn run_report(&self, report: &Report) {
+    /// Run one report now and record the edition. Returns the run id, so a
+    /// manual run can open exactly the snapshot it just made.
+    ///
+    /// Public because the reports page has a button for it: a report that has
+    /// only ever been described is a report nobody has seen run, and waiting
+    /// until nine tomorrow to find out whether the sections work is not a
+    /// review cycle. The statements are read-only either way, and the edition it
+    /// writes is Flint's own bookkeeping.
+    pub async fn run_report(&self, report: &Report) -> String {
+        let run_id = uuid::Uuid::new_v4().to_string();
         let spec = match Spec::parse(&report.spec) {
             Ok(s) => s,
             Err(why) => {
@@ -426,6 +436,7 @@ impl Scheduler {
                     .workspace
                     .record_report_run(
                         &self.ch,
+                        &run_id,
                         report,
                         "failed",
                         "[]",
@@ -434,7 +445,7 @@ impl Scheduler {
                         &Delivery::Skipped("nothing was sent for a report that could not be read"),
                     )
                     .await;
-                return;
+                return run_id;
             }
         };
 
@@ -495,6 +506,7 @@ impl Scheduler {
             .workspace
             .record_report_run(
                 &self.ch,
+                &run_id,
                 report,
                 status,
                 &sections_json,
@@ -505,7 +517,7 @@ impl Scheduler {
             .await
         {
             tracing::warn!("reports: could not store the run of `{}`: {e}", report.name);
-            return;
+            return run_id;
         }
         tracing::info!(
             "report `{}` ran: {status}{}",
@@ -516,6 +528,7 @@ impl Scheduler {
                 format!(" ({error})")
             }
         );
+        run_id
     }
 
     /// The webhook says a report ran; it does not carry the report. A snapshot

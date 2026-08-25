@@ -118,7 +118,7 @@ function RightNow({ activity }: { activity: Q<ActivityReport> }) {
   return (
     <Section
       title="Right now"
-      sub="Live, refreshed every five seconds — not the window above."
+      sub="Live, refreshed every five seconds."
       q={activity}
     >
       {quiet ? (
@@ -342,7 +342,7 @@ function Errors({ errors }: { errors: ErrorCounter[] }) {
     <>
       <h3 className="diag__sub2">Errors the server has counted</h3>
       <p className="diag__sub">
-        Since it started, not in the window above — and not only from queries, so some of these
+        Counted since the server started, and not only from queries, so some of these
         appear nowhere else.
       </p>
       <table className="tbl">

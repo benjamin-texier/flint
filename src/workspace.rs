@@ -1138,9 +1138,14 @@ impl Workspace {
     }
 
     #[allow(clippy::too_many_arguments)]
+    /// The run id is minted here rather than by `generateUUIDv4()` in the
+    /// statement, so the caller can say *which* run it just made. A manual run
+    /// has to hand one back — "it ran, go and find it in the list" is not an
+    /// answer when two runs can land in the same second.
     pub async fn record_report_run(
         &self,
         ch: &Client,
+        run_id: &str,
         report: &Report,
         status: &str,
         sections_json: &str,
@@ -1152,13 +1157,14 @@ impl Workspace {
         ch.execute(
             &format!(
                 "INSERT INTO {}.report_runs \
-                 SELECT generateUUIDv4(), {{id:UUID}}, {{report:String}}, now64(3), \
+                 SELECT {{run_id:UUID}}, {{id:UUID}}, {{report:String}}, now64(3), \
                         {{status:String}}, {{sections:String}}, {{count:UInt32}}, \
                         {{error:String}}, {{delivered:UInt8}}, {{derror:String}}",
                 self.quoted()
             ),
             QueryOptions {
                 params: vec![
+                    ("run_id".into(), run_id.to_string()),
                     ("id".into(), report.id.clone()),
                     ("report".into(), report.name.clone()),
                     ("status".into(), status.to_string()),

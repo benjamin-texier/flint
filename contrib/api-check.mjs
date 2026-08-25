@@ -17,6 +17,7 @@
  */
 const BASE = process.argv[2] ?? 'http://localhost:8096'
 const SLUG = 'flint-api-check'
+const ZOO = 'flint-type-check'
 
 /** 500 rows with one of everything a filter can meet: a wide integer, a string,
  *  a timestamp, a column that can be null, and one that is not a scalar. */
@@ -29,6 +30,36 @@ const STATEMENT = [
   'FROM system.numbers',
   'WHERE number >= {from:UInt64}',
   'LIMIT 500',
+].join('\n')
+
+/** One column of every type family a caller can meet, so the document's claim
+ *  about each can be checked against what actually arrives.
+ *
+ *  Three of these were documented wrongly for a while — a decimal as a string,
+ *  an unnamed tuple as an object, a geo type as a string — and every one of the
+ *  three was the *obvious* mapping from the type's name. The wire is the only
+ *  authority on this, so the check asks it. */
+const ZOO_STATEMENT = [
+  'SELECT',
+  "  toInt32(-32)                                   AS small_int,",
+  '  toInt64(-64)                                   AS wide_int,',
+  '  toUInt64(18446744073709551615)                 AS widest_int,',
+  '  toFloat64(2.5)                                 AS floating,',
+  '  toDecimal64(1.25, 2)                           AS fixed_point,',
+  "  'text'                                         AS text,",
+  "  CAST('a', 'Enum8(''a'' = 1, ''b'' = 2)')       AS labelled,",
+  '  toBool(true)                                   AS flag,',
+  "  toUUID('00000000-0000-0000-0000-000000000001') AS identifier,",
+  "  toIPv4('1.2.3.4')                              AS address,",
+  "  toDate('2024-01-02')                           AS day,",
+  "  toDateTime('2024-01-02 03:04:05')              AS moment,",
+  '  [1, 2, 3]                                      AS list,',
+  "  map('k', 1)                                    AS lookup,",
+  "  tuple(1, 'a')                                  AS pair,",
+  "  CAST(tuple(1, 'a'), 'Tuple(x UInt8, y String)') AS named_pair,",
+  "  CAST((1.0, 2.0), 'Point')                      AS place,",
+  "  CAST(NULL, 'Nullable(String)')                 AS absent,",
+  "  CAST('x', 'LowCardinality(Nullable(String))')  AS present",
 ].join('\n')
 
 let failures = 0
@@ -350,6 +381,75 @@ async function main() {
     }
   })
 
+  // ── Types: what the document claims against what arrives ─────────────
+
+  await check('every column is the type the document says it is', async () => {
+    const made = await fetch(`${BASE}/api/published`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Flint type check',
+        slug: ZOO,
+        sql: ZOO_STATEMENT,
+        database: '',
+        defaults: '{}',
+        public: false,
+        enabled: true,
+        max_rows: 1,
+      }),
+    })
+    assert(made.ok, `could not publish the type endpoint: HTTP ${made.status}`)
+    const zoo = (await made.json()).find((e) => e.slug === ZOO)
+
+    const headers = { 'X-Flint-Token': zoo.token }
+    const answer = await (await fetch(`${BASE}/api/data/${ZOO}`, { headers })).json()
+    const doc = await (await fetch(`${BASE}/api/data/${ZOO}/openapi.json`, { headers })).json()
+    const row = answer.rows[0]
+    const properties = doc.components.schemas.Row.properties
+
+    const wrong = []
+    for (const [name, schema] of Object.entries(properties)) {
+      const claimed = Array.isArray(schema.type) ? schema.type : [schema.type]
+      const sent = jsonTypeOf(row[name])
+      if (!satisfies(sent, claimed)) {
+        wrong.push(
+          `${name} (${schema['x-clickhouse-type']}): documented ` +
+            `${claimed.join('/')}, sent as ${sent}`,
+        )
+      }
+    }
+    assert(wrong.length === 0, wrong.join('; '))
+    assert(Object.keys(properties).length >= 19, 'every column of the zoo is documented')
+
+    // And the three that were wrong, named, so a regression says which.
+    assertEqual(properties.fixed_point.type, 'number', 'a decimal is not quoted')
+    assertEqual(properties.pair.type, 'array', 'an unnamed tuple arrives as an array')
+    assertEqual(properties.named_pair.type, 'object', 'a named one arrives as an object')
+    assertEqual(properties.place.type, 'array', 'a geo type is an array of points')
+    // The one that is quoted, and the reason it is.
+    assertEqual(properties.widest_int.type, 'string', 'a 64-bit integer is quoted')
+  })
+
+  await check('the schema page agrees with the document about the types', async () => {
+    // Two readers of the same `DESCRIBE`; if they ever disagree, one of them is
+    // showing somebody a type their data does not have.
+    const zoo = (await (await fetch(`${BASE}/api/published`)).json()).find((e) => e.slug === ZOO)
+    if (!zoo) throw new Error('the type endpoint is not there')
+    const headers = { 'X-Flint-Token': zoo.token }
+    const schema = await (await fetch(`${BASE}/api/data/${ZOO}/schema`, { headers })).json()
+    const doc = await (await fetch(`${BASE}/api/data/${ZOO}/openapi.json`, { headers })).json()
+    const properties = doc.components.schemas.Row.properties
+    for (const column of schema.columns) {
+      assertEqual(
+        properties[column.name]['x-clickhouse-type'],
+        column.type,
+        `${column.name}`,
+      )
+      // And a type that came back pretty-printed would show as one here.
+      assert(!column.type.includes('\n'), `${column.name} is on one line`)
+    }
+  })
+
   // ── The door ──────────────────────────────────────────────────────────
 
   await check('the token is the door, and a wrong address is a closed one', async () => {
@@ -364,6 +464,26 @@ async function main() {
     const format = await call('format=xlsx')
     assertEqual(format.status, 400, 'a format nothing serves')
   })
+}
+
+/** JSON has one number type, so this reports the narrowest thing a value could
+ *  be and `satisfies` widens it — an integer-valued number does satisfy
+ *  `integer`, and that asymmetry is the whole subtlety here. */
+function jsonTypeOf(value) {
+  if (value === null) return 'null'
+  if (typeof value === 'boolean') return 'boolean'
+  if (typeof value === 'number') return Number.isInteger(value) ? 'integer' : 'number'
+  if (typeof value === 'string') return 'string'
+  if (Array.isArray(value)) return 'array'
+  if (typeof value === 'object') return 'object'
+  return typeof value
+}
+
+function satisfies(sent, claimed) {
+  if (claimed.includes(sent)) return true
+  // `integer` is a subtype of `number`. The reverse is not true, and that is
+  // the direction that catches a document promising more than it delivers.
+  return sent === 'integer' && claimed.includes('number')
 }
 
 function references(value, out = []) {
@@ -382,12 +502,12 @@ function references(value, out = []) {
 async function cleanUp() {
   try {
     const all = await (await fetch(`${BASE}/api/published`)).json()
-    const mine = all.find((e) => e.slug === SLUG)
-    if (mine) {
-      await fetch(`${BASE}/api/published/${mine.id}`, { method: 'DELETE' })
+    for (const slug of [SLUG, ZOO]) {
+      const mine = all.find((e) => e.slug === slug)
+      if (mine) await fetch(`${BASE}/api/published/${mine.id}`, { method: 'DELETE' })
     }
   } catch {
-    console.log(`  --   could not remove the endpoint at /api/data/${SLUG}; remove it by hand`)
+    console.log(`  --   could not remove ${SLUG} / ${ZOO}; remove them by hand`)
   }
 }
 

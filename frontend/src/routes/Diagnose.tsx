@@ -14,6 +14,7 @@ import {
   scanVerdict,
   timeSpent,
   type QueryReport,
+  type StorageReport,
   type TrafficReport,
 } from '../lib/diagnose'
 import { concerns, summarise, type Item } from '../lib/attention'

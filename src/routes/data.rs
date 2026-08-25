@@ -577,7 +577,9 @@ async fn describe(
         .into_iter()
         .map(|c| ColumnMeta {
             name: c.name,
-            r#type: c.r#type,
+            // The one place a type enters from `DESCRIBE`, which pretty-prints
+            // a nested one across several lines.
+            r#type: shape::one_line(&c.r#type),
         })
         .collect())
 }

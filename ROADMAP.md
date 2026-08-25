@@ -44,9 +44,13 @@ who opens Flint to answer a question should not pass a `DROP PARTITION` button o
 the way, and an operator draining a replica should not have to walk through
 somebody's dashboards to reach the replication queue.
 
-The navigation already has the seed of this: `Chrome.tsx` groups its links in
-three unlabelled clusters, with `Diagnose` sitting alone in the third. That third
-group is Infrastructure asking to be named.
+**Built.** The bar names the space before it names the page, `lib/spaces` holds
+the membership rule — a page is Infrastructure because it lives under `/infra`,
+and nothing else — and the old single `Diagnose` page is now two: Data keeps what
+the statements cost, Infrastructure took the server's own condition. The object
+rail is Data's navigator and does not follow you across. Of Infrastructure's
+eight sections, four exist: Health, Pipelines, Replication, Access. The other
+four are the phases below, and they are absent from the nav until they are real.
 
 ---
 
@@ -85,25 +89,46 @@ Infrastructure is, by definition, the violation of that sentence. Which is
 precisely why it must be a whole space rather than a scattering of buttons: a
 space can be switched off entirely.
 
-`FLINT_READONLY` becomes a notch:
+Two variables, answering two different questions. Both **shipped**.
 
-| tier | Data | Infrastructure |
-| --- | --- | --- |
-| `read` | read-only — today's Flint, the brief's stateless mode | **absent** |
-| `data` | inserts, imports, exports, truncate, ingest endpoints | **absent** |
-| `ddl` | as above | Schema only |
-| `admin` | as above | all eight sections |
+`FLINT_INFRASTRUCTURE` decides whether the space *exists*:
 
-Absent means absent: no navigation entry, no route, no disabled control with a
-tooltip explaining what you are not allowed to do. An analytics team runs Flint
-at `read` or `data` and never learns the other half exists.
+- Off removes it entirely — no navigation entry, no route, and its code is
+  never fetched. Absent means absent, not a disabled control with a tooltip
+  explaining what you may not do. An analytics team turns it off and never
+  learns the other half is there.
+- On by default, because everything the space shows today is a read of
+  `system.*` — which is why this is a decision about *audience*, and not the
+  same decision as the one below. An earlier draft of this roadmap derived the
+  space's visibility from the write tier, which would have taken today's
+  storage, pipelines, replication and access views away from every read-only
+  deployment that already has them.
 
-Two rules attach to the notch:
+`FLINT_TIER` decides what may be *done*:
 
-- Anything above `read` **requires `FLINT_WORKSPACE_DATABASE`**. A write Flint
-  cannot record is a write nobody can reconstruct afterwards.
+| tier | what it permits |
+| --- | --- |
+| `read` | reads only — `readonly=2` on every statement |
+| `data` | rows may be written: insert, import, truncate, mutate |
+| `ddl` | structure may be written: create, alter, drop, partitions |
+| `admin` | the server may be operated: `SYSTEM`, access, backups |
+
+Unset it follows `FLINT_READONLY`, so every deployment that predates the tier
+behaves exactly as it did. Today it gates nothing beyond what is already built:
+it is the contract the phases below are written against, in place early so that
+each action can be added behind a notch that already exists rather than
+inventing one when the first `DROP` arrives.
+
+Two rules attach to it:
+
 - The tier is set in the manifest, by whoever deploys, never in the UI by
-  whoever is signed in.
+  whoever is signed in: a permission a user can grant themselves is not a
+  permission. A manifest that asks for both `FLINT_READONLY=true` and a writing
+  tier is refused at boot rather than resolved quietly in one direction.
+- An action that writes will **require `FLINT_WORKSPACE_DATABASE`** when it
+  lands — a write Flint cannot record is a write nobody can reconstruct
+  afterwards. Not enforced yet, because no such action exists yet, and
+  enforcing it now would only lock people out of read-only pages.
 
 ---
 
@@ -240,14 +265,13 @@ what is still running instead of orphaning it.
 
 ### B2. Clusters
 
-The largest technical gap in Flint today: `system.clusters` appears nowhere in
-the codebase. An operations tool without replication is not one. Read from the
-node Flint sits beside, which is enough:
+Half done, and the half that landed is the one people notice first:
+`system.replicas` is read and rendered — `absolute_delay`, `is_readonly`,
+`is_session_expired`, the queue sizes, lost parts, and a verdict per replicated
+table. What is still missing is everything *around* one replica:
 
-- topology from `system.clusters`, drawn — the canvas already knows how to lay
-  out a graph and state what it dropped
-- `system.replicas`: `absolute_delay`, `is_readonly`, `is_session_expired`,
-  `future_parts`, `parts_to_check`
+- topology from `system.clusters`, which appears nowhere in the codebase yet —
+  the canvas already knows how to lay out a graph and state what it dropped
 - `system.replication_queue`, with stuck entries and their exceptions, which is
   where a replication problem is actually legible
 - `system.distributed_ddl_queue` — an `ON CLUSTER` that succeeded on three nodes

@@ -363,6 +363,11 @@ export const api = {
   }) =>
     request<CheckResult>('/check', { method: 'POST', body: JSON.stringify(body) }),
 
+  /** Run a report now. Allowed under FLINT_READONLY: every section is a read,
+   *  and the edition it writes is Flint's own bookkeeping. */
+  runReport: (id: string) =>
+    request<{ run_id: string; report: string }>(`/reports/${id}/run`, { method: 'POST' }),
+
   published: () => request<import('./publish').Published[]>('/published'),
   pipelines: (days: number) =>
     request<import('./pipeline').PipelineReport>(`/diagnostics/pipelines?days=${days}`),

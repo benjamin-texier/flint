@@ -24,6 +24,10 @@ pub struct AppState {
     pub config: Arc<Config>,
     /// Present only when a workspace database is configured.
     pub workspace: Option<Workspace>,
+    /// The same scheduler that runs reports on their schedule, so a run asked
+    /// for by hand goes through exactly one implementation of "run a report".
+    /// `None` without a workspace, which is also when there are no reports.
+    pub runner: Option<crate::alerts::Scheduler>,
 }
 
 /// Shared with the workspace, which validates the same shape on the save path.
@@ -103,6 +107,7 @@ pub fn router(state: AppState) -> Router {
         .route("/alert-events", get(saved::alert_events))
         .route("/reports", get(saved::reports).post(saved::save_report))
         .route("/reports/{id}", axum::routing::delete(saved::remove_report))
+        .route("/reports/{id}/run", post(saved::run_report_now))
         .route("/report-runs", get(saved::report_runs))
         .route("/report-runs/{run_id}", get(saved::report_snapshot))
         .route(

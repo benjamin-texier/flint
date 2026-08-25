@@ -54,21 +54,58 @@
   color: var(--text-primary);
 }
 
+/* Two levels in one bar. The switcher says which half of Flint you are in —
+ * Data works on rows, Infrastructure works on structure and on the server — and
+ * the tray beside it says where in that half. `lib/spaces` holds the line and
+ * the reasoning behind it.
+ *
+ * The tray keeps the pill it has always had, so a deployment with Infrastructure
+ * switched off looks exactly as it did before there was anything to switch. */
 .chrome__nav {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.chrome__spaces {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+}
+
+/* Heavier than a section link, and deliberately not a pill: the filled pill is
+ * the mark of the page you are on, and two filled things in one bar would
+ * compete for that one meaning. A rule under the word instead — the same
+ * gesture a tab uses, for the same reason. */
+.chrome__space {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 var(--s2);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-secondary);
+  border-bottom: 2px solid transparent;
+  transition: color var(--motion-fast) var(--ease),
+    border-color var(--motion-base) var(--ease);
+}
+.chrome__space:hover {
+  color: var(--text-primary);
+}
+.chrome__space.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent);
+}
+
+.chrome__sections {
   display: flex;
   align-items: center;
   gap: var(--s1);
   padding: 3px;
   border-radius: var(--radius-pill);
   background: var(--fill);
-}
-
-/* Three jobs, one bar. The rule is what separates them: read the data, make
- * something of it, run the server. */
-.chrome__group {
-  display: flex;
-  align-items: center;
-  gap: var(--s1);
 }
 
 .chrome__navsep {

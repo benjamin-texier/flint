@@ -493,8 +493,12 @@ fn input_schema(declared: &str) -> Value {
         shape::Family::Number => match numeric_kind(declared) {
             Numeric::Integer => json!({ "type": "integer" }),
             Numeric::Number => json!({ "type": "number" }),
-            // Wider than a double: sent as text, or the client rounds it.
-            Numeric::Wide => json!({ "type": "string", "x-clickhouse-type": declared }),
+            // Wider than a double: written as text, or the client rounds it on
+            // the way out. This is the *input* side, where everything crosses a
+            // query string as text anyway.
+            Numeric::Wide | Numeric::Decimal => {
+                json!({ "type": "string", "x-clickhouse-type": declared })
+            }
         },
         shape::Family::Temporal => json!({
             "type": "string",
@@ -507,6 +511,12 @@ fn input_schema(declared: &str) -> Value {
 }
 
 /// A column of the result, as a caller receives it.
+///
+/// Every arm here was checked against what ClickHouse actually puts on the
+/// wire rather than against what its type name suggests — see
+/// `contrib/api-check.mjs`, which publishes one column of each and compares the
+/// two. Three of them had been guessed wrong, and each guess was the obvious
+/// one.
 fn row_schema(ty: &str) -> Value {
     let base = shape::base_type(ty);
     let head = base.split('(').next().unwrap_or(base).trim();
@@ -525,7 +535,18 @@ fn row_schema(ty: &str) -> Value {
             "type": "array",
             "items": inner_of(base).map(row_schema).unwrap_or_else(|| json!({})),
         }),
-        "Map" | "Tuple" | "Nested" | "JSON" | "Object" => json!({ "type": "object" }),
+        // A tuple is an array or an object depending on whether its elements
+        // were named, because that is what ClickHouse sends: an unnamed
+        // `Tuple(UInt8, String)` arrives as `[1, "a"]`, and a named
+        // `Tuple(x UInt8, y String)` as `{"x": 1, "y": "a"}`.
+        "Tuple" => tuple_schema(base),
+        // The geo types are aliases for nested arrays of points, and arrive as
+        // arrays. Documented as `string` they were the least useful lie here:
+        // a generated client would have refused every row.
+        "Point" | "Ring" | "LineString" | "MultiLineString" | "Polygon" | "MultiPolygon" => {
+            json!({ "type": "array" })
+        }
+        "Map" | "Nested" | "JSON" | "Object" => json!({ "type": "object" }),
         _ => match shape::family(base) {
             shape::Family::Number => match numeric_kind(base) {
                 Numeric::Integer => json!({ "type": "integer" }),
@@ -536,6 +557,15 @@ fn row_schema(ty: &str) -> Value {
                 Numeric::Wide => json!({
                     "type": "string",
                     "description": "Sent as a string: 64 bits do not survive a JSON number.",
+                }),
+                // A decimal is *not* quoted — that setting covers integers
+                // only — so it arrives as a JSON number and is documented as
+                // one. The warning is the honest half of that: a decimal wider
+                // than a double is no longer exact once a client has parsed it.
+                Numeric::Decimal => json!({
+                    "type": "number",
+                    "description": "A decimal, sent as a JSON number. Wider than a double \
+                                    holds, it is no longer exact once parsed.",
                 }),
             },
             _ => json!({ "type": "string" }),
@@ -552,11 +582,91 @@ fn row_schema(ty: &str) -> Value {
     schema
 }
 
+/// `Tuple(x UInt8, y String)` → an object; `Tuple(UInt8, String)` → an array
+/// whose positions are typed, which JSON Schema 2020-12 — and so OpenAPI 3.1 —
+/// spells `prefixItems`.
+fn tuple_schema(base: &str) -> Value {
+    let Some(inner) = inner_of(base) else {
+        return json!({ "type": "array" });
+    };
+    let elements = split_top_level(inner);
+    if elements.is_empty() {
+        return json!({ "type": "array" });
+    }
+    // A type name never contains a space outside its own parentheses, so a
+    // space at depth zero is the separator between a name and its type.
+    let named: Vec<(&str, &str)> = elements
+        .iter()
+        .filter_map(|element| split_named(element))
+        .collect();
+    if named.len() == elements.len() {
+        let mut properties = serde_json::Map::new();
+        for (name, ty) in named {
+            properties.insert(name.to_string(), row_schema(ty));
+        }
+        return json!({ "type": "object", "properties": properties });
+    }
+    json!({
+        "type": "array",
+        "prefixItems": elements.iter().map(|e| row_schema(e)).collect::<Vec<_>>(),
+    })
+}
+
+/// `x UInt8` → `("x", "UInt8")`, and `UInt8` → `None`.
+fn split_named(element: &str) -> Option<(&str, &str)> {
+    let mut depth = 0usize;
+    for (at, ch) in element.char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => depth = depth.saturating_sub(1),
+            ' ' if depth == 0 => {
+                let (name, ty) = element.split_at(at);
+                let name = name.trim();
+                let ty = ty.trim();
+                let plain = !name.is_empty()
+                    && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+                    && !name.as_bytes()[0].is_ascii_digit();
+                return (plain && !ty.is_empty()).then_some((name, ty));
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Split on the commas that separate this type's own arguments, ignoring the
+/// ones nested inside them.
+fn split_top_level(inner: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    let mut depth = 0usize;
+    let mut start = 0usize;
+    for (at, ch) in inner.char_indices() {
+        match ch {
+            '(' | '[' => depth += 1,
+            ')' | ']' => depth = depth.saturating_sub(1),
+            ',' if depth == 0 => {
+                out.push(inner[start..at].trim());
+                start = at + 1;
+            }
+            _ => {}
+        }
+    }
+    let last = inner[start..].trim();
+    if !last.is_empty() {
+        out.push(last);
+    }
+    out
+}
+
 enum Numeric {
     Integer,
     Number,
-    /// Wider than a JSON number can hold without losing digits.
+    /// Wider than a JSON number can hold without losing digits, and quoted by
+    /// ClickHouse for exactly that reason.
     Wide,
+    /// Also too wide to be exact, and *not* quoted: the setting that quotes
+    /// wide integers covers integers only.
+    Decimal,
 }
 
 fn numeric_kind(ty: &str) -> Numeric {
@@ -565,6 +675,7 @@ fn numeric_kind(ty: &str) -> Numeric {
     match head {
         "Float32" | "Float64" | "BFloat16" => Numeric::Number,
         "Int8" | "Int16" | "Int32" | "UInt8" | "UInt16" | "UInt32" => Numeric::Integer,
+        h if h.starts_with("Decimal") => Numeric::Decimal,
         _ => Numeric::Wide,
     }
 }
@@ -614,9 +725,58 @@ mod tests {
         // cannot silently round an id, so `integer` here would send every
         // generated client into a type error at the first big value.
         assert_eq!(row_schema("UInt64")["type"], json!("string"));
-        assert_eq!(row_schema("Decimal(38, 4)")["type"], json!("string"));
         assert_eq!(row_schema("UInt32")["type"], json!("integer"));
         assert_eq!(row_schema("Float64")["type"], json!("number"));
+    }
+
+    #[test]
+    fn a_decimal_is_a_number_because_that_is_what_arrives() {
+        // This one was documented `string` by analogy with the wide integers,
+        // and the analogy was wrong: the setting that quotes those covers
+        // integers only, so a decimal arrives as a JSON number. Checked
+        // against a real server rather than reasoned about — see
+        // contrib/api-check.mjs.
+        for ty in ["Decimal(9, 2)", "Decimal(38, 4)", "Decimal64(2)"] {
+            assert_eq!(row_schema(ty)["type"], json!("number"), "{ty}");
+        }
+        // And the honest half: it is a number that may not be exact.
+        assert!(row_schema("Decimal(38, 4)")["description"]
+            .as_str()
+            .unwrap()
+            .contains("no longer exact"));
+        assert_eq!(
+            row_schema("Nullable(Decimal(18, 2))")["type"],
+            json!(["number", "null"])
+        );
+    }
+
+    #[test]
+    fn a_tuple_is_an_array_or_an_object_depending_on_whether_it_was_named() {
+        // Because that is what ClickHouse sends. Documented `object` for both,
+        // every unnamed tuple was a lie a generated client would trip on.
+        let unnamed = row_schema("Tuple(UInt8, String)");
+        assert_eq!(unnamed["type"], json!("array"));
+        assert_eq!(unnamed["prefixItems"][0]["type"], json!("integer"));
+        assert_eq!(unnamed["prefixItems"][1]["type"], json!("string"));
+
+        let named = row_schema("Tuple(x UInt8, y String)");
+        assert_eq!(named["type"], json!("object"));
+        assert_eq!(named["properties"]["x"]["type"], json!("integer"));
+        assert_eq!(named["properties"]["y"]["type"], json!("string"));
+
+        // A comma inside an element is not a separator.
+        let nested = row_schema("Tuple(a Decimal(18, 2), b Array(String))");
+        assert_eq!(nested["properties"]["a"]["type"], json!("number"));
+        assert_eq!(nested["properties"]["b"]["type"], json!("array"));
+    }
+
+    #[test]
+    fn a_geo_type_is_the_array_of_points_it_really_is() {
+        // Documented `string`, these were the least useful lie of the three: a
+        // generated client would have refused every row it was given.
+        for ty in ["Point", "Ring", "Polygon", "MultiPolygon", "LineString"] {
+            assert_eq!(row_schema(ty)["type"], json!("array"), "{ty}");
+        }
     }
 
     #[test]

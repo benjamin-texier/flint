@@ -175,6 +175,38 @@ pub async fn remove_report(
     Ok(Json(json!({ "deleted": id })))
 }
 
+/// Run a report now, by hand.
+///
+/// Allowed under `FLINT_READONLY`, on the same reasoning as stopping a query:
+/// every section runs as a read, and the edition it writes is Flint's own
+/// bookkeeping in its own database, not your data. Refusing here would leave the
+/// one deployment shape where a report can never be checked before nine
+/// tomorrow — which is exactly a read-only, look-but-do-not-touch deployment.
+pub async fn run_report_now(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<Value>> {
+    if !valid_uuid(&id) {
+        return Err(Error::BadRequest(format!("`{id}` is not a report id")));
+    }
+    let ws = workspace(&state)?;
+    let report = ws
+        .reports(&state.ch)
+        .await?
+        .into_iter()
+        .find(|r| r.id == id)
+        .ok_or_else(|| Error::BadRequest(format!("there is no report `{id}`")))?;
+    // A paused report is still runnable by hand: pausing stops the schedule, and
+    // somebody pressing the button is not the schedule.
+    let runner = state.runner.as_ref().ok_or_else(|| {
+        Error::BadRequest(
+            "reports run only where a workspace is configured, and this Flint has none".into(),
+        )
+    })?;
+    let run_id = runner.run_report(&report).await;
+    Ok(Json(json!({ "run_id": run_id, "report": report.name })))
+}
+
 #[derive(serde::Deserialize)]
 pub struct RunQuery {
     #[serde(default)]

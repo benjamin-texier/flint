@@ -81,6 +81,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Alerts need somewhere to keep their history, so the scheduler exists
     // only where a workspace does. Spawned before the server starts listening:
     // an alert that fires while nobody has opened the UI is the whole point.
+    // Kept as well as spawned: the reports page can ask for a run now, and it
+    // must be the same runner the schedule uses — a second implementation of
+    // "run a report" is two ways for an edition to be made.
+    let mut runner = None;
     if let Some(ws) = workspace.clone() {
         let http = clickhouse::webhook_client(
             config.clickhouse_ca_cert.as_deref(),
@@ -90,6 +94,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         if !config.alert_webhooks {
             tracing::info!("alerts: webhook delivery is off (FLINT_ALERT_WEBHOOKS=false)");
         }
+        runner = Some(scheduler.clone());
         tokio::spawn(scheduler.run());
     }
 
@@ -98,6 +103,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ch,
         config: Arc::new(config),
         workspace,
+        runner,
     };
     // A raw `Os { code: 98, kind: AddrInUse }` says nothing about what to do.
     // This is the most common way starting Flint fails — another Flint, or the

@@ -8,6 +8,7 @@ import {
   parseSections,
   problemWithReport,
   sectionsFromDashboard,
+  sectionsFromSaved,
   serialiseSchedule,
   statusOf,
   type Schedule,
@@ -194,5 +195,50 @@ describe('sectionsFromDashboard', () => {
 
   it('is empty for an empty dashboard', () => {
     expect(sectionsFromDashboard([])).toEqual([])
+  })
+})
+
+describe('sectionsFromSaved', () => {
+  it('keeps the name, the statement and the database', () => {
+    expect(
+      sectionsFromSaved({ name: 'Errors by day', sql: 'SELECT 1', database: 'analytics' }),
+    ).toEqual([{ title: 'Errors by day', sql: 'SELECT 1', database: 'analytics', chart: null }])
+  })
+
+  it('unpacks a multi-statement buffer into a section each, numbered', () => {
+    // The editor runs the statement under the cursor, so nothing stopped anybody
+    // saving three. One section holding all three would fail at run time.
+    const sections = sectionsFromSaved({
+      name: 'Morning checks',
+      sql: 'SELECT 1;\nSELECT 2;',
+      database: 'analytics',
+    })
+    expect(sections.map((s) => s.title)).toEqual(['Morning checks (1)', 'Morning checks (2)'])
+    expect(sections.map((s) => s.sql)).toEqual(['SELECT 1', 'SELECT 2'])
+  })
+
+  it('does not number a single statement that happens to end in a semicolon', () => {
+    const [section] = sectionsFromSaved({ name: 'One', sql: 'SELECT 1;', database: 'a' })
+    expect(section?.title).toBe('One')
+    expect(section?.sql).toBe('SELECT 1')
+  })
+
+  it('hands back one empty section for an empty query', () => {
+    // Pressing the button must visibly do something.
+    expect(sectionsFromSaved({ name: 'Blank', sql: '   \n', database: 'a' })).toEqual([
+      { title: 'Blank', sql: '', database: 'a', chart: null },
+    ])
+  })
+
+  it('carries a comment-only query across as it was saved', () => {
+    // Blanking it would leave a section that arrived empty for no visible
+    // reason; the section's check panel says what is wrong with this one.
+    const [section] = sectionsFromSaved({ name: 'Notes', sql: '-- todo', database: 'a' })
+    expect(section?.sql).toBe('-- todo')
+  })
+
+  it('carries no chart, because a saved query has none', () => {
+    const [section] = sectionsFromSaved({ name: 'x', sql: 'SELECT 1', database: '' })
+    expect(section?.chart).toBeNull()
   })
 })

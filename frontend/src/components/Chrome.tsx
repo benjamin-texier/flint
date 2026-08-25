@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import { api } from '../lib/api'
 import { concerns, countFor } from '../lib/attention'
-import { activeSection, countIn, spaceOf, spacesFor } from '../lib/spaces'
+import { activeSection, countIn, spaceById, spaceOf, spacesFor } from '../lib/spaces'
 
 import type { AppConfig, ServerInfo } from '../lib/api'
 import { uptime } from '../lib/format'
@@ -126,7 +126,7 @@ function Nav({ config }: { config: AppConfig | undefined }) {
   /* A path can name a space this deployment does not have — a bookmark from
      before Infrastructure was switched off. The router sends it back to Data;
      the bar must not light a tab for the space it is leaving. */
-  const here = spaces.find((s) => s.id === spaceOf(pathname)) ?? spaces[0]
+  const here = spaces.find((s) => s.id === spaceOf(pathname)) ?? spaceById('data')
 
   /* Only where Flint keeps anything, and cached: this rides along on every
      page, so it must not be a request per navigation. */
@@ -180,6 +180,7 @@ function Nav({ config }: { config: AppConfig | undefined }) {
               <Badge count={countIn(items, space.id)} />
             </Link>
           ))}
+          <span className="chrome__navsep" aria-hidden="true" />
         </nav>
       ) : null}
       <nav className="chrome__sections" aria-label={`${here.label} sections`}>

@@ -5,6 +5,7 @@
  *  a live query: re-running it next month would answer next month's question. */
 
 import type { ChartSpec } from './chart'
+import { splitStatements } from './sql'
 
 export type Schedule =
   | { kind: 'every'; hours: number }
@@ -243,6 +244,37 @@ export function sectionsFromDashboard(tiles: {
       database: t.database,
       chart: t.chart,
     }))
+}
+
+/** A saved query, as a report section.
+ *
+ *  The other half of the same idea. A dashboard is a report someone already
+ *  arranged; a saved query is a *question* someone already named and tested, and
+ *  a report is mostly a handful of those asked on a schedule. Retyping one into
+ *  a section is how a report comes to differ from the query it was supposed to
+ *  keep.
+ *
+ *  A saved query may hold several statements — the editor runs the one under the
+ *  cursor, so nothing stopped anybody saving a buffer with three. A section is
+ *  one statement, so this returns one section per statement rather than one
+ *  section that will fail at run time, and numbers them after the first so the
+ *  reader can see what was unpacked. */
+export function sectionsFromSaved(query: { name: string; sql: string; database: string }): Section[] {
+  const statements = splitStatements(query.sql).filter((s) => s.sql.trim())
+  // A comment-only query comes across as it was saved rather than blanked: the
+  // section's own check panel will say it is not a statement, which is more use
+  // than a section that arrived mysteriously empty. Only a buffer with nothing
+  // in it at all takes this branch, and it needs one section so that pressing
+  // the button visibly does something.
+  if (statements.length === 0) {
+    return [{ title: query.name, sql: '', database: query.database, chart: null }]
+  }
+  return statements.map((statement, i) => ({
+    title: statements.length > 1 ? `${query.name} (${i + 1})` : query.name,
+    sql: statement.sql.trim(),
+    database: query.database,
+    chart: null,
+  }))
 }
 
 export function problemWithReport(input: { name: string; sections: Section[] }): string | null {

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { api } from '../lib/api'
+import { api, type SavedQuery } from '../lib/api'
 import { relativeTime } from '../lib/format'
 import {
   DAYS,
@@ -17,6 +17,7 @@ import {
   parseSections,
   problemWithReport,
   sectionsFromDashboard,
+  sectionsFromSaved,
   serialiseSchedule,
   statusOf,
   type Report,
@@ -266,6 +267,20 @@ function ReportRow({
       }),
     onSuccess: () => client.invalidateQueries({ queryKey: ['reports'] }),
   })
+  /* Run it now.
+     A report describes what it will keep, and until it has run once nobody has
+     seen it do that — waiting until nine tomorrow to find out that a section
+     names a column that does not exist is not a review cycle. It goes through
+     the scheduler's own runner, so a manual edition is made exactly the way a
+     scheduled one is, and it is a real edition: recorded, listed, and delivered
+     to the webhook like any other. */
+  const runNow = useMutation({
+    mutationFn: () => api.runReport(report.id),
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: ['reports'] })
+      client.invalidateQueries({ queryKey: ['report-runs'] })
+    },
+  })
 
   return (
     <li className={`arow${report.enabled ? '' : ' arow--off'}`}>
@@ -274,6 +289,18 @@ function ReportRow({
         <Status status={report.last_status} />
         {!report.enabled ? <span className="flag flag--idle">Paused</span> : null}
         <span className="panel__spacer" />
+        <button
+          className="btn"
+          onClick={() => runNow.mutate()}
+          disabled={runNow.isPending}
+          title={
+            report.enabled
+              ? 'Make an edition now, without waiting for the schedule'
+              : 'Paused stops the schedule; you can still run it by hand'
+          }
+        >
+          {runNow.isPending ? 'Running…' : 'Run it now'}
+        </button>
         <button className="btn" onClick={() => toggle.mutate()} disabled={toggle.isPending}>
           {report.enabled ? 'Pause' : 'Resume'}
         </button>
@@ -284,6 +311,8 @@ function ReportRow({
           Delete
         </button>
       </div>
+
+      {runNow.error ? <ErrorNote error={runNow.error} /> : null}
 
       <p className="arow__says">
         {schedule ? (
@@ -467,6 +496,20 @@ function ReportForm({
   const patch = (i: number, change: Partial<Section>) =>
     setSections((list) => list.map((s, j) => (i === j ? { ...s, ...change } : s)))
 
+  /* A report is mostly a handful of questions somebody already named. Appended
+     rather than replacing what is there, because the point is to build a report
+     out of several — the editor's "send to" already covers the single one, and
+     it lands as a replacement. */
+  const appendSaved = (query: SavedQuery) =>
+    setSections((list) => {
+      const brought = sectionsFromSaved(query)
+      // The lone empty section a fresh form starts with is a placeholder, not a
+      // section somebody wrote. Filling it beats leaving a blank above the thing
+      // just added.
+      const keep = list.filter((s) => s.sql.trim() || s.title.trim())
+      return [...keep, ...brought]
+    })
+
   return (
     <section className="aform">
       <header className="aform__head">
@@ -522,14 +565,17 @@ function ReportForm({
         </div>
       ))}
 
-      <button
-        className="btn"
-        onClick={() =>
-          setSections((list) => [...list, { title: '', sql: '', database: defaultDatabase }])
-        }
-      >
-        Add a section
-      </button>
+      <div className="aform__row">
+        <button
+          className="btn"
+          onClick={() =>
+            setSections((list) => [...list, { title: '', sql: '', database: defaultDatabase }])
+          }
+        >
+          Add a section
+        </button>
+        <SavedPicker onPick={appendSaved} />
+      </div>
 
       <div className="aform__row">
         <label className="aform__field aform__field--narrow">
@@ -628,5 +674,54 @@ function ReportForm({
         </button>
       </div>
     </section>
+  )
+}
+
+/** Saved queries, offered as sections.
+ *
+ *  A select rather than a list: the report form is already long, and this is a
+ *  pick-one-and-move-on control, not something to browse. It stays visible with
+ *  nothing to offer — saying "nothing saved yet" teaches that the mechanism
+ *  exists, which a control that appears only once you have used it cannot. */
+function SavedPicker({ onPick }: { onPick: (q: SavedQuery) => void }) {
+  const saved = useQuery({
+    queryKey: ['saved-queries'],
+    queryFn: api.savedQueries,
+    retry: false,
+    staleTime: 30_000,
+  })
+  const queries = saved.data ?? []
+
+  return (
+    <label className="editor__pick">
+      <select
+        className="btn btn--select"
+        value=""
+        disabled={queries.length === 0}
+        aria-label="Add a saved query as a section"
+        title={
+          queries.length === 0
+            ? 'Save a query in the editor and it can be added here'
+            : 'Add a query you have already named and tested'
+        }
+        onChange={(e) => {
+          const picked = queries.find((q) => q.id === e.target.value)
+          if (picked) onPick(picked)
+        }}
+      >
+        <option value="">
+          {saved.isPending
+            ? 'Reading saved queries…'
+            : queries.length === 0
+              ? 'Nothing saved yet'
+              : 'Add a saved query…'}
+        </option>
+        {queries.map((q) => (
+          <option key={q.id} value={q.id}>
+            {q.name}
+          </option>
+        ))}
+      </select>
+    </label>
   )
 }

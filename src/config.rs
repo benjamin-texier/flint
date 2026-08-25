@@ -167,8 +167,11 @@ impl Config {
     /// a deployment that has only ever set `FLINT_READONLY` gets exactly the
     /// behaviour it had before the tier existed.
     pub fn tier(&self) -> Tier {
-        self.tier
-            .unwrap_or(if self.readonly { Tier::Read } else { Tier::Data })
+        self.tier.unwrap_or(if self.readonly {
+            Tier::Read
+        } else {
+            Tier::Data
+        })
     }
 
     /// Refuse a manifest that asks for two incompatible things.
