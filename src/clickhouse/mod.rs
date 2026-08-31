@@ -31,6 +31,7 @@ pub mod rbac;
 pub mod reads;
 pub mod relations;
 pub mod review;
+pub mod rows;
 pub mod settings;
 pub mod storage;
 pub mod streams;

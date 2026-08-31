@@ -1177,6 +1177,18 @@ export const api = {
   deleteDashboard: (id: string) =>
     request<{ deleted: string }>(`/dashboards/${enc(id)}`, { method: 'DELETE' }),
 
+  /** Write one row. `value: null` is SQL NULL; a column left out of `fields`
+   *  is left out of the statement, which is what makes its DEFAULT apply. */
+  insertRow: (body: {
+    database: string
+    table: string
+    fields: { column: string; value: string | null }[]
+  }) =>
+    request<{ statement: string; defaulted: string[] }>('/rows', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
   savedQueries: () => request<SavedQuery[]>('/saved-queries'),
   saveQuery: (body: { id?: string; name: string; sql: string; database: string }) =>
     request<SavedQuery>('/saved-queries', { method: 'POST', body: JSON.stringify(body) }),

@@ -4542,6 +4542,167 @@ tr:hover .stratum__fill {
   opacity: 0.55;
 }
 
+/* ═══ Writing a row ═══════════════════════════════════════════════════════
+ * One field per writable column, each saying which of three states it is in:
+ * a value, a null, or not written at all. The state line is not decoration —
+ * it is the distinction the whole form exists to make, and it is not one a
+ * reader can get from looking at a box.
+ *
+ * A single column of fields rather than a grid. A row is read top to bottom in
+ * the table's own declaration order, which is the order the Columns tab shows,
+ * and two columns of boxes would break the correspondence between the two
+ * screens for no gain on any window this product is used on. */
+
+.addrow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+  max-width: 720px;
+}
+
+.addrow__computed {
+  padding: var(--s3);
+  border-left: 2px solid var(--border-strong);
+  background: var(--bg-surface-2);
+  border-radius: var(--radius-sm);
+}
+
+.addrow__fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.addrow__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  padding: var(--s2) var(--s3);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  transition: border-color var(--motion-fast) var(--ease);
+}
+
+/* An untouched field recedes rather than disappearing: it is still a column of
+ * the table and still has to be readable, but the eye should land on what has
+ * been filled in. */
+.addrow__field.is-untouched {
+  border-color: var(--divider);
+  background: transparent;
+}
+
+.addrow__label {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.addrow__name {
+  font-family: var(--font-data);
+  font-size: var(--size-body);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.addrow__control {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+}
+
+.addrow__input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px var(--s2);
+  font-family: var(--font-data);
+  font-size: var(--size-body);
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.addrow__input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+.addrow__input:disabled {
+  color: var(--text-muted);
+  background: var(--bg-surface-2);
+}
+.addrow__input--long {
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.addrow__acts {
+  display: flex;
+  gap: var(--s1);
+  flex: none;
+}
+
+.addrow__act {
+  padding: 6px var(--s2);
+  font-size: var(--size-label);
+  font-family: var(--font-data);
+  color: var(--text-secondary);
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    color var(--motion-fast) var(--ease),
+    border-color var(--motion-fast) var(--ease);
+}
+.addrow__act:hover:not(:disabled) {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+.addrow__act.is-on {
+  color: var(--accent-strong);
+  border-color: var(--accent);
+}
+.addrow__act:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.addrow__state {
+  color: var(--text-muted);
+}
+
+.addrow__comment {
+  color: var(--text-secondary);
+}
+
+.addrow__foot {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex-wrap: wrap;
+}
+
+.addrow__done {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: var(--s3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-2);
+}
+
+/* The statement, with its values still as parameters — which is what ran.
+ * Splicing them in would be showing something that never went to the server. */
+.addrow__sql {
+  margin: 0;
+  overflow-x: auto;
+  font-size: var(--size-label);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* Arranging by hand. The grip is the only part of a tile that starts a drag,
  * which is what keeps the table inside one selectable and scrollable while the
  * dashboard is being arranged. */
