@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom'
 import { api } from '../lib/api'
 import type { GraphNode } from '../lib/graph'
 import { KIND_LABEL, explainEngine, splitEngine } from '../lib/explain'
+import { isExternalEngine } from '../lib/external'
 import { bytes, count, exact } from '../lib/format'
 import { ErrorNote, Loading } from './Note'
 import { ResultsGrid } from './ResultsGrid'
@@ -65,8 +66,13 @@ export function TablePeek({
   /* What the diagram already knows, which is nothing at all for an object in
      another database — sizes are only gathered for the one in view. An absent
      figure is dropped rather than dashed. */
-  const rows = node.external ? null : node.rows
-  const disk = node.external ? null : node.bytes
+  /* And nothing at all for a table whose rows are in a bucket, a topic or on
+     another server: `system.parts` returns zero for it, and a zero drawn here
+     reads as an empty table rather than as a table this server has never
+     held. */
+  const elsewhere = node.external || isExternalEngine(node.engine)
+  const rows = elsewhere ? null : node.rows
+  const disk = elsewhere ? null : node.bytes
 
   return (
     <section className="section" ref={panel}>

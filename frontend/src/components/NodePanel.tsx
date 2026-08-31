@@ -12,6 +12,8 @@ import { cellText } from '../lib/grid'
 import { analyseDefinition } from '../lib/lineage'
 import { shortType } from '../lib/chType'
 import { KindGlyph } from './TypeBadge'
+import { ExternalLine } from './ExternalSource'
+import { isExternalEngine } from '../lib/external'
 
 /** Fields of the first row, before the list becomes a wall. The count of what
  *  was left out goes underneath. */
@@ -72,6 +74,7 @@ export function NodePanel({
   const rows = t ? Math.max(t.total_rows ?? t.parts_rows, node.rows) : node.external ? null : node.rows
   const disk = t ? Math.max(t.total_bytes ?? t.parts_bytes, node.bytes) : node.external ? null : node.bytes
   const compression = t && disk ? ratio(t.uncompressed_bytes, disk) : null
+  const external = isExternalEngine(node.engine)
 
   const shape: [string, string | null | undefined][] = [
     ['engine', node.engine],
@@ -98,10 +101,19 @@ export function NodePanel({
 
       <p className="npanel__lead">{explainEngine(node.engine) ?? KIND_MEANING[node.kind]}</p>
 
+      {/* Waits for the detail, like the keys below it: the graph carries the
+          engine's name but not its arguments, and the address is in the
+          arguments. */}
+      {t ? <ExternalLine engine={node.engine} engineFull={t.engine_full} /> : null}
+
       <dl className="npanel__stats">
         {/* A view holds nothing, so it is given no size — but a materialized
             view's storage is real disk and belongs on the view. */}
-        {node.kind === 'table' || (rows ?? 0) > 0 || (disk ?? 0) > 0 ? (
+        {/* Nothing about an external table's rows is on this server, so the
+            zeroes `system.parts` returns for it are not a measurement — the
+            same reason the diagram behind this panel draws its column count
+            instead. */}
+        {external ? null : node.kind === 'table' || (rows ?? 0) > 0 || (disk ?? 0) > 0 ? (
           <>
             <Stat label="rows" value={rows === null ? '—' : count(rows)} />
             <Stat label="on disk" value={disk === null ? '—' : bytes(disk)} />

@@ -3096,6 +3096,110 @@ tr:hover .stratum__fill {
   overflow-wrap: anywhere;
 }
 
+/* ── Where the rows really are ─────────────────────────────────────────────
+   For the engines that store nothing of their own, the address is the
+   identity: two Kafka tables differ by their brokers and by nothing else on
+   the page. So it reads as a plaque rather than as another card — no shadow,
+   no heading, one rule down the left saying that what it describes is
+   outside. */
+.xsrc {
+  margin: var(--s4) 0 0;
+  padding: var(--s2) 0 var(--s2) var(--s4);
+  max-width: 74ch;
+  border-left: 2px solid var(--line-strong);
+}
+
+.xsrc__kind {
+  margin: 0;
+  font-size: var(--size-label);
+  font-weight: 500;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+/* In the data font, and selectable: the next thing anybody does with a bucket
+   path is paste it into a terminal. */
+.xsrc__where {
+  margin: var(--s2) 0 0;
+  font-family: var(--font-data);
+  font-size: var(--size-head);
+  line-height: 1.45;
+  color: var(--chalk);
+  overflow-wrap: anywhere;
+}
+
+.xsrc__at {
+  color: var(--chalk-faint);
+}
+
+.xsrc__on {
+  display: inline-block;
+  padding: 0 var(--s2);
+  font-family: var(--font-ui);
+  font-size: var(--size-body);
+}
+
+.xsrc__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1) var(--s4);
+  margin: var(--s3) 0 0;
+}
+
+.xsrc__fact {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+}
+
+.xsrc__label {
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+.xsrc__value {
+  margin: 0;
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk-dim);
+}
+
+.xsrc__note {
+  margin: var(--s2) 0 0;
+  max-width: 68ch;
+  font-size: var(--size-label);
+  line-height: 1.6;
+  color: var(--chalk-faint);
+}
+
+/* The same address on the diagram's side panel, where it gets one line and has
+   to sit beside the keys, the traffic and the sample. */
+.xsrcline {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: var(--s2) 0 0;
+  padding-left: var(--s2);
+  border-left: 2px solid var(--line-strong);
+}
+
+.xsrcline__kind {
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+.xsrcline__where {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk-dim);
+  overflow-wrap: anywhere;
+}
+
 /* Where a view's column came from. One source per line: a single expression can
    draw on three columns of two tables, and a comma-separated run of those is
    not readable at this width. */

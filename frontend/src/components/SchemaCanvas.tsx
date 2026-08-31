@@ -23,6 +23,7 @@ import {
   explainEngine,
   splitEngine,
 } from '../lib/explain'
+import { isExternalEngine } from '../lib/external'
 
 const MIN_ZOOM = 0.35
 const MAX_ZOOM = 2.2
@@ -603,6 +604,14 @@ export function SchemaCanvas({
                     claiming to hold nothing. */}
                 {node.external ? (
                   <span>in {node.database}</span>
+                ) : isExternalEngine(node.engine) ? (
+                  /* Its rows are in a bucket, a topic or another server.
+                     `0 rows | 0 B` is what `system.parts` has to say about a
+                     table it has never held, and drawn on a node it reads as a
+                     measurement of an empty table rather than as the absence of
+                     one. The column count is the figure this diagram actually
+                     knows. */
+                  <span>{node.columns === 1 ? '1 column' : `${node.columns} columns`}</span>
                 ) : node.kind === 'table' || node.rows > 0 || node.bytes > 0 ? (
                   <>
                     <span>{count(node.rows)} rows</span>
@@ -610,7 +619,7 @@ export function SchemaCanvas({
                     <span>{bytes(node.bytes)}</span>
                   </>
                 ) : (
-                  <span>{node.columns} columns</span>
+                  <span>{node.columns === 1 ? '1 column' : `${node.columns} columns`}</span>
                 )}
               </span>
 
