@@ -15,6 +15,7 @@
 
 use std::collections::HashSet;
 
+use axum::body::Body;
 use axum::extract::{Query, State};
 use axum::http::HeaderMap;
 use axum::Json;
@@ -22,7 +23,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{AppState, Caller};
 use crate::clickhouse::rows::{self, Column, Given};
-use crate::clickhouse::{meta, mutate, QueryOptions};
+use crate::clickhouse::{ingest, meta, mutate, QueryOptions};
 use crate::config::Tier;
 use crate::error::{Error, Result};
 use crate::jobs::{JobSpec, Runner};
@@ -409,4 +410,125 @@ fn says(change: &mutate::Change, matches: u64, estimate: &mutate::Estimate) -> V
         }
     });
     out
+}
+
+// ── Loading a file ─────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct InspectRequest {
+    pub database: String,
+    pub table: String,
+    pub format: String,
+    /// The head of the file, as text. A sample and not the file: this is the
+    /// question "what is in here", and the answer does not need all of it.
+    pub sample: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Inspected {
+    pub columns: Vec<ingest::Inferred>,
+    pub rows: Vec<Vec<String>>,
+    pub mapping: ingest::Mapping,
+    pub statement: String,
+}
+
+/// The most of a sample Flint will send to be inferred from.
+///
+/// A query parameter travels in the URL, and `http::Uri` caps a URL at 65,535
+/// bytes — so this is bounded by the transport rather than by anything about
+/// the data. Measured rather than reasoned: a 64 KB sample became a 69 KB
+/// request and reqwest answered `builder error` before anything left the
+/// process, which is a failure with no server in it and no message a reader
+/// could act on.
+///
+/// The raw bytes are only the start of it. Escaping can double a sample and
+/// URL-encoding can triple what is left, so the headroom here is deliberate
+/// and large. 8 KB of CSV is a couple of hundred rows — far more than the
+/// server needs to infer a type from and ten times what the preview shows.
+const SAMPLE_BYTES: usize = 8 * 1024;
+
+/// `POST /api/rows/inspect` — what this file holds, before anything is written.
+///
+/// A read. Gated on nothing beyond seeing the table, for the same reason the
+/// mutation preview is: the whole point is to find out without doing it.
+pub async fn inspect(
+    Caller(ch): Caller,
+    Json(req): Json<InspectRequest>,
+) -> Result<Json<Inspected>> {
+    let database = name(&req.database, "database")?;
+    let table = name(&req.table, "table")?;
+    let sample = ingest::whole_lines(&req.sample, SAMPLE_BYTES);
+    if sample.trim().is_empty() {
+        return Err(Error::BadRequest("this file has nothing in it".into()));
+    }
+
+    let found = ingest::inspect(&ch, &req.format, sample, 20).await?;
+    let columns = rows::columns(&ch, &database, &table).await?;
+    let mapping = ingest::mapping(&found.columns, &columns, &req.format);
+
+    Ok(Json(Inspected {
+        statement: ingest::insert_statement(&database, &table, &req.format),
+        columns: found.columns,
+        rows: found.rows,
+        mapping,
+    }))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ImportQuery {
+    pub database: String,
+    pub table: String,
+    pub format: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Imported {
+    /// Counted off the table either side of the insert, so this is what
+    /// arrived rather than what a summary claimed.
+    pub before: u64,
+    pub after: u64,
+    pub written: u64,
+    pub statement: String,
+}
+
+/// `POST /api/rows/import` — the file itself, streamed through to the server.
+///
+/// The body is the file. Streamed rather than buffered: holding it in Flint's
+/// memory would fail on exactly the file somebody could not load another way.
+pub async fn import(
+    State(state): State<AppState>,
+    Caller(ch): Caller,
+    Query(q): Query<ImportQuery>,
+    body: Body,
+) -> Result<Json<Imported>> {
+    state.require_tier(Tier::Data)?;
+    let database = name(&q.database, "database")?;
+    let table = name(&q.table, "table")?;
+    if !ingest::known_format(&q.format) {
+        return Err(Error::BadRequest(format!(
+            "`{}` is not a format Flint reads a file as. It offers {}.",
+            q.format,
+            ingest::FORMATS.join(", ")
+        )));
+    }
+
+    let before = ingest::row_count(&ch, &database, &table).await?;
+    let statement = ingest::insert_statement(&database, &table, &q.format);
+    // No error tolerance, deliberately: the server counts the rows it accepted
+    // and says nothing about the ones it turned away, so a partial load would
+    // be one Flint could not describe. See `ingest.rs`.
+    ch.insert_rows(
+        &statement,
+        reqwest::Body::wrap_stream(body.into_data_stream()),
+        &[],
+    )
+    .await?;
+    let after = ingest::row_count(&ch, &database, &table).await?;
+
+    Ok(Json(Imported {
+        before,
+        after,
+        written: after.saturating_sub(before),
+        statement,
+    }))
 }

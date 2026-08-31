@@ -4780,6 +4780,68 @@ tr:hover .stratum__fill {
   word-break: break-word;
 }
 
+/* ═══ Loading a file ══════════════════════════════════════════════════════
+ * The whole panel is the word *before*: what the file turns out to hold, how
+ * it lines up with the table, and its rows parsed the way the import will
+ * parse them — all of it above the button rather than reported after it. */
+
+.impf {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s3);
+  max-width: 900px;
+}
+
+.impf__pick {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex-wrap: wrap;
+}
+
+.impf__file {
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--text-secondary);
+}
+
+.impf__found {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s2);
+  width: 100%;
+  padding: var(--s3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-2);
+}
+
+/* The sample scrolls sideways on its own rather than pushing the page: a file
+ * with forty columns is a normal file, and a panel that made the whole tab
+ * scroll would move every other control on it. */
+.impf__grid {
+  width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.impf__grid .tbl th {
+  white-space: nowrap;
+}
+
+.impf__grid .tbl td {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.impf__done {
+  color: var(--text-primary);
+}
+
 /* ═══ Changing rows that are there ════════════════════════════════════════
  * A predicate, what it reaches, and a job. Never a grid with a pencil on it:
  * ClickHouse has no cell edit, and the icon would lie about what the click

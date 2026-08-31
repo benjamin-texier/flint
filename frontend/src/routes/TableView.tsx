@@ -44,6 +44,7 @@ import { EmptyNote, ErrorNote, Loading } from '../components/Note'
 import { Dash } from '../components/Dash'
 import { AddRow } from '../components/AddRow'
 import { ChangeRows } from '../components/ChangeRows'
+import { ImportFile } from '../components/ImportFile'
 import { Stream } from '../components/Stream'
 import { ExternalPanel } from '../components/ExternalSource'
 
@@ -312,6 +313,10 @@ export function TableView({ database, table }: { database: string; table: string
             <section className="writepane">
               <h3 className="writepane__head">Add a row</h3>
               <AddRow database={database} table={table} columns={t.columns} />
+            </section>
+            <section className="writepane">
+              <h3 className="writepane__head">Load a file</h3>
+              <ImportFile database={database} table={table} />
             </section>
             <section className="writepane">
               <h3 className="writepane__head">Change or delete rows</h3>
