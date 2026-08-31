@@ -528,7 +528,7 @@ function spread(byType: Map<string, string[]>): { type: string; tables: string[]
  *  sorting key.
  *
  *  Read from the lineage Flint already draws, so it costs nothing and is as
- *  good as that diagram is. The README is explicit that the graph is largely
+ *  good as that diagram is. `docs/features.md` is explicit that the graph is largely
  *  *inferred*, which is the right amount of caution for a refusal: it is a
  *  reason to make somebody look, never a reason to claim the pair is safe. */
 export function writtenBy(graph: SchemaGraph | undefined, database: string): Map<string, string[]> {

@@ -1553,7 +1553,7 @@ Each of the eight sections of the tree, and the order they become useful in.
 A sign-in screen that takes **ClickHouse** credentials, a session that carries
 them, every statement executed as that user rather than as the service account.
 `FLINT_AUTH=true`; off by default, so no existing deployment changes. See
-`src/auth.rs` and the README's *Signing in*.
+`src/auth.rs` and *Signing in* in `docs/configuration.md`.
 
 It was worth doing first because of what it let us *not* build:
 

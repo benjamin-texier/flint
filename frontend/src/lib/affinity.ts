@@ -14,7 +14,7 @@
  *
  *  A matrix rather than a graph, deliberately. Co-access is undirected and full
  *  of cycles, so the layered layout the schema diagram uses does not apply, and
- *  a force layout would be the thing the README already refuses — it throws away
+ *  a force layout would be the thing `docs/features.md` already refuses — it throws away
  *  the ordering that makes a picture readable. A matrix has no layout to get
  *  wrong: rows and columns in one order, and the eye reads along either.
  *
