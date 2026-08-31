@@ -314,7 +314,7 @@ export function SignIn({ config }: { config: AppConfig | undefined }) {
               <div className="signin__wrap">
                 <input
                   id="signin-password"
-                  className="input signin__pw"
+                  className={`input signin__pw${shown ? ' signin__pw--shown' : ''}`}
                   type={shown ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
