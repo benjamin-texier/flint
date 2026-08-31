@@ -6,6 +6,7 @@ pub mod backups;
 pub mod build;
 pub mod cluster;
 pub mod compare;
+pub mod connect;
 pub mod ddl;
 pub mod derived;
 pub mod diagnostics;

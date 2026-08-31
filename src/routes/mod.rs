@@ -282,6 +282,10 @@ pub fn router(state: AppState) -> Router {
             get(explorer::table_stream),
         )
         .route(
+            "/databases/{database}/tables/{table}/connect",
+            post(explorer::table_connect),
+        )
+        .route(
             "/databases/{database}/tables/{table}/columns/{column}/distribution",
             get(explorer::column_distribution),
         )

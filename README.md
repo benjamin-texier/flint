@@ -3007,6 +3007,43 @@ one object writes the same six-line exception once per attempt. Both collapse to
 one line with a count and a span — the attempts are real and stay counted, it is
 the text that stops repeating.
 
+### Whether the address answers
+
+A definition is metadata. ClickHouse stores `S3('http://s3:9000/flint/…')`
+without checking that the bucket is there, so the panel above can describe, in
+perfect detail, a connection that has been broken for a year — and the first
+person to find out is whoever runs a query. So the panel has a button that asks.
+
+It runs `SELECT * FROM <table> LIMIT 1`, read-only, with a fifteen-second budget
+of its own, and throws the row away. One row rather than a count: `count()` on an
+`S3` table with a glob over ten thousand objects reads all ten thousand, and the
+question is whether the far end answers, not how much is in it.
+
+It is a button and not a reading taken on page load, and that is the whole design.
+Every other figure on that page comes out of `system.*` on a server Flint is
+already talking to; this one opens a connection to somebody else's
+infrastructure, and a page that contacts a production Postgres because a tab was
+opened is a page nobody can leave open.
+
+Four outcomes, kept apart because three of them are usually rendered as one red
+box and they send you to three different places. **Answered, with a row.**
+**Answered, with nothing there** — which is the diagnosis for half the tickets
+this shortens, and a green tick alone does not give it. **No answer**, with the
+server's own words: `could not translate host name "pg.internal" to address`,
+`Access Denied`, `HTTP status code: 404`. Every rewording of those Flint could
+attempt would be a worse version of what somebody is about to paste into a search
+box. And **refused**, in grey rather than red, because Flint did not try.
+
+It refuses two kinds of table. One whose rows are on this server, where there is
+nothing to reach. And a queue: reading a `Kafka` or an `S3Queue` table *takes*
+from it, and what a check consumed would never reach a target table. That last
+one is also why the three surfaces that sample rows — the preview tab, the
+diagram's side panel, the peek under it — do not ask for a sample from a queue at
+all. ClickHouse refuses a direct select there by default and answers with a
+message naming the setting that would allow it, which is a poor thing to put in
+front of somebody as the explanation of an empty tab; and on a server where that
+setting is on, clicking a node would silently eat a message.
+
 ### How a table got here
 
 The DDL tab shows a table's definition. Underneath it, Flint now shows the record:
@@ -3918,9 +3955,12 @@ as an empty one. The consuming tab covers `Kafka` and `S3Queue` and no other
 background reader. `RabbitMQ` and `NATS` have no `system` table at all to read;
 `AzureQueue` publishes its settings and a metadata cache but no log of what it
 took, which is the half that would have made a page. For those three Flint has
-the address and nothing else. And it reports; it does not act. There is no button here to
+the address and nothing else. And it reports; it does not act. There is no button to
 skip a poison message or to reset a consumer group, both of which lose data on
-purpose and are the wrong shape for a click.
+purpose and are the wrong shape for a click. The connection check is one
+question — does the far end answer — and not a diagnosis: it cannot tell a wrong
+password from a firewall, because ClickHouse cannot either, and it quotes the
+server rather than guessing between them.
 
 Replication is read-only, and two of its verdicts have been exercised against a
 live server while three have not. A healthy replica and one with its Keeper

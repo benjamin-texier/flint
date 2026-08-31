@@ -82,6 +82,20 @@ export function isExternalEngine(engine: string): boolean {
  *  The distinction that earns its own tab: everything else external fails in
  *  front of the person who queried it, and these two fail silently at three in
  *  the morning. `S3Queue` before `S3`, since one is a prefix of the other. */
+/** Why Flint does not show rows from a queue.
+ *
+ *  Reading one takes from it: a `SELECT` on a `Kafka` table consumes from the
+ *  consumer group, and on an `S3Queue` it marks objects processed — in both
+ *  cases what the preview showed you is what a target table will now never
+ *  get. ClickHouse refuses it by default and hands back a message that names
+ *  the setting which would allow it, which is a poor thing for a product to
+ *  put in front of somebody as the explanation of an empty tab.
+ *
+ *  So the three surfaces that sample rows do not ask at all, and say this
+ *  instead. */
+export const QUEUE_UNREADABLE =
+  'Reading a queue takes from it — a select here consumes messages that would then never reach a target table — so Flint does not sample one.'
+
 export function backgroundReader(engine: string): 'kafka' | 'queue' | null {
   if (/^Kafka/.test(engine)) return 'kafka'
   if (/^S3Queue/.test(engine)) return 'queue'

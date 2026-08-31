@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom'
 import { api } from '../lib/api'
 import type { GraphNode } from '../lib/graph'
 import { KIND_LABEL, explainEngine, splitEngine } from '../lib/explain'
-import { isExternalEngine } from '../lib/external'
+import { QUEUE_UNREADABLE, backgroundReader, isExternalEngine } from '../lib/external'
 import { bytes, count, exact } from '../lib/format'
 import { ErrorNote, Loading } from './Note'
 import { ResultsGrid } from './ResultsGrid'
@@ -40,6 +40,11 @@ export function TablePeek({
   database: string
   onClose: () => void
 }) {
+  /* Not asked for at all on a queue. Clicking a node to look at it is not
+     consent to take a message off somebody's topic, and a `SELECT` here would
+     do exactly that on any server with
+     `stream_like_engine_allow_direct_select` on. */
+  const queue = backgroundReader(node.engine)
   const preview = useQuery({
     queryKey: ['preview', node.database, node.name, ROWS],
     queryFn: () => api.preview(node.database, node.name, ROWS),
@@ -47,6 +52,7 @@ export function TablePeek({
        sample that changes under the reader is worse than a slightly old one. */
     staleTime: 60_000,
     retry: false,
+    enabled: !queue,
   })
 
   /* The diagram is most of a screen tall, so the panel that replaced the list
@@ -113,7 +119,11 @@ export function TablePeek({
           </button>
         </div>
 
-        {preview.error ? (
+        {queue ? (
+          <div className="peek__note">
+            <p className="peek__quiet">{QUEUE_UNREADABLE}</p>
+          </div>
+        ) : preview.error ? (
           <div className="peek__note">
             <ErrorNote error={preview.error} retry={() => preview.refetch()} />
           </div>

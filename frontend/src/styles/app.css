@@ -2399,6 +2399,15 @@
   padding: var(--s3) var(--s4) 0;
 }
 
+/* Said in place of a sample, where taking one would take from a queue. */
+.peek__quiet {
+  margin: 0;
+  max-width: 74ch;
+  font-size: var(--size-body);
+  line-height: 1.6;
+  color: var(--chalk-faint);
+}
+
 .peek__note {
   padding: var(--s4);
 }
@@ -3172,6 +3181,41 @@ tr:hover .stratum__fill {
   max-width: 68ch;
   font-size: var(--size-label);
   line-height: 1.6;
+  color: var(--chalk-faint);
+}
+
+/* Asking the far end. On its own line under the notes, because the answer is a
+   sentence rather than a chip: three of the four outcomes send the reader
+   somewhere different, and a tick cannot say which. */
+.xsrc__check {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--s2) var(--s3);
+  margin-top: var(--s3);
+}
+
+.xsrc__verdict {
+  flex: 1 1 34ch;
+  font-size: var(--size-label);
+  line-height: 1.6;
+  color: var(--chalk-dim);
+  overflow-wrap: anywhere;
+}
+
+.xsrc__verdict--failed {
+  color: var(--alarm-text);
+}
+
+/* Reached and empty are both successes, and only one of them is the one
+   somebody hoped for. The quieter colour is not a warning — it is the reading
+   that "there is nothing there" deserves its own weight. */
+.xsrc__verdict--reached {
+  color: var(--success-text);
+}
+
+/* A refusal is not a failure: Flint did not try. It reads as a note. */
+.xsrc__verdict--refused {
   color: var(--chalk-faint);
 }
 

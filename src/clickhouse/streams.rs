@@ -259,12 +259,15 @@ async fn kafka(ch: &Client, database: &str, table: &str) -> Result<KafkaState> {
 
 /// A ClickHouse exception without its stack trace.
 ///
+/// Shared with `connect`, which shows the far end's own words when an address
+/// does not answer and wants them trimmed the same way.
+///
 /// The trace is forty lines of mangled C++ symbols and the message is two, and
 /// on a Kafka consumer the *second* of those two is the one worth reading —
 /// `while parsing Kafka message (topic: events, partition: 1, offset: 0)` names
 /// the message that is stuck. So this cuts at the first stack frame rather than
 /// taking the first line, which would have thrown that away.
-fn message_only(exception: &str) -> String {
+pub fn message_only(exception: &str) -> String {
     let cut = exception
         .lines()
         .position(|line| {
@@ -298,6 +301,13 @@ fn message_only(exception: &str) -> String {
         .trim_end_matches([',', ':'])
         .trim_end()
         .to_string();
+    // And the build stamp ClickHouse appends to every exception. It is the
+    // right thing to have in a bug report and noise in a panel, and the
+    // configuration page already says which version this server is.
+    let text = match text.rfind("(version ") {
+        Some(at) if text.ends_with(')') => text[..at].trim_end().to_string(),
+        _ => text,
+    };
     // A message that is somehow still enormous is cut rather than sent: this is
     // a panel, and the query log has the whole of it.
     if text.chars().count() > 600 {
@@ -535,6 +545,21 @@ mod tests {
         let kept = message_only(raw);
         assert!(kept.ends_with("(CANNOT_PARSE_INPUT_ASSERTION_FAILED)"));
         assert!(!kept.contains("Stack trace"));
+    }
+
+    #[test]
+    fn drops_the_build_stamp_on_the_end() {
+        assert_eq!(
+            message_only("Host not found: redis.internal (version 26.7.5.10 (official build))"),
+            "Host not found: redis.internal"
+        );
+    }
+
+    #[test]
+    fn keeps_a_version_that_is_part_of_the_message() {
+        // Only a trailing stamp goes. One in the middle is somebody's sentence.
+        let kept = message_only("Table was made by (version 3) and cannot be read");
+        assert_eq!(kept, "Table was made by (version 3) and cannot be read");
     }
 
     #[test]
