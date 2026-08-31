@@ -784,8 +784,10 @@ export function script(database: string, chosen: Member[]): string {
       `-- ${plural(cleanups, 'REMOVE DEFAULT statement')} ${cleanups === 1 ? 'rewrites' : 'rewrite'} nothing: dropping a Nullable`,
       '--   needs a DEFAULT to be accepted, and that clause puts the column back to a',
       '--   plain type.',
-      "-- Read those DEFAULTs first. A null becomes the type's zero value silently",
-      '--   rather than failing the ALTER, and nothing brings it back.',
+      '-- Read those DEFAULTs first. They are only what a null becomes, and yours',
+      '--   to change if a null here should mean something in particular. A null',
+      '--   takes that value silently rather than failing the ALTER, and nothing',
+      '--   undoes it afterwards.',
     )
   }
   return `${head.join('\n')}\n\n${sql.join(';\n\n')};\n`

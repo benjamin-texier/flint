@@ -671,7 +671,7 @@ describe('the statements come out one per table', () => {
     expect(out).toContain('1 column over 1 table, 2 statements')
     expect(out).toContain('1 statement rewrites every part of its columns')
     expect(out).toContain('1 REMOVE DEFAULT statement rewrites nothing')
-    expect(out).toContain("A null becomes the type's zero value silently")
+    expect(out).toContain('They are only what a null becomes, and yours')
     // The comments only, and not the SQL under them: the block is rendered
     // `white-space: pre` because wrapping a statement at whatever width the
     // panel happens to be is how it becomes unreadable — a long type is

@@ -149,6 +149,17 @@ describe('a Nullable that has never been null', () => {
     expect(drop.caution).not.toContain('makes this ALTER fail')
   })
 
+  // `defaultValueOfTypeName` is the least eventful thing that can go in that
+  // clause, not a recommendation. The idiomatic default for a UUID column is
+  // `generateUUIDv4()`, and somebody reaching for it here would give every null
+  // a well-formed identifier nothing afterwards could tell from a real one —
+  // so the caution has to say the expression is theirs before they decide.
+  it('says the filler is Flint’s least eventful answer, not its advice', () => {
+    const found = of([column({ name: 'host', type: 'Nullable(String)', nulls: 0 })])
+    const drop = found.find((f) => f.proposal === 'String')!
+    expect(drop.caution).toContain('change it if a null here should mean something')
+  })
+
   // A proposal that narrows *inside* the wrapper is not dropping anything, and
   // a DEFAULT on it would be noise the reader has to rule out.
   it('adds nothing when the Nullable survives the change', () => {
