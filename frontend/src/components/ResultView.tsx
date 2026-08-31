@@ -53,8 +53,8 @@ export function ResultView({
   }
 }) {
   const specs = useMemo(
-    () => suggestCharts(result.columns, result.rows.length),
-    [result.columns, result.rows.length],
+    () => suggestCharts(result.columns, result.rows.length, result.truncated),
+    [result.columns, result.rows.length, result.truncated],
   )
   const [kind, setKind] = useState<ChartKind | null>(chosenKind)
   const [analysing, setAnalysing] = useState(false)
@@ -151,6 +151,9 @@ export function ResultView({
 const LABEL: Record<ChartSpec['kind'], string> = {
   stat: 'Figure',
   line: 'Line',
+  area: 'Stacked',
   bar: 'Bar',
+  donut: 'Shares',
+  heatmap: 'Grid',
   scatter: 'Scatter',
 }

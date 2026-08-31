@@ -3,13 +3,18 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { QueryResult } from '../lib/api'
 import {
   MAX_SERIES,
+  buildGrid,
+  buildRing,
+  cellFill,
   compact,
   needsFacets,
   niceTicks,
   parseNumber,
   parseTime,
+  ringPath,
   timeLabel,
   type ChartSpec,
+  type Grid,
 } from '../lib/chart'
 import { cellText } from './../lib/grid'
 
@@ -77,6 +82,10 @@ export function Chart({ result, spec }: { result: QueryResult; spec: ChartSpec }
 
       {spec.kind === 'stat' ? (
         <Stat result={result} spec={spec} />
+      ) : spec.kind === 'donut' ? (
+        <Donut result={result} spec={spec} />
+      ) : spec.kind === 'heatmap' ? (
+        <Heat result={result} spec={spec} />
       ) : (
         <Plot
           result={result}
@@ -132,6 +141,7 @@ function Plot({
 
   const model = useMemo(() => buildModel(result, spec), [result, spec])
   if (!model) return <p className="chart__none">Nothing in this result plots.</p>
+  if (model.refusal) return <p className="chart__none">{model.refusal}</p>
 
   // Incommensurate measures get a panel each rather than a shared axis they
   // cannot both use, and never a second y axis.
@@ -244,6 +254,45 @@ function Plot({
               )
             : null}
 
+          {spec.kind === 'area' && model.stacked
+            ? model.stacked.map((stack, si) => (
+                <path
+                  key={series[si]!.name}
+                  className="chart__band"
+                  d={bandPath(stack, xs, sx, sy)}
+                  fill={seriesColor(si)}
+                />
+              ))
+            : null}
+
+          {/* The 2px surface gap the marks spec asks for between adjacent
+              fills, drawn as its own line along each boundary rather than as a
+              stroke around each band.
+
+              Stroking the polygon was the first attempt and it scalloped: a
+              round join puts a 1px arc at every vertex, and at two hundred
+              points across six hundred pixels the vertices are three pixels
+              apart, so the boundary came out as a row of bumps rather than a
+              line. Measured in the browser at 4×, one bump per 3.2px — the
+              point spacing exactly. A line of its own also leaves the baseline
+              and the two ends unstroked, which is where the rest of the
+              artefacts were. */}
+          {spec.kind === 'area' && model.stacked
+            ? model.stacked
+                .slice(0, -1)
+                .map((stack, si) => (
+                  <path
+                    key={`edge-${series[si]!.name}`}
+                    className="chart__seam"
+                    d={linePath(
+                      xs.map((x, i) => ({ x, y: stack.upper[i] ?? 0 })),
+                      sx,
+                      sy,
+                    )}
+                  />
+                ))
+            : null}
+
           {spec.kind === 'line'
             ? series.map((s, si) => (
                 <g key={s.name}>
@@ -281,7 +330,17 @@ function Plot({
 
           {/* The crosshair finds the X so the reader aims at a position, not at
               a 2px line. Bars are their own hit target and get none. */}
-          {hover && spec.kind !== 'bar' ? (
+          {hover && spec.kind !== 'bar' && spec.kind !== 'area' ? (
+            <line
+              className="chart__cross"
+              x1={hover.x - PAD.left}
+              x2={hover.x - PAD.left}
+              y1={0}
+              y2={plotH}
+            />
+          ) : null}
+
+          {hover && spec.kind === 'area' ? (
             <line
               className="chart__cross"
               x1={hover.x - PAD.left}
@@ -645,6 +704,18 @@ function Tooltip({
           <span className="chartip__name">{s.name}</span>
         </p>
       ))}
+      {/* The figure a stacked chart is actually read for. Its top edge asserts
+          this number, and asserting it in a picture while withholding it from
+          the tooltip is the one omission this form cannot afford. */}
+      {model.stacked ? (
+        <p className="chartip__row chartip__row--total">
+          <i className="chartip__key chartip__key--none" />
+          <span className="chartip__value">
+            {compact(model.stacked[model.stacked.length - 1]!.upper[row] ?? NaN)}
+          </span>
+          <span className="chartip__name">together</span>
+        </p>
+      ) : null}
     </div>
   )
 }
@@ -652,6 +723,13 @@ function Tooltip({
 interface Model {
   xs: number[]
   series: { name: string; points: { x: number; y: number }[] }[]
+  /** Cumulative bands, parallel to `series`, for the one form that stacks.
+   *  `series` keeps the raw values throughout, so the tooltip reports what each
+   *  measure actually was rather than where its band happened to sit. */
+  stacked?: { lower: number[]; upper: number[] }[]
+  /** Why this result cannot be drawn in the form that was asked for. Set
+   *  instead of drawing, never as well as. */
+  refusal?: string
   xMin: number
   xMax: number
   yMin: number
@@ -673,7 +751,7 @@ export function buildModel(result: QueryResult, spec: ChartSpec): Model | null {
   const truncated = Math.max(0, result.rows.length - rows.length)
   if (rows.length === 0) return null
 
-  const isTime = spec.x >= 0 && spec.kind === 'line'
+  const isTime = spec.x >= 0 && (spec.kind === 'line' || spec.kind === 'area')
 
   /* A line's x axis is ordered by definition: the segment drawn between two
      points asserts that one came after the other. A `GROUP BY` hands its rows
@@ -701,6 +779,30 @@ export function buildModel(result: QueryResult, spec: ChartSpec): Model | null {
   const ys = series.flatMap((s) => s.points.map((p) => p.y)).filter(Number.isFinite)
   if (ys.length === 0) return null
 
+  /* A stack cannot draw a negative, and the reason is not aesthetic: the top
+     edge of a stacked area is the sum, and a band that descends makes the edge
+     stop meaning that. The picker offers the form from the *shape* of the
+     result — it never sees a value — so this is where the claim it makes gets
+     checked against the numbers, and refused in words rather than drawn wrong.
+     ClickHouse produces negatives here readily: a `sum(delta)`, a difference
+     between two counts. */
+  if (spec.kind === 'area' && ys.some((y) => y < 0)) {
+    return {
+      xs,
+      series,
+      xMin: 0,
+      xMax: 0,
+      yMin: 0,
+      yMax: 0,
+      labels: ['', ''],
+      truncated,
+      rowLabel: () => '',
+      rowLabelShort: () => '',
+      refusal:
+        'These measures go negative, and a stack cannot draw that — its top edge would stop being the total. Read them as a line.',
+    }
+  }
+
   const xsGood = xs.filter(Number.isFinite)
   const xMin = Math.min(...xsGood)
   const xMax = Math.max(...xsGood)
@@ -711,7 +813,25 @@ export function buildModel(result: QueryResult, spec: ChartSpec): Model | null {
   // quantity is far bigger than it is. A bare multi-series line has no fill to
   // mislead with, and forcing zero on it flattens the shape it exists to show.
   const filled = spec.kind === 'line' && series.length === 1
-  if (spec.kind === 'bar' || filled) yMin = Math.min(0, yMin)
+  if (spec.kind === 'bar' || filled || spec.kind === 'area') yMin = Math.min(0, yMin)
+
+  /* The bands, bottom series first. A measure missing at one x contributes
+     nothing to the total there rather than carrying the stack across the gap:
+     its band pinches shut, which is what "no value here" looks like, and the
+     edge above it drops by exactly what is absent. Interpolating instead would
+     put a number in the total that the query never returned. */
+  let stacked: Model['stacked']
+  if (spec.kind === 'area') {
+    const running = new Array<number>(rows.length).fill(0)
+    stacked = series.map((s) => {
+      const lower = [...running]
+      s.points.forEach((pt, i) => {
+        running[i] = running[i]! + (Number.isFinite(pt.y) ? pt.y : 0)
+      })
+      return { lower, upper: [...running] }
+    })
+    yMax = Math.max(...running, 0)
+  }
   if (yMin === yMax) {
     yMin = Math.min(0, yMin)
     yMax = yMax === 0 ? 1 : yMax * 1.1
@@ -730,6 +850,7 @@ export function buildModel(result: QueryResult, spec: ChartSpec): Model | null {
   return {
     xs,
     series,
+    stacked,
     xMin,
     xMax,
     yMin,
@@ -747,4 +868,312 @@ export function buildModel(result: QueryResult, spec: ChartSpec): Model | null {
       return `${result.columns[spec.x]?.name}: ${cellText(v).text}`
     },
   }
+}
+
+/** A stacked band: along the top edge, then back along the one below it.
+ *
+ *  Both edges are walked over the same `xs`, so a band never closes against a
+ *  point its neighbour does not have — which is what produces the sawtooth a
+ *  stack drawn from two independently filtered point lists gets. */
+function bandPath(
+  band: { lower: number[]; upper: number[] },
+  xs: number[],
+  sx: (v: number) => number,
+  sy: (v: number) => number,
+): string {
+  if (xs.length < 2) return ''
+  const top = xs.map((x, i) => `${round(sx(x))} ${round(sy(band.upper[i] ?? 0))}`).join(' L ')
+  const back = [...xs]
+    .map((x, i) => ({ x, i }))
+    .reverse()
+    .map(({ x, i }) => `${round(sx(x))} ${round(sy(band.lower[i] ?? 0))}`)
+    .join(' L ')
+  return `M ${top} L ${back} Z`
+}
+
+/* ── The ring ───────────────────────────────────────────────────────────────
+ *
+ * A donut and not a pie, for one reason that is not taste: the hole is where
+ * the total goes. Every slice is a claim about a share, and a share with no
+ * total beside it cannot be checked against anything — a pie has nowhere to
+ * put that number and this form has a hole shaped exactly like it.
+ *
+ * The form is only ever offered where it can be honest — six slices or fewer,
+ * a result Flint did not cut — so there is no "other" wedge here and no
+ * remainder outside the circle. See `suggestCharts`. */
+
+const RING = { box: 320, outer: 100, inner: 62, label: 116 }
+
+function Donut({ result, spec }: { result: QueryResult; spec: ChartSpec }) {
+  const [lit, setLit] = useState<number | null>(null)
+  const value = spec.series[0]!
+  const labels = result.rows.map((r) => cellText(r[spec.x]).text)
+  const ring = buildRing(
+    labels,
+    result.rows.map((r) => parseNumber(r[value])),
+  )
+  if (typeof ring === 'string') return <p className="chart__none">{ring}</p>
+
+  const c = RING.box / 2
+  const name = result.columns[value]?.name ?? ''
+
+  return (
+    <div className="chart__body">
+      <div className="donut">
+        <svg
+          className="donut__svg"
+          width={RING.box}
+          height={RING.box}
+          viewBox={`0 0 ${RING.box} ${RING.box}`}
+          role="img"
+          aria-label={`${name} by ${result.columns[spec.x]?.name}, as shares of ${compact(ring.total)}`}
+        >
+          {ring.slices.map((s, i) => (
+            <path
+              key={s.label}
+              className={`donut__slice${lit === i ? ' is-lit' : ''}`}
+              d={ringPath(c, c, RING.outer, RING.inner, s.from, s.to)}
+              fill={seriesColor(i)}
+              onPointerEnter={() => setLit(i)}
+              onPointerLeave={() => setLit(null)}
+            >
+              <title>{`${s.label}\n${s.value.toLocaleString('en')} — ${percent(s.share)}`}</title>
+            </path>
+          ))}
+
+          {/* The share, outside the ring rather than on it.
+              Inside was the first attempt and it failed twice over. It puts
+              type on a categorical hue, which this file forbids everywhere
+              else because a hue is illegible as text — and it was measured
+              failing AA outright: the surface white it needed reaches only
+              4.32:1 on the first slot and 4.10:1 on the fourth, against the
+              4.5 that 10.5px demands. Outside, the label wears a text token
+              and the contrast is the page's, whatever colour the slice is.
+
+              Shown where the neighbouring labels will not collide, which out
+              here is a question of arc length at the label's own radius rather
+              than at the band's. The ones that miss out are not lost: every
+              slice is named with its share in the legend, in full. */}
+          {ring.slices.map((s) => {
+            const angle = (s.from + s.to) / 2
+            const sin = Math.sin(angle)
+            if (s.share * 2 * Math.PI * RING.label < 14) return null
+            return (
+              <text
+                key={s.label}
+                className="donut__share"
+                x={c + RING.label * sin}
+                y={c - RING.label * Math.cos(angle)}
+                textAnchor={sin > 0.1 ? 'start' : sin < -0.1 ? 'end' : 'middle'}
+                dy="0.32em"
+              >
+                {percent(s.share)}
+              </text>
+            )
+          })}
+
+          {/* What the slices are shares of. The whole reason this is a ring. */}
+          <text className="donut__total" x={c} y={c} textAnchor="middle" dy="0.1em">
+            {compact(ring.total)}
+          </text>
+          <text className="donut__totallabel" x={c} y={c + 20} textAnchor="middle">
+            together
+          </text>
+        </svg>
+
+        {/* Always present, and it carries the figures rather than only the
+            colours: identity is never colour alone, and a share is not a
+            number anybody can read off an angle. */}
+        <ul className="donut__legend">
+          {ring.slices.map((s, i) => (
+            <li
+              key={s.label}
+              className={`donut__key${lit === i ? ' is-lit' : ''}`}
+              onPointerEnter={() => setLit(i)}
+              onPointerLeave={() => setLit(null)}
+            >
+              <i className="chart__swatch" style={{ background: seriesColor(i) }} />
+              <span className="donut__name" title={s.label}>
+                {s.label}
+              </span>
+              <span className="donut__figure">{compact(s.value)}</span>
+              <span className="donut__pct">{percent(s.share)}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  )
+}
+
+/** A share, at the precision a reader can act on. Under a tenth of a percent
+ *  is `<0.1%` rather than `0%`: a slice that is drawn is a slice that is there,
+ *  and printing zero beside a visible wedge is the contradiction the reader
+ *  has to resolve. */
+function percent(share: number): string {
+  const pct = share * 100
+  if (pct > 0 && pct < 0.1) return '<0.1%'
+  return `${pct >= 10 ? Math.round(pct) : Number(pct.toPrecision(2))}%`
+}
+
+/* ── The grid ───────────────────────────────────────────────────────────────
+ *
+ * Two axes and a measure, where the value lives at a crossing rather than
+ * along a line. One hue, more-is-darker: this is magnitude, so the colour job
+ * is sequential and never the categorical palette — six hues across a grid
+ * would say the cells are six different kinds of thing.
+ *
+ * It scrolls rather than truncates. Every other axis in this file has a fixed
+ * band to fit its labels into and drops them when they do not fit; a grid has
+ * a scroll container instead, so the honest answer here is to give each label
+ * the room it needs and let the reader scroll to it. Nothing is ever `segm…`. */
+
+const CELL = { w: 26, h: 22, gap: 2 }
+
+function Heat({ result, spec }: { result: QueryResult; spec: ChartSpec }) {
+  const value = spec.series[0]!
+  const grid = useMemo(
+    () =>
+      spec.y === undefined
+        ? null
+        : buildGrid(result.rows, spec.x, spec.y, value, (v) => cellText(v).text),
+    [result.rows, spec.x, spec.y, value],
+  )
+  if (!grid) return <p className="chart__none">Nothing in this result plots.</p>
+
+  /* Both axes are sized to their own labels, and the measurement errs long.
+     `textWidth` measures on a canvas, which cannot be told about
+     `font-variant-numeric: tabular-nums` — and these labels are dates and
+     device ids, which is to say almost all figures, where tabular is the wider
+     of the two. It also answers with the fallback face when the webfont has
+     not loaded yet. Both errors run the same way: the room comes out short and
+     the label is clipped, which is the one outcome this file forbids
+     everywhere. Measured before it was fixed: all 25 column labels over the
+     top edge by 8px, and the last one 23px past the right.
+
+     So the room is the larger of what the canvas says and what the character
+     count implies at the pessimistic width the bar labels already use. */
+  const room = (label: string) => Math.max(textWidth(label), label.length * CHAR_W)
+  const gutter = Math.ceil(Math.max(24, ...grid.ys.map(room)) + 10)
+  // A label at -45° reaches as far up as it does across, so the band above the
+  // grid and the margin past its last column are the same number.
+  const band = Math.ceil(Math.max(...grid.xs.map(room)) / Math.SQRT2 + 10)
+  const w = gutter + grid.xs.length * CELL.w + band
+  const h = band + grid.ys.length * CELL.h + 2
+  const xName = result.columns[spec.x]?.name ?? ''
+  const yName = result.columns[spec.y!]?.name ?? ''
+
+  return (
+    <div className="chart__body">
+      <div className="heat">
+        <svg
+          className="heat__svg"
+          width={w}
+          height={h}
+          viewBox={`0 0 ${w} ${h}`}
+          role="img"
+          aria-label={`${result.columns[value]?.name} at each crossing of ${xName} and ${yName}`}
+        >
+          {grid.xs.map((x, i) => (
+            <text
+              key={x}
+              className="chart__tick heat__x"
+              transform={`translate(${gutter + i * CELL.w + CELL.w / 2} ${band - 6}) rotate(-45)`}
+            >
+              {x}
+            </text>
+          ))}
+
+          {grid.ys.map((y, r) => (
+            <text
+              key={y}
+              className="chart__tick"
+              x={gutter - 8}
+              y={band + r * CELL.h + CELL.h / 2}
+              textAnchor="end"
+              dy="0.32em"
+            >
+              {y}
+            </text>
+          ))}
+
+          {grid.cells.map((row, r) =>
+            row.map((v, i) => {
+              const x = gutter + i * CELL.w
+              const y = band + r * CELL.h
+              const label = `${grid.xs[i]} · ${grid.ys[r]}`
+              /* A crossing the query never returned is not a crossing that
+                 returned nothing. Drawn as an outline rather than as the
+                 palest step of the ramp, because the palest step is what a
+                 real zero wears and the two facts are different answers. */
+              if (v === null) {
+                return (
+                  <rect
+                    key={`${r}-${i}`}
+                    className="heat__none"
+                    x={x + CELL.gap / 2}
+                    y={y + CELL.gap / 2}
+                    width={CELL.w - CELL.gap}
+                    height={CELL.h - CELL.gap}
+                    rx={2}
+                  >
+                    <title>{`${label}\nnever together`}</title>
+                  </rect>
+                )
+              }
+              return (
+                <rect
+                  key={`${r}-${i}`}
+                  className="heat__cell"
+                  x={x + CELL.gap / 2}
+                  y={y + CELL.gap / 2}
+                  width={CELL.w - CELL.gap}
+                  height={CELL.h - CELL.gap}
+                  rx={2}
+                  fillOpacity={cellFill(v, grid.scale)}
+                >
+                  <title>
+                    {`${label}\n${v.toLocaleString('en')}${
+                      grid.scale > 0 && v > grid.scale ? '\npast the scale — drawn full' : ''
+                    }`}
+                  </title>
+                </rect>
+              )
+            }),
+          )}
+        </svg>
+      </div>
+
+      <HeatScale grid={grid} xName={xName} yName={yName} />
+    </div>
+  )
+}
+
+/** The ramp, and everything the grid left out.
+ *
+ *  The scale is the 90th percentile rather than the maximum, so the darkest
+ *  cell is not necessarily the largest value — which is a fact a reader has to
+ *  be told, not one they can infer. Every cap states its own count on the same
+ *  rule as the rest of the product. */
+function HeatScale({ grid, xName, yName }: { grid: Grid; xName: string; yName: string }) {
+  const notes: string[] = []
+  if (grid.xCut > 0) notes.push(`${grid.xs.length} of ${grid.xs.length + grid.xCut} ${xName} values`)
+  if (grid.yCut > 0) notes.push(`${grid.ys.length} of ${grid.ys.length + grid.yCut} ${yName} values`)
+  if (grid.past > 0) {
+    notes.push(`${grid.past} ${grid.past === 1 ? 'cell is' : 'cells are'} past the scale, drawn full`)
+  }
+  return (
+    <div className="heat__foot">
+      <span className="heat__ramp" aria-hidden="true">
+        {[0.2, 0.4, 0.6, 0.8, 1].map((f) => (
+          <i key={f} style={{ '--fill': f } as React.CSSProperties} />
+        ))}
+      </span>
+      <span className="heat__scale">
+        none to {compact(grid.scale)}
+        {grid.past > 0 ? ' (the 90th percentile, not the largest)' : ''}
+      </span>
+      {notes.length ? <span className="chart__omitted">{notes.join(' · ')}</span> : null}
+    </div>
+  )
 }

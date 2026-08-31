@@ -1,13 +1,19 @@
 import { describe, expect, it } from 'vitest'
 
+import { CELL_FLOOR } from './scale'
 import {
+  HEAT_COLS,
   MAX_SERIES,
+  buildGrid,
+  buildRing,
+  cellFill,
   classifyColumns,
   compact,
   needsFacets,
   niceTicks,
   parseNumber,
   parseTime,
+  ringPath,
   suggestCharts,
   timeLabel,
   type Column,
@@ -229,5 +235,138 @@ describe('niceTicks tick count', () => {
       expect(n).toBeGreaterThanOrEqual(3)
       expect(n).toBeLessThanOrEqual(8)
     }
+  })
+})
+
+describe('the forms that assert something about a whole', () => {
+  const shares = [col('city', 'String'), col('events', 'UInt64')]
+
+  it('offers shares for a handful of labelled parts', () => {
+    expect(suggestCharts(shares, 4).map((s) => s.kind)).toContain('donut')
+  })
+
+  it('withholds shares past six parts rather than trimming the ring', () => {
+    // Not a cap on the slices: the form is withheld and the same rows are a
+    // bar, so there is nothing left out and nothing to say was left out.
+    expect(suggestCharts(shares, 7).map((s) => s.kind)).not.toContain('donut')
+    expect(suggestCharts(shares, 7).map((s) => s.kind)).toContain('bar')
+  })
+
+  it('withholds shares from a result Flint cut', () => {
+    // A share computed over an arbitrary prefix is a wrong number, not an
+    // incomplete one.
+    expect(suggestCharts(shares, 4, true).map((s) => s.kind)).not.toContain('donut')
+  })
+
+  it('offers a stack only from two measures up', () => {
+    const one = [col('h', 'DateTime'), col('n', 'UInt64')]
+    const two = [...one, col('m', 'UInt64')]
+    expect(suggestCharts(one, 10).map((s) => s.kind)).not.toContain('area')
+    expect(suggestCharts(two, 10).map((s) => s.kind)).toContain('area')
+  })
+
+  it('offers a grid where the value sits at a crossing', () => {
+    const s = suggestCharts(
+      [col('hour', 'DateTime'), col('host', 'String'), col('events', 'UInt64')],
+      50,
+    )
+    const grid = s.find((k) => k.kind === 'heatmap')
+    expect(grid).toBeDefined()
+    expect([grid!.x, grid!.y]).toEqual([0, 1])
+  })
+
+  it('offers no grid with only one axis', () => {
+    expect(suggestCharts([col('host', 'String'), col('n', 'UInt64')], 20).map((s) => s.kind)).not.toContain(
+      'heatmap',
+    )
+  })
+})
+
+describe('buildRing', () => {
+  it('turns values into shares that close the circle', () => {
+    const r = buildRing(['a', 'b', 'c'], [50, 30, 20])
+    expect(typeof r).not.toBe('string')
+    const ring = r as Exclude<typeof r, string>
+    expect(ring.total).toBe(100)
+    expect(ring.slices.map((s) => s.share)).toEqual([0.5, 0.3, 0.2])
+    expect(ring.slices[2]!.to).toBeCloseTo(Math.PI * 2)
+  })
+
+  it('refuses a negative rather than drawing it, and says how many', () => {
+    const r = buildRing(['a', 'b'], [10, -4])
+    expect(r).toContain('One of these values is')
+  })
+
+  it('refuses a total of nothing, which is a true answer with no picture', () => {
+    expect(buildRing(['a', 'b'], [0, 0])).toContain('add up to nothing')
+  })
+
+  it('never prints a bare zero beside a slice that is drawn', () => {
+    const r = buildRing(['big', 'tiny'], [1_000_000, 1]) as Exclude<
+      ReturnType<typeof buildRing>,
+      string
+    >
+    expect(r.slices[1]!.share).toBeGreaterThan(0)
+  })
+})
+
+describe('ringPath', () => {
+  it('draws two arcs for the slice that is the whole circle', () => {
+    // A single arc from a point back to itself draws nothing at all, and one
+    // row at 100% is what a GROUP BY over a quiet window returns.
+    const d = ringPath(0, 0, 10, 6, 0, Math.PI * 2)
+    expect(d.match(/A /g)).toHaveLength(4)
+  })
+
+  it('sets the large-arc flag past a half turn', () => {
+    expect(ringPath(0, 0, 10, 6, 0, Math.PI * 1.5)).toContain('A 10 10 0 1 1')
+    expect(ringPath(0, 0, 10, 6, 0, Math.PI * 0.5)).toContain('A 10 10 0 0 1')
+  })
+})
+
+describe('buildGrid', () => {
+  const text = (v: unknown) => String(v)
+  const rows: unknown[][] = [
+    ['09:00', 'alpha', 10],
+    ['09:00', 'beta', 4],
+    ['10:00', 'alpha', 8],
+  ]
+
+  it('keeps both axes in the order the query returned them', () => {
+    // The order is the question's — sorting would overrule an ORDER BY that
+    // exists precisely to put the interesting host first.
+    const g = buildGrid(rows, 0, 1, 2, text)!
+    expect(g.xs).toEqual(['09:00', '10:00'])
+    expect(g.ys).toEqual(['alpha', 'beta'])
+  })
+
+  it('tells a crossing that never happened from one that returned zero', () => {
+    const g = buildGrid([...rows, ['10:00', 'beta', 0]], 0, 1, 2, text)!
+    expect(g.cells[1]![1]).toBe(0)
+    const without = buildGrid(rows, 0, 1, 2, text)!
+    expect(without.cells[1]![1]).toBeNull()
+    expect(cellFill(0, 10)).toBe(CELL_FLOOR)
+    expect(cellFill(null, 10)).toBe(0)
+  })
+
+  it('counts what it left off each axis rather than dropping it silently', () => {
+    const many: unknown[][] = []
+    for (let i = 0; i < HEAT_COLS + 5; i += 1) many.push([`c${i}`, 'y', i])
+    const g = buildGrid(many, 0, 1, 2, text)!
+    expect(g.xs).toHaveLength(HEAT_COLS)
+    expect(g.xCut).toBe(5)
+    expect(g.yCut).toBe(0)
+  })
+
+  it('measures the ink against the 90th percentile and counts what runs past', () => {
+    // Twenty crossings, one of them a hundred times the rest — which is the
+    // ordinary shape of a ClickHouse grid and the reason the scale is not the
+    // maximum. Scaled to 1000 the other nineteen would all sit on the floor.
+    const spiky: unknown[][] = []
+    for (let i = 0; i < 20; i += 1) spiky.push([`c${i}`, 'y', i === 19 ? 1000 : 10])
+    const g = buildGrid(spiky, 0, 1, 2, text)!
+    expect(g.scale).toBe(10)
+    expect(g.past).toBe(1)
+    expect(cellFill(1000, g.scale)).toBe(1)
   })
 })

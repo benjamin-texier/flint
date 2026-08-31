@@ -67,6 +67,32 @@ describe('parseSpec', () => {
     expect(spec.tiles[0]!.id).toBe('tile-0')
   })
 
+  it('keeps every form the picker can produce, and the grid its second axis', () => {
+    /* A kind missing from the reader is the one failure nobody sees: the tile
+       falls back to a table with no error anywhere saying a chart was dropped.
+       So every member of the union is asserted here rather than the two that
+       happened to be on somebody's dashboard. */
+    for (const kind of ['stat', 'line', 'area', 'bar', 'donut', 'heatmap', 'scatter']) {
+      const spec = parseSpec(
+        JSON.stringify({ tiles: [{ sql: 'SELECT 1', chart: { kind, x: 0, series: [1] } }] }),
+      )
+      expect(spec.tiles[0]!.chart?.kind).toBe(kind)
+    }
+    const grid = parseSpec(
+      JSON.stringify({
+        tiles: [{ sql: 'SELECT 1', chart: { kind: 'heatmap', x: 0, y: 1, series: [2] } }],
+      }),
+    )
+    expect(grid.tiles[0]!.chart?.y).toBe(1)
+    // A stored -1 would send the grid looking for a column that is not there.
+    const noAxis = parseSpec(
+      JSON.stringify({
+        tiles: [{ sql: 'SELECT 1', chart: { kind: 'heatmap', x: 0, y: -1, series: [2] } }],
+      }),
+    )
+    expect(noAxis.tiles[0]!.chart?.y).toBeUndefined()
+  })
+
   it('refuses a chart spec it does not recognise', () => {
     const bad = parseSpec(
       JSON.stringify({ tiles: [{ sql: 'SELECT 1', chart: { kind: 'pie', series: [1] } }] }),
