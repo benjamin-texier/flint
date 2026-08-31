@@ -74,6 +74,9 @@ export interface QuerySpec {
   having: Having[]
   orderings: Ordering[]
   limit: number
+  /** Where the days begin, for every window and bucket in this question.
+   *  Empty is the server's own zone. */
+  timezone: string
 }
 
 export interface ColumnInfo {
@@ -154,7 +157,12 @@ export function parseWindow(value: string): { n: number; unit: string } | null {
   return n > 0 && unit ? { n, unit } : null
 }
 
-// ── Encoding ───────────────────────────────────────────────────────────────
+/* ── Encoding ──────────────────────────────────────────────────────────────
+ *
+ *  What is left here after `toSql` went: the pieces the *preview* and the
+ *  sentence still need. Building the whole statement is the server's job now —
+ *  see `lib/dsl.ts` for why, and for the one bug that made the case.
+ */
 
 /** Backticks unless the name is a bare identifier. ClickHouse escapes a
  *  backtick inside a quoted identifier with a backslash. */
@@ -164,6 +172,9 @@ export function quoteIdent(name: string): string {
     : `\`${name.replace(/\\/g, '\\\\').replace(/`/g, '\\`')}\``
 }
 
+
+/** A string as a SQL literal. Still here after `toSql` went: the preview and
+ *  the exploration links both encode values, and one place has to decide how. */
 export function quoteString(value: string): string {
   return `'${value.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`
 }
@@ -187,35 +198,6 @@ export function literal(value: string, type: string): string {
   return quoteString(trimmed)
 }
 
-const BUCKET_FN: Record<Bucket, string> = {
-  minute: 'toStartOfMinute',
-  hour: 'toStartOfHour',
-  day: 'toStartOfDay',
-  week: 'toStartOfWeek',
-  month: 'toStartOfMonth',
-}
-
-/** The SQL for one projection. */
-export function expressionOf(p: Projection): string {
-  const col = quoteIdent(p.column)
-  if (p.agg === null) {
-    return p.bucket ? `${BUCKET_FN[p.bucket]}(${col})` : col
-  }
-  switch (p.agg) {
-    case 'count':
-      return p.column === '*' ? 'count()' : `count(${col})`
-    case 'uniq':
-      return `uniq(${col})`
-    case 'median':
-      return `median(${col})`
-    case 'p95':
-      return `quantile(0.95)(${col})`
-    case 'p99':
-      return `quantile(0.99)(${col})`
-    default:
-      return `${p.agg}(${col})`
-  }
-}
 
 /** The alias for a projection.
  *
@@ -278,59 +260,6 @@ export function conditionSql(c: Condition, type: string): string | null {
   }
 }
 
-/** Render the spec as ClickHouse SQL, one clause per line.
- *
- *  Anything referring to a column not in `columns` is dropped rather than
- *  emitted: the model can outlive a schema change, and a query naming a column
- *  that no longer exists should come back shorter, not broken. */
-export function toSql(spec: QuerySpec, columns: ColumnInfo[]): string {
-  const typeOf = new Map(columns.map((c) => [c.name, c.type]))
-  const known = (name: string) => name === '*' || typeOf.has(name)
-
-  const projections = spec.projections.filter((p) => known(p.column))
-  const dimensions = projections.filter((p) => p.agg === null)
-  const aggregates = projections.filter((p) => p.agg !== null)
-
-  const select =
-    projections.length === 0
-      ? ['*']
-      : projections.map((p) => {
-          const expr = expressionOf(p)
-          const alias = aliasOf(p)
-          return expr === alias ? expr : `${expr} AS ${quoteIdent(alias)}`
-        })
-
-  const where = spec.conditions
-    .filter((c) => typeOf.has(c.column))
-    .map((c) => conditionSql(c, typeOf.get(c.column)!))
-    .filter((s): s is string => s !== null)
-
-  const aliases = new Set(projections.map(aliasOf))
-  const order = spec.orderings
-    .filter((o) => aliases.has(o.ref))
-    .map((o) => `${quoteIdent(o.ref)} ${o.desc ? 'DESC' : 'ASC'}`)
-
-  const lines = [`SELECT ${select.join(', ')}`, `FROM ${quoteIdent(spec.database)}.${quoteIdent(spec.table)}`]
-  if (where.length > 0) lines.push(`WHERE ${where.join(' AND ')}`)
-  // Grouping is implied by mixing dimensions with aggregates, and groups by the
-  // expression rather than the alias so a bucketed time cannot resolve to the
-  // wrong thing.
-  if (aggregates.length > 0 && dimensions.length > 0) {
-    lines.push(`GROUP BY ${dimensions.map(expressionOf).join(', ')}`)
-  }
-  // Only over an aggregate that is actually selected: HAVING on something the
-  // query does not compute is a query the server rejects.
-  const aggAliases = new Set(aggregates.map(aliasOf))
-  const having = spec.having
-    .filter(
-      (h) => aggAliases.has(h.ref) && h.value.trim() !== '' && Number.isFinite(Number(h.value)),
-    )
-    .map((h) => `${quoteIdent(h.ref)} ${h.op} ${Number(h.value)}`)
-  if (having.length > 0) lines.push(`HAVING ${having.join(' AND ')}`)
-  if (order.length > 0) lines.push(`ORDER BY ${order.join(', ')}`)
-  if (spec.limit > 0) lines.push(`LIMIT ${Math.floor(spec.limit)}`)
-  return lines.join('\n')
-}
 
 /** A spec that shows something useful the moment a table is picked, rather
  *  than an empty form. */
@@ -404,6 +333,171 @@ export function startingSpec(database: string, table: string): QuerySpec {
     conditions: [],
     having: [],
     orderings: [],
+    // The server's own, which is what a question with no opinion about where
+    // the days begin should get.
+    timezone: '',
     limit: 500,
   }
+}
+
+/* ── The grid, writing back into the form ─────────────────────────────────
+ *
+ *  Every gesture the results grid offers — sort by this header, filter to this
+ *  cell, drop this column — was written for a statement, and it rewrites the
+ *  statement's text. A question asked through the form has no text of its own:
+ *  the statement is generated, and editing it would be edited over on the next
+ *  keystroke.
+ *
+ *  So the same gestures land here instead, on the spec, and the statement
+ *  follows as it always does. The point is that the grid does not know which
+ *  face of the page it is in — one set of affordances, two things behind it,
+ *  and neither one pretending to be the other.
+ *
+ *  Two of these can refuse, and say why rather than doing nothing. A grid whose
+ *  header click silently does not work is a grid the reader stops trusting for
+ *  the clicks that do. */
+
+/** Either the question, edited, or the sentence explaining why it could not be. */
+export type SpecEdit = { spec: QuerySpec } | { refused: string }
+
+/** The projection a result column came from.
+ *
+ *  The grid names columns the way the answer does, which is `aliasOf` — the
+ *  same rule that named them on the way out. */
+export function projectionOf(spec: QuerySpec, resultColumn: string): Projection | undefined {
+  return spec.projections.find((p) => aliasOf(p) === resultColumn)
+}
+
+/** Sort by a result column, cycling the way a header click does in SQL:
+ *  ascending, then descending, then not at all.
+ *
+ *  `extend` is the shift-click — it adds to the ordering instead of replacing
+ *  it, so a second key can be laid under the first. */
+export function cycleSpecOrder(spec: QuerySpec, resultColumn: string, extend = false): QuerySpec {
+  const projection = projectionOf(spec, resultColumn)
+  // A column the form is not asking for cannot be sorted by it. Nothing on
+  // screen can produce this today; it fails closed rather than inventing a
+  // projection nobody chose.
+  if (!projection) return spec
+  const ref = aliasOf(projection)
+  const at = spec.orderings.findIndex((o) => o.ref === ref)
+
+  if (!extend) {
+    if (spec.orderings.length === 1 && at === 0) {
+      const only = spec.orderings[0]!
+      return { ...spec, orderings: only.desc ? [] : [{ ...only, desc: true }] }
+    }
+    return { ...spec, orderings: [{ id: newId(), ref, desc: false }] }
+  }
+  if (at === -1) {
+    return { ...spec, orderings: [...spec.orderings, { id: newId(), ref, desc: false }] }
+  }
+  const term = spec.orderings[at]!
+  return {
+    ...spec,
+    orderings: term.desc
+      ? spec.orderings.filter((_, i) => i !== at)
+      : spec.orderings.map((o, i) => (i === at ? { ...o, desc: true } : o)),
+  }
+}
+
+export function clearSpecOrder(spec: QuerySpec): QuerySpec {
+  return { ...spec, orderings: [] }
+}
+
+/** Narrow the question to what a cell says.
+ *
+ *  Which section the filter lands in is decided by what the column *is*, and
+ *  that is the one thing SQL makes people work out for themselves: a filter on
+ *  a total has to run after the grouping, and a filter on a dimension before
+ *  it. The form knows which is which, so the click does not have to.
+ *
+ *  It refuses a bucket. `ts_hour` is a column the answer has and the table does
+ *  not — the rows were folded into it — and a filter runs on the rows, before
+ *  the folding. Writing one against the raw timestamp would compare a whole
+ *  hour to an instant and quietly return nothing. */
+export function filterSpec(
+  spec: QuerySpec,
+  resultColumn: string,
+  op: Op,
+  value: string,
+): SpecEdit {
+  const projection = projectionOf(spec, resultColumn)
+  if (!projection) {
+    return { refused: `The form is not asking for ${resultColumn}, so it cannot filter on it.` }
+  }
+
+  if (projection.agg !== null) {
+    if (!HAVING_OPS.includes(op as Having['op'])) {
+      return {
+        refused: `A filter on a total can only compare it — ${OP_LABEL[op]} is not a comparison.`,
+      }
+    }
+    return {
+      spec: {
+        ...spec,
+        having: [
+          ...spec.having,
+          { id: newId(), ref: resultColumn, op: op as Having['op'], value },
+        ],
+      },
+    }
+  }
+
+  if (projection.bucket) {
+    return {
+      refused: `${resultColumn} is ${projection.column} folded by ${projection.bucket}, and a filter runs on the rows before the folding. Filter ${projection.column} instead, or use "in the last".`,
+    }
+  }
+
+  return {
+    spec: {
+      ...spec,
+      conditions: [
+        ...spec.conditions,
+        { id: newId(), column: projection.column, op, value, value2: '' },
+      ],
+    },
+  }
+}
+
+/** Stop asking for a column — and for everything that only made sense with it.
+ *
+ *  An ordering by a column the question no longer selects is not a smaller
+ *  question, it is a broken one, so the sort and any filter on that total go
+ *  with it rather than being left to fail. */
+export function dropSpecColumn(spec: QuerySpec, resultColumn: string): SpecEdit {
+  const projection = projectionOf(spec, resultColumn)
+  if (!projection) return { refused: `${resultColumn} is not one of the form's columns.` }
+  if (spec.projections.length <= 1) {
+    return { refused: 'A question with nothing selected is not a narrower question.' }
+  }
+  const ref = aliasOf(projection)
+  return {
+    spec: {
+      ...spec,
+      projections: spec.projections.filter((p) => p.id !== projection.id),
+      orderings: spec.orderings.filter((o) => o.ref !== ref),
+      having: spec.having.filter((h) => h.ref !== ref),
+    },
+  }
+}
+
+const HAVING_OPS: Having['op'][] = ['=', '!=', '>', '>=', '<', '<=']
+
+/** Ids exist so React can key a row that has no natural identity — two filters
+ *  on the same column are two rows. `crypto.randomUUID` is what the form uses;
+ *  this is the same mint, reachable from the pure helpers above. */
+function newId(): string {
+  return crypto.randomUUID()
+}
+
+/** Whether a statement is still the one the form wrote.
+ *
+ *  The test behind the one-way door. Whitespace is not an edit — the statement
+ *  arrives from the server and lands in an editor that may trim a trailing
+ *  newline — but a character is, because a character is something the form
+ *  cannot account for and would silently drop on the way back. */
+export function formStillOwns(sql: string, specSql: string | null): boolean {
+  return specSql !== null && sql.trim() === specSql.trim()
 }

@@ -38,10 +38,24 @@ const BODY_CHARS = 4000
  *  answers callers is the one that is right. The builder on the right writes a
  *  URL and then actually fetches it — the same request, the same token, the
  *  same headers an outside caller would get back. */
-export function CallBuilder({ endpoint, origin }: { endpoint: Published; origin: string }) {
+export function CallBuilder({
+  endpoint,
+  origin,
+  token,
+}: {
+  endpoint: Published
+  origin: string
+  /** The endpoint's token, where it is still knowable — which is only just
+   *  after it was minted. A token is hashed on its way into the workspace, so a
+   *  page opened tomorrow does not have one to send, and this builder says so
+   *  rather than firing a call that would come back 401 looking like a bug. */
+  token?: string
+}) {
+  const callable = endpoint.public || Boolean(token)
   const schema = useQuery({
-    queryKey: ['published-schema', endpoint.slug, endpoint.token],
-    queryFn: () => api.publishedSchema(endpoint.slug, endpoint.token),
+    queryKey: ['published-schema', endpoint.slug, token ?? ''],
+    queryFn: () => api.publishedSchema(endpoint.slug, token ?? ''),
+    enabled: callable,
     retry: false,
     staleTime: 60_000,
   })
@@ -67,10 +81,17 @@ export function CallBuilder({ endpoint, origin }: { endpoint: Published; origin:
   /* Both buttons are the same fetch, made the way an outside caller would
      make it — the document is behind the endpoint's token like its data. */
   async function fetchPath(path: string) {
+    if (!callable) {
+      setResult(null)
+      setUnreachable(
+        'This endpoint needs its token, and a token is readable only once — at the moment it is minted. Rotate it to get a new one, which will also stop every caller using the old one.',
+      )
+      return
+    }
     setRunning(true)
     setUnreachable(null)
     try {
-      setResult(await callPublished(path, endpoint.public ? '' : endpoint.token))
+      setResult(await callPublished(path, endpoint.public ? '' : (token ?? '')))
     } catch {
       setResult(null)
       setUnreachable('Flint did not answer. Is the server still running?')
@@ -542,7 +563,7 @@ function Verdict({ result }: { result: RawCall }) {
   const page = pageOf(result)
   return (
     <p className="call__verdict">
-      <span className={`flag ${result.ok ? 'flag--ok' : 'flag--throw'}`}>{result.status}</span>
+      <span className={`flag ${result.ok ? 'flag--good' : 'flag--throw'}`}>{result.status}</span>
       {page ? (
         <span className="mono-dim">
           {count(page.returned)} row{page.returned === 1 ? '' : 's'}

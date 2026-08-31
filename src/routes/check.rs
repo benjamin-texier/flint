@@ -7,7 +7,6 @@
 //! passes under different rules than the real thing is worse than no test,
 //! and on a writable Flint testing an INSERT through `/api/query` would insert.
 
-use axum::extract::State;
 use axum::Json;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -16,7 +15,7 @@ use crate::alerts::{self, Condition};
 use crate::clickhouse::QueryOptions;
 use crate::error::Result;
 
-use super::AppState;
+use super::Caller;
 
 /// Enough rows to see the shape of the answer, not enough to be a query.
 const PREVIEW_ROWS: u64 = 20;
@@ -59,15 +58,19 @@ pub struct Verdict {
     pub value: Option<f64>,
 }
 
-pub async fn check(
-    State(state): State<AppState>,
-    Json(input): Json<CheckInput>,
-) -> Result<Json<CheckResult>> {
+/// Runs as the caller, not as Flint.
+///
+/// Which means the preview can differ from the scheduled run, since the
+/// scheduler runs unattended as Flint's own account. That is the lesser of two
+/// wrongs: the alternative hands anyone who can reach this route the ability to
+/// run arbitrary SQL as the service account, reading whatever their own grants
+/// do not reach. A preview that is honest about *your* access is worth more than
+/// one that quietly borrows somebody else's.
+pub async fn check(Caller(ch): Caller, Json(input): Json<CheckInput>) -> Result<Json<CheckResult>> {
     super::explorer::require_non_empty(&input.sql)?;
 
     let started = std::time::Instant::now();
-    let table = state
-        .ch
+    let table = ch
         .table(
             &input.sql,
             QueryOptions {

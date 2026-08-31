@@ -76,6 +76,17 @@ export function statementAt(text: string, offset: number): Statement | null {
   return statements[statements.length - 1] ?? null
 }
 
+/** The statement the caret is *writing*, which is not always the statement it
+ *  is nearest to: past the final semicolon there is no statement yet, only a
+ *  blank line waiting for the next one. `statementAt` answers the nearest —
+ *  right for running something — and this answers the one being typed, which is
+ *  what completion and insertion need. */
+export function statementBeing(text: string, offset: number): Statement | null {
+  const nearest = statementAt(text, offset)
+  if (!nearest) return null
+  return text.slice(nearest.end, offset).includes(';') ? null : nearest
+}
+
 /** The first table a statement reads from, used to offer bare column names.
  *  `@codemirror/lang-sql` takes a static `defaultTable`, so Flint re-derives
  *  it from whatever the caret's statement selects from. */

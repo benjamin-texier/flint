@@ -41,8 +41,11 @@ const MIN_CH = 6
  *  window used to stretch its column to 4,000 characters and push every other
  *  column off the screen; the inspector is where a long value gets read. */
 const MAX_CH = 64
-/** Type mark, the gaps around it, room for a sort arrow. */
-const HEAD_EXTRA = 7
+/** Type mark, the gaps around it, room for a sort arrow, the pin, and — since
+ *  the grid learnt to edit the query — the filter button. Header furniture, in
+ *  characters: whatever sits in a header cell besides the name and the type has
+ *  to be counted here, or a narrow column squeezes its own name to nothing. */
+const HEAD_EXTRA = 9
 /** A long column name is allowed to ellipsise rather than set the width. */
 const HEAD_CAP = 40
 const SAMPLES = 200
@@ -238,7 +241,7 @@ export function toTSV(
  *  exactly the columns people select most. `Number()` on a full-width integer
  *  past 2^53 still rounds, so a sum of very large ids is approximate; that is a
  *  property of doubles, not of the parsing. */
-function numeric(value: unknown): number | null {
+export function numberOf(value: unknown): number | null {
   if (typeof value === 'number') return Number.isFinite(value) ? value : null
   if (typeof value === 'string' && value.trim() !== '') {
     const n = Number(value)
@@ -275,7 +278,7 @@ export function columnAggregate(
   let min = Infinity
   let max = -Infinity
   for (const row of rows) {
-    const value = numeric(row[index])
+    const value = numberOf(row[index])
     if (value === null) continue
     n += 1
     sum += value
@@ -317,7 +320,7 @@ export function barScales(
     if (!isNumeric(column.type)) return null
     const values: number[] = []
     for (const value of sampleColumn(rows, index)) {
-      const n = numeric(value)
+      const n = numberOf(value)
       if (n === null) continue
       if (n < 0) return null
       values.push(n)
@@ -330,7 +333,7 @@ export function barScales(
 /** How much of the cell the bar covers, 0 when there is nothing to draw. */
 export function barWidth(value: unknown, scale: number | null): number {
   if (!scale) return 0
-  const n = numeric(value)
+  const n = numberOf(value)
   if (n === null || n <= 0) return 0
   return Math.min(100, (n / scale) * 100)
 }
@@ -378,7 +381,7 @@ export function selectionStats(
     const row = rows[r]
     if (!row) continue
     for (const c of counted) {
-      const n = numeric(row[c])
+      const n = numberOf(row[c])
       if (n === null) continue
       numbers += 1
       sum += n
