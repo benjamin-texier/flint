@@ -447,6 +447,48 @@ describe('a single change leaves through Infrastructure', () => {
 
     expect(url).toContain('kind=LowCardinality%28Nullable%28String%29%29')
   })
+
+  // The panel at the other end takes the type it is given and knows nothing
+  // about the type the column has today, so a drop of the Nullable that travels
+  // without its DEFAULT arrives as a statement the server refuses — and the
+  // reader gets ClickHouse's BAD_ARGUMENTS instead of the change they ticked.
+  it('carries the DEFAULT when the link drops a Nullable', () => {
+    const url = handOver('default', {
+      table: 'raw_device_data',
+      column: 'connected',
+      from: 'Nullable(Bool)',
+      proposal: 'Bool',
+      bytes: 1,
+      verified: true,
+      evidence: '',
+      why: '',
+      caution: null,
+      inKey: false,
+      fedBy: [],
+      usage: null,
+    })
+
+    expect(url).toContain('default_expr=defaultValueOfTypeName%28%27Bool%27%29')
+  })
+
+  it('carries no DEFAULT when the Nullable survives', () => {
+    const url = handOver('default', {
+      table: 't',
+      column: 'n',
+      from: 'Nullable(Int64)',
+      proposal: 'Nullable(UInt8)',
+      bytes: 1,
+      verified: true,
+      evidence: '',
+      why: '',
+      caution: null,
+      inKey: false,
+      fedBy: [],
+      usage: null,
+    })
+
+    expect(url).not.toContain('default_expr')
+  })
 })
 
 describe('a tick is an intention, not a frozen proposal', () => {
@@ -572,6 +614,64 @@ describe('the statements come out one per table', () => {
 
     expect(sql[0]!.match(/MODIFY COLUMN/g)).toHaveLength(1)
     expect(conflicts).toEqual([])
+  })
+
+  // The whole reason this file's SQL failed against a real server: ClickHouse
+  // will not convert a Nullable to its plain type without being told what a
+  // null becomes. The clause belongs on the lines that drop the wrapper and on
+  // no others, and it has to survive being gathered with lines that do not.
+  it('says what a null becomes, only on the columns dropping their Nullable', () => {
+    const { sql, cleanups } = statements('default', [
+      member({ table: 'raw_device_data', column: 'connected', from: 'Nullable(Bool)', proposal: 'Bool' }),
+      member({ table: 'raw_device_data', column: 'rssi', from: 'Nullable(Int64)', proposal: 'Nullable(Int8)' }),
+    ])
+
+    expect(cleanups).toBe(1)
+    expect(sql[0]!).toBe(
+      'ALTER TABLE default.raw_device_data\n' +
+        "    MODIFY COLUMN connected Bool DEFAULT defaultValueOfTypeName('Bool'),\n" +
+        '    MODIFY COLUMN rssi      Nullable(Int8)',
+    )
+  })
+
+  // Without the second statement every one of these columns keeps a default
+  // nobody asked for, sitting in SHOW CREATE TABLE forever. It cannot join the
+  // ALTER above it — one column named twice is rejected — and it costs nothing
+  // to run: measured, REMOVE DEFAULT registers no mutation at all.
+  it('follows the rewrite with a free statement that clears the defaults', () => {
+    const { sql } = statements('default', [
+      member({ table: 't', column: 'a', from: 'Nullable(Bool)', proposal: 'Bool' }),
+      member({ table: 't', column: 'longer_name', from: 'Nullable(String)', proposal: 'String' }),
+      member({ table: 't', column: 'n' }),
+    ])
+
+    expect(sql).toHaveLength(2)
+    expect(sql[1]!).toBe(
+      'ALTER TABLE default.t\n' +
+        '    MODIFY COLUMN a           REMOVE DEFAULT,\n' +
+        '    MODIFY COLUMN longer_name REMOVE DEFAULT',
+    )
+    expect(sql[1]!).not.toContain('MODIFY COLUMN n ')
+  })
+
+  it('leaves a table alone when none of its ticks drops a Nullable', () => {
+    const { sql, cleanups } = statements('default', [member({ table: 't', column: 'n' })])
+    expect(sql).toHaveLength(1)
+    expect(cleanups).toBe(0)
+  })
+
+  // This block is the part of the page that leaves the page, so the warning has
+  // to leave with it — and the count of statements that rewrite parts must not
+  // silently include the ones that do not.
+  it('separates the free statements from the expensive ones in the header', () => {
+    const out = script('default', [
+      member({ table: 't', column: 'a', from: 'Nullable(Bool)', proposal: 'Bool' }),
+    ])
+
+    expect(out).toContain('1 column over 1 table, 2 statements')
+    expect(out).toContain('1 statement rewrite')
+    expect(out).toContain('1 REMOVE DEFAULT statement rewrite')
+    expect(out).toContain('becomes the zero value silently rather than failing the ALTER')
   })
 
   it('says what is being carried, in the text that gets copied', () => {

@@ -239,8 +239,67 @@ function rewrap(type: string, core: string, { keepLowCardinality = false } = {})
   return out
 }
 
-function alter(review: SchemaReview, column: string, type: string): string {
-  return `ALTER TABLE ${ident(review.database)}.${ident(review.table)}\n  MODIFY COLUMN ${ident(column)} ${type}`
+/** What a null becomes when the `Nullable` wrapper is dropped — and whether
+ *  ClickHouse insists on being told.
+ *
+ *  `MODIFY COLUMN connected Bool` over a `Nullable(Bool)` does not run. Measured
+ *  against 26.7: it is refused outright, `BAD_ARGUMENTS`, *"Please specify
+ *  `DEFAULT` expression in ALTER MODIFY COLUMN statement"* — because dropping
+ *  the nullability asks a question the server will not answer for us. A null has
+ *  to become *something*, and only the person running the statement knows what.
+ *
+ *  `defaultValueOfTypeName` answers it for every target type at once, rather
+ *  than a table of literals per family — `false`, `0`, `''`, the nil UUID, the
+ *  epoch — and it answers with exactly the value an `INSERT` that omits the
+ *  column already writes. So the column lands where it would have landed anyway;
+ *  the expression exists because the statement will not run without one, not
+ *  because Flint has an opinion about the value.
+ *
+ *  Null when nothing is being dropped, which is most proposals: `Nullable(Int64)
+ *  → Nullable(UInt16)` narrows inside the wrapper and needs none of this.
+ *
+ *  Exported because `sweep.ts` writes the same DDL for many tables at once and
+ *  `alter.ts` hands a single one over to Infrastructure to be run — three places
+ *  that have to agree on when the clause appears, and on its wording. */
+export function nullFill(from: string, to: string): string | null {
+  if (!/\bNullable\(/.test(from) || /\bNullable\(/.test(to)) return null
+  return `defaultValueOfTypeName('${to}')`
+}
+
+/** The sentence that has to travel with that `DEFAULT`, and it is the reverse
+ *  of the one this rule used to carry.
+ *
+ *  Before the clause was there the statement simply failed on a null, and the
+ *  caution could honestly say so — "one null anywhere makes this ALTER fail".
+ *  With the `DEFAULT`, which is not optional, the failure mode inverts. Measured
+ *  on a three-row table holding one null: the `ALTER` succeeds without a word
+ *  and that row comes back as `false`, sitting beside the rows that were always
+ *  `false` and no longer distinguishable from them. Flint counted zero nulls
+ *  over what it read; the clause is a licence to overwrite any it did not see.
+ *  Which is the whole risk of this finding, so it is stated wherever the DDL is
+ *  rather than left to be inferred from the type. */
+function fillCaution(verified: boolean): string {
+  return verified
+    ? 'Dropping the Nullable needs a DEFAULT, and ClickHouse will not run the statement without one — so a null does not fail the ALTER, it silently becomes the type’s zero value. Every row here was read and none was null, but the source can still send one tomorrow and the column will have nowhere to put it.'
+    : 'Dropping the Nullable needs a DEFAULT, and ClickHouse will not run the statement without one — so a null this sample did not see does not fail the ALTER, it silently becomes the type’s zero value, indistinguishable from a real one and with no undo. Verify over every row first.'
+}
+
+/** One `MODIFY COLUMN`, or two statements when the first cannot stand alone.
+ *
+ *  The second is `REMOVE DEFAULT`, and it is there so that running the DDL
+ *  leaves the schema where the headline said it would. The headline says
+ *  `Nullable(Bool) → Bool`; without the second statement what stays in `SHOW
+ *  CREATE TABLE` is `Bool DEFAULT defaultValueOfTypeName('Bool')`, indefinitely
+ *  — a scar from a suggestion that was only ever about the type. It costs
+ *  nothing to undo: measured against 26.7, `REMOVE DEFAULT` registers no row in
+ *  `system.mutations` at all, where the `MODIFY COLUMN` above it registers one.
+ *  And it cannot ride along in the same statement — an `ALTER` naming one column
+ *  twice is rejected. */
+function alter(review: SchemaReview, column: string, from: string, type: string): string {
+  const head = `ALTER TABLE ${ident(review.database)}.${ident(review.table)}`
+  const fill = nullFill(from, type)
+  if (fill === null) return `${head}\n  MODIFY COLUMN ${ident(column)} ${type}`
+  return `${head}\n  MODIFY COLUMN ${ident(column)} ${type} DEFAULT ${fill};\n\n${head}\n  MODIFY COLUMN ${ident(column)} REMOVE DEFAULT`
 }
 
 /** Backticks unless the name is a bare identifier — the same rule as everywhere
@@ -367,14 +426,9 @@ export function findings(review: SchemaReview): Finding[] {
         headline: `${column.type} → ${target}`,
         why: 'A Nullable column carries a second file of null markers beside the values, and it cannot be used by some of ClickHouse’s optimisations. Nothing in this column has ever been null.',
         evidence: `0 nulls in ${rows.toLocaleString('en-GB')} rows${column.empties > 0 ? ` · ${column.empties.toLocaleString('en-GB')} empty strings, which are not nulls` : ''}`,
-        ddl: alter(review, column.name, target),
+        ddl: alter(review, column.name, column.type, target),
         severity: 'save',
-        caution: join(
-          verified
-            ? 'Only safe if the source can never send a null — this says what has arrived, not what could.'
-            : 'Verify over every row first: one null anywhere makes this ALTER fail.',
-          keyCaution(column),
-        ),
+        caution: join(fillCaution(verified), keyCaution(column)),
       })
     }
 
@@ -399,7 +453,7 @@ export function findings(review: SchemaReview): Finding[] {
         headline: `${target} → ${proposal}`,
         why: `Each value repeats about ${Math.round(rows / distinct).toLocaleString('en-GB')} times. A LowCardinality column stores the distinct values once per part and the rows as small integers into that dictionary, which is both smaller on disk and faster to group by.`,
         evidence: `${howMany} values in ${rows.toLocaleString('en-GB')} rows`,
-        ddl: alter(review, column.name, proposal),
+        ddl: alter(review, column.name, column.type, proposal),
         severity: 'save',
         caution: keyCaution(column),
       })
@@ -414,7 +468,7 @@ export function findings(review: SchemaReview): Finding[] {
         headline: `${column.type} → ${target}`,
         why: `Past roughly ten thousand distinct values a dictionary stops paying: it is held per part, and every part now carries a large one. This column is above that.`,
         evidence: `more than ${LOW_CARDINALITY_CEILING.toLocaleString('en-GB')} distinct values in ${rows.toLocaleString('en-GB')} rows`,
-        ddl: alter(review, column.name, target),
+        ddl: alter(review, column.name, column.type, target),
         severity: 'fix',
         caution: keyCaution(column),
       })
@@ -434,7 +488,7 @@ export function findings(review: SchemaReview): Finding[] {
           headline: `${column.type} → ${target}`,
           why: `${core} reserves ${width(core) / 8} bytes per row; ${narrow} holds everything seen here in ${width(narrow) / 8}.`,
           evidence: `range ${column.min} … ${column.max} · ${narrow} holds up to ${ceiling.toLocaleString('en-GB')}`,
-          ddl: alter(review, column.name, target),
+          ddl: alter(review, column.name, column.type, target),
           severity: 'save',
           caution: join(
             verified
@@ -456,7 +510,7 @@ export function findings(review: SchemaReview): Finding[] {
         headline: target ? `${column.type} → ${target}` : 'holds only whole numbers',
         why: 'Every value in this column is a whole number, so the mantissa is being paid for and never used. An integer type is also exactly comparable, which a float is not.',
         evidence: `no fractional value in ${rows.toLocaleString('en-GB')} rows · range ${column.min} … ${column.max}`,
-        ddl: target ? alter(review, column.name, target) : null,
+        ddl: target ? alter(review, column.name, column.type, target) : null,
         severity: 'save',
         caution: join(
           verified ? null : 'Verify over every row first.',
@@ -481,7 +535,7 @@ export function findings(review: SchemaReview): Finding[] {
         headline: `${column.type} → ${target}`,
         why: 'A UUID stored as text is 36 characters; stored as a UUID it is 16 bytes, and comparisons stop being string comparisons.',
         evidence: `every value is a 36-character UUID, over ${rows.toLocaleString('en-GB')} rows`,
-        ddl: alter(review, column.name, target),
+        ddl: alter(review, column.name, column.type, target),
         severity: 'save',
         caution: join(
           verified ? null : 'Verify over every row first.',
@@ -515,7 +569,7 @@ export function findings(review: SchemaReview): Finding[] {
         headline: `${column.type} → ${target}`,
         why: 'Every value parses as a date. As text, a range query on it is a string comparison and the primary key cannot help; as a date it is four or eight bytes and the usual time functions apply.',
         evidence: `every non-empty value parses as a date, over ${rows.toLocaleString('en-GB')} rows · lengths ${column.min_len}–${column.max_len}`,
-        ddl: alter(review, column.name, target),
+        ddl: alter(review, column.name, column.type, target),
         severity: 'fix',
         caution: join(
           verified ? null : 'Verify over every row first.',
@@ -578,7 +632,7 @@ export function findings(review: SchemaReview): Finding[] {
         headline: `${column.type} → ${target}`,
         why: `Every value is exactly ${n} characters. A FixedString drops the per-value length prefix; it also pads on read, which is a behaviour change worth knowing about.`,
         evidence: `every value is ${n} characters, over ${rows.toLocaleString('en-GB')} rows`,
-        ddl: alter(review, column.name, target),
+        ddl: alter(review, column.name, column.type, target),
         severity: 'note',
         caution: join(
           'A FixedString pads shorter values with null bytes rather than rejecting them, so anything shorter arriving later is silently padded.',

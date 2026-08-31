@@ -67,6 +67,19 @@ pub enum Change {
     ModifyColumn {
         column: String,
         kind: String,
+        /// `DEFAULT <expr>`, or empty — and here it is not the convenience it is
+        /// on `AddColumn`. ClickHouse refuses `MODIFY COLUMN c Bool` over a
+        /// `Nullable(Bool)` outright: *"Cannot convert column from nullable type
+        /// to non-nullable type. Please specify `DEFAULT` expression"*. Dropping
+        /// the wrapper asks what a null becomes, and the server will not guess.
+        ///
+        /// So on this operation the clause is sometimes the difference between a
+        /// statement that runs and one that cannot. It is still optional, and
+        /// still its own field rather than something the caller may append to
+        /// `kind` — a type is a type, and a second clause smuggled through it is
+        /// how a statement ends up carrying something nobody reviewed.
+        #[serde(default)]
+        default_expr: String,
     },
     RenameColumn {
         column: String,
@@ -194,7 +207,15 @@ pub fn fragments(change: &Change) -> Vec<&str> {
                 vec![kind.as_str(), default_expr.as_str()]
             }
         }
-        Change::ModifyColumn { kind, .. } => vec![kind.as_str()],
+        Change::ModifyColumn {
+            kind, default_expr, ..
+        } => {
+            if default_expr.is_empty() {
+                vec![kind.as_str()]
+            } else {
+                vec![kind.as_str(), default_expr.as_str()]
+            }
+        }
         Change::ModifyTtl { expr } => vec![expr.as_str()],
         Change::AddIndex {
             expression, kind, ..
@@ -225,11 +246,19 @@ pub fn statement(change: &Change, database: &str, table: &str) -> String {
         Change::DropColumn { column } => {
             format!("ALTER TABLE {target} DROP COLUMN {}", ident(column))
         }
-        Change::ModifyColumn { column, kind } => {
-            format!(
+        Change::ModifyColumn {
+            column,
+            kind,
+            default_expr,
+        } => {
+            let mut sql = format!(
                 "ALTER TABLE {target} MODIFY COLUMN {} {kind}",
                 ident(column)
-            )
+            );
+            if !default_expr.is_empty() {
+                sql.push_str(&format!(" DEFAULT {default_expr}"));
+            }
+            sql
         }
         Change::RenameColumn { column, to } => format!(
             "ALTER TABLE {target} RENAME COLUMN {} TO {}",
@@ -276,7 +305,7 @@ pub fn label(change: &Change, qualified: &str) -> String {
             format!("Add {column} {kind} to {qualified}")
         }
         Change::DropColumn { column } => format!("Drop column {column} of {qualified}"),
-        Change::ModifyColumn { column, kind } => {
+        Change::ModifyColumn { column, kind, .. } => {
             format!("Change {qualified}.{column} to {kind}")
         }
         Change::RenameColumn { column, to } => {
@@ -337,10 +366,26 @@ pub fn costs(change: &Change, rows: u64, parts: u64, replicated: bool) -> String
         Change::DropColumn { column } => {
             format!("The values of {column} are gone and nothing brings them back. {scale}{waits}")
         }
-        Change::ModifyColumn { .. } => format!(
-            "Every part is rewritten with the new type. A conversion the server cannot make it \
-             refuses outright rather than losing anything. {scale}{waits}"
-        ),
+        // The caveat is the second sentence, and it is only true while there is
+        // no default: a conversion the server would refuse it *accepts* once a
+        // DEFAULT says what an unconvertible value becomes. Dropping a Nullable
+        // is exactly that case — the statement will not run without the clause,
+        // and with it a null stops being an error and becomes a value.
+        Change::ModifyColumn { default_expr, .. } => {
+            if default_expr.is_empty() {
+                format!(
+                    "Every part is rewritten with the new type. A conversion the server cannot \
+                     make it refuses outright rather than losing anything. {scale}{waits}"
+                )
+            } else {
+                format!(
+                    "Every part is rewritten with the new type. The default is what a value the \
+                     server cannot convert becomes — a null dropping its Nullable, most often — \
+                     so this converts quietly where it would otherwise refuse, and nothing brings \
+                     the original back. {scale}{waits}"
+                )
+            }
+        }
         // The surprise in the measurements: renaming is not metadata-only.
         Change::RenameColumn { .. } => {
             format!("Renaming rewrites the parts — it is not a metadata change. {scale}{waits}")
@@ -412,7 +457,7 @@ fn shapes() -> Vec<Offered> {
             label: "Change a column's type",
             rewrites: true,
             destroys: false,
-            needs: vec!["column", "kind"],
+            needs: vec!["column", "kind", "default_expr"],
             costs: String::new(),
         },
         Offered {
@@ -516,6 +561,7 @@ pub fn offered(rows: u64, parts: u64, replicated: bool) -> Vec<Offered> {
                 "modify-column" => Change::ModifyColumn {
                     column: String::new(),
                     kind: String::new(),
+                    default_expr: String::new(),
                 },
                 "rename-column" => Change::RenameColumn {
                     column: String::new(),
@@ -631,6 +677,87 @@ mod tests {
             "events",
         );
         assert!(sql.ends_with("ADD COLUMN `derived` UInt32 DEFAULT id * 2"));
+    }
+
+    // Measured against 26.7: `MODIFY COLUMN connected Bool` over a
+    // `Nullable(Bool)` is refused outright with BAD_ARGUMENTS — the server will
+    // not decide what a null becomes. So the operation has to be able to carry
+    // the clause, or the one change the schema review most often proposes is
+    // one this panel cannot run.
+    #[test]
+    fn dropping_a_nullable_can_say_what_a_null_becomes() {
+        let sql = statement(
+            &Change::ModifyColumn {
+                column: "connected".into(),
+                kind: "Bool".into(),
+                default_expr: "defaultValueOfTypeName('Bool')".into(),
+            },
+            "default",
+            "raw_device_data",
+        );
+        assert_eq!(
+            sql,
+            "ALTER TABLE `default`.`raw_device_data` MODIFY COLUMN `connected` Bool DEFAULT \
+             defaultValueOfTypeName('Bool')"
+        );
+        // And the expression is a fragment the route gets to refuse, exactly
+        // like the type beside it — it is not a hole a second statement fits
+        // through.
+        let change = Change::ModifyColumn {
+            column: "connected".into(),
+            kind: "Bool".into(),
+            default_expr: "defaultValueOfTypeName('Bool')".into(),
+        };
+        assert_eq!(
+            fragments(&change),
+            vec!["Bool", "defaultValueOfTypeName('Bool')"]
+        );
+    }
+
+    #[test]
+    fn a_retype_with_no_default_is_the_statement_it_always_was() {
+        let change = Change::ModifyColumn {
+            column: "n".into(),
+            kind: "UInt16".into(),
+            default_expr: String::new(),
+        };
+        assert_eq!(
+            statement(&change, "db", "t"),
+            "ALTER TABLE `db`.`t` MODIFY COLUMN `n` UInt16"
+        );
+        assert_eq!(fragments(&change), vec!["UInt16"]);
+    }
+
+    // The old sentence — "a conversion the server cannot make it refuses
+    // outright rather than losing anything" — is true only while there is no
+    // default. With one, the refusal becomes a silent conversion, and that is
+    // the half a reader about to press the button needs.
+    #[test]
+    fn a_default_turns_a_refusal_into_a_conversion_and_says_so() {
+        let plain = costs(
+            &Change::ModifyColumn {
+                column: "n".into(),
+                kind: "UInt16".into(),
+                default_expr: String::new(),
+            },
+            10,
+            1,
+            false,
+        );
+        assert!(plain.contains("refuses outright"));
+
+        let filled = costs(
+            &Change::ModifyColumn {
+                column: "connected".into(),
+                kind: "Bool".into(),
+                default_expr: "defaultValueOfTypeName('Bool')".into(),
+            },
+            10,
+            1,
+            false,
+        );
+        assert!(!filled.contains("refuses outright"));
+        assert!(filled.contains("nothing brings the original back"));
     }
 
     #[test]

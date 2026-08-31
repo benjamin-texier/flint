@@ -48,7 +48,7 @@ export function SchemaPage() {
     const op = linked.get('op')
     if (!target || !op) return null
     const values: Record<string, string> = {}
-    for (const field of ['name', 'query', 'column', 'kind', 'expression', 'granularity', 'expr', 'to']) {
+    for (const field of ['name', 'query', 'column', 'kind', 'expression', 'granularity', 'expr', 'to', 'default_expr']) {
       const value = linked.get(field)
       if (value) values[field] = value
     }

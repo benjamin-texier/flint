@@ -42,7 +42,7 @@
  */
 
 import type { SchemaGraph, SchemaReview } from './api'
-import { findings, ident, type Finding, type Kind, type Severity } from './review'
+import { findings, ident, nullFill, type Finding, type Kind, type Severity } from './review'
 
 /** One table's share of one proposal: the unit that is ticked, and the unit
  *  that becomes a single `MODIFY COLUMN`. */
@@ -558,6 +558,13 @@ export function handOver(database: string, member: Member): string {
     column: member.column,
     kind: member.proposal,
   })
+  // Carried in the address rather than left for the panel to work out, because
+  // the panel does not know what the column is today — it takes the type it is
+  // given. A drop of the Nullable without this arrives there as a statement
+  // ClickHouse refuses outright, and the reader is handed the server's error
+  // instead of the change they asked for. See `nullFill`.
+  const fill = nullFill(member.from, member.proposal)
+  if (fill !== null) params.set('default_expr', fill)
   return `/infra/schema?${params.toString()}`
 }
 
@@ -671,7 +678,7 @@ export interface Conflict {
 export function statements(
   database: string,
   chosen: Member[],
-): { sql: string[]; conflicts: Conflict[] } {
+): { sql: string[]; conflicts: Conflict[]; cleanups: number } {
   const byTable = new Map<string, Member[]>()
   const conflicts: Conflict[] = []
   const claimed = new Map<string, string>()
@@ -696,19 +703,40 @@ export function statements(
     else byTable.set(member.table, [member])
   }
 
-  const sql = [...byTable.entries()].map(([table, members]) => {
+  let cleanups = 0
+  const sql = [...byTable.entries()].flatMap(([table, members]) => {
     // The types line up under each other. A block of thirty MODIFY COLUMNs is
     // read as a column of types before it is read as sentences, and ragged
     // types make the reader check each line to see whether it is the UInt8 or
     // the UInt16 they meant.
-    const width = Math.max(...members.map((m) => ident(m.column).length))
-    const actions = members
-      .map((m) => `    MODIFY COLUMN ${ident(m.column).padEnd(width)} ${m.proposal}`)
-      .join(',\n')
-    return `ALTER TABLE ${ident(database)}.${ident(table)}\n${actions}`
+    const lines = (list: Member[], tail: (m: Member) => string) => {
+      const width = Math.max(...list.map((m) => ident(m.column).length))
+      return list
+        .map((m) => `    MODIFY COLUMN ${ident(m.column).padEnd(width)} ${tail(m)}`)
+        .join(',\n')
+    }
+    const head = `ALTER TABLE ${ident(database)}.${ident(table)}`
+    const out = [
+      `${head}\n${lines(members, (m) => {
+        const fill = nullFill(m.from, m.proposal)
+        return fill === null ? m.proposal : `${m.proposal} DEFAULT ${fill}`
+      })}`,
+    ]
+    // A second statement per table, for the columns whose Nullable is being
+    // dropped — see `nullFill`. It puts them back to the plain type the card
+    // promised, it cannot be folded into the ALTER above (one column, named
+    // twice, is rejected), and it is free: measured against 26.7 it registers
+    // no row in `system.mutations` where the statement above it registers one
+    // per column. So the reader gets one extra statement and no extra rewrite.
+    const cleared = members.filter((m) => nullFill(m.from, m.proposal) !== null)
+    if (cleared.length > 0) {
+      cleanups += 1
+      out.push(`${head}\n${lines(cleared, () => 'REMOVE DEFAULT')}`)
+    }
+    return out
   })
 
-  return { sql, conflicts }
+  return { sql, conflicts, cleanups }
 }
 
 /** The statements as one block, with what the reader is carrying stated at the
@@ -720,7 +748,7 @@ export function statements(
  *  a million rows rather than on the column. A caveat that stays behind on the
  *  screen it was copied from is a caveat that was never given. */
 export function script(database: string, chosen: Member[]): string {
-  const { sql, conflicts } = statements(database, chosen)
+  const { sql, conflicts, cleanups } = statements(database, chosen)
   if (sql.length === 0) return ''
   const r = reach(chosen)
   const applied = r.columns - conflicts.length
@@ -729,8 +757,22 @@ export function script(database: string, chosen: Member[]): string {
     r.unverified > 0
       ? `-- ${r.unverified.toLocaleString('en-GB')} of them rest on a sample of the table rather than on every row of it.`
       : '-- Every one was measured over every row of its table.',
-    '-- Each statement rewrites every part of its columns, once for the whole statement.',
+    cleanups > 0
+      ? `-- ${plural(sql.length - cleanups, 'statement')} rewrite every part of their columns, once for the whole statement.`
+      : '-- Each statement rewrites every part of its columns, once for the whole statement.',
   ]
+  // Said here and not only on the card, because this block is the part of the
+  // page that leaves the page. Dropping a Nullable needs a DEFAULT to run at
+  // all, and the DEFAULT turns a null into the type's zero value instead of
+  // refusing — so the one sentence a reader must not lose on the way to their
+  // terminal is that these statements will quietly absorb a null Flint did not
+  // see, not fail on it.
+  if (cleanups > 0) {
+    head.push(
+      `-- ${plural(cleanups, 'REMOVE DEFAULT statement')} rewrite nothing: dropping a Nullable needs a DEFAULT to be accepted, and that clause puts the column back to a plain type.`,
+      '-- Read those DEFAULTs before running this. A null becomes the zero value silently rather than failing the ALTER, and nothing brings it back.',
+    )
+  }
   return `${head.join('\n')}\n\n${sql.join(';\n\n')};\n`
 }
 
