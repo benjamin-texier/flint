@@ -8211,10 +8211,17 @@ tr:hover .stratum__fill {
 }
 
 /* Who you are, on one line: it is one thought, and stacking the two pushed the
-   button under the fold on a laptop once the panel beside it had a heading. */
+   button under the fold on a laptop once the panel beside it had a heading.
+ *
+ * Not two equal halves, though. A ClickHouse user name is a database identifier
+ * — `default`, `flint_ro`, eight or nine characters — and a password is a
+ * generated string of thirty. Measured on the equal split: revealing a
+ * twenty-two character password left fourteen of them visible, because half of
+ * a 416px column minus the gutter the reveal needs is 112px of value. The extra
+ * space goes where the characters are. */
 .signin__pair {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 0.82fr 1.18fr;
   gap: var(--s3);
   margin-top: var(--s2);
 }
@@ -8239,8 +8246,10 @@ tr:hover .stratum__fill {
 
 /* Room for whatever the round trip had to say, so a long address never runs
    under it. Only when there is something there: an empty field reserving a
-   hundred pixels for a message nobody has asked for reads as a broken layout. */
-.signin__endpoint--said {
+   hundred pixels for a message nobody has asked for reads as a broken layout.
+   Prefixed with `.signin__form` — see the note on `.signin__pw`, which is the
+   same trap and the one that showed. */
+.signin__form .signin__endpoint--said {
   padding-right: 8.5rem;
 }
 
@@ -8270,17 +8279,50 @@ tr:hover .stratum__fill {
   color: var(--chalk-faint);
 }
 
-.signin__pw {
-  padding-right: 3.75rem;
+/* Room for the reveal, and the selector is the whole fix.
+ *
+ * `.signin__pw` alone lost to `.signin__form .input` a few rules above — two
+ * classes beat one — so the padding this rule asks for was never applied and a
+ * revealed password ran forty-one pixels *under* HIDE. Measured in the browser
+ * rather than read off the file: the computed `padding-right` was 12px, the
+ * field's own, and the reveal button starts well inside that. Both fields that
+ * carry something in their right-hand gutter are prefixed for this reason.
+ *
+ * Generous rather than exact: the label is four uppercase characters at a
+ * tracking, and it changes width between SHOW and HIDE. */
+.signin__form .signin__pw {
+  padding-right: 3.25rem;
 }
 
+/* A revealed password is monospaced, like every other place in Flint where the
+   characters *are* the content. It is also the only way to read one: a
+   proportional face renders `l1I` and `O0` as near-identical shapes, which is
+   precisely the check somebody is doing when they press Show. */
+.signin__form .signin__pw--shown {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+}
+
+/* Opaque, and separated by a hairline. Transparent, it was not a button over a
+   field — it was a label the field's own value scrolled underneath, which is
+   what a long revealed password did: `b8c4a1…c7d1` ran straight through HIDE and
+   came out the other side. A field that scrolls needs something solid to scroll
+   *behind*.
+
+   Inset a pixel on three sides so the field's own border stays the outer edge,
+   and the radius is a pixel tighter than the field's for the same reason — a
+   6px curve inside a 6px curve leaves a sliver of border showing through the
+   corner. */
 .signin__reveal {
   position: absolute;
   top: 1px;
   right: 1px;
   bottom: 1px;
-  padding: 0 var(--s3);
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  padding: 0 var(--s2);
+  border-radius: 0 5px 5px 0;
+  background: var(--bg-surface);
+  box-shadow: -1px 0 0 var(--line);
+  font-family: var(--font-ui);
   font-size: var(--size-label);
   font-weight: 600;
   letter-spacing: var(--track-label);
