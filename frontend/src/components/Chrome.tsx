@@ -4,7 +4,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '../lib/api'
 import { concerns, countFor } from '../lib/attention'
-import { activeSection, countIn, dataFor, keeps, spaceOf, spacesFor } from '../lib/spaces'
+import {
+  activeSection,
+  countIn,
+  dataFor,
+  keeps,
+  outsideSpaces,
+  spaceOf,
+  spacesFor,
+} from '../lib/spaces'
 
 import type { AppConfig, ServerInfo, Session } from '../lib/api'
 import { uptime } from '../lib/format'
@@ -60,6 +68,13 @@ export function Chrome({
         <span className="chrome__findlabel">Find</span>
         <span className="kbd chrome__findkbd">⌘K</span>
       </button>
+
+      {/* Beside Find rather than in either space's sections, because it is in
+          neither — see `outsideSpaces`. Its position says so: everything to
+          the left of the spacer is about the whole of Flint. */}
+      <NavLink to="/checkup" className="chrome__checkup">
+        Checkup
+      </NavLink>
 
       <div className="chrome__spacer" />
 
@@ -147,6 +162,11 @@ function Nav({ config }: { config: AppConfig | undefined }) {
      before Infrastructure was switched off. The router sends it back to Data;
      the bar must not light a tab for the space it is leaving. */
   const here = spaces.find((s) => s.id === spaceOf(pathname)) ?? dataFor(config)
+  /* The checkup is in neither space, so neither tab lights and no section row
+     is drawn. Lighting Data — which the prefix rule would do, since the rule's
+     answer for anything outside `/infra` is Data — would tell a reader they
+     are somewhere they are not. */
+  const outside = outsideSpaces(pathname)
 
   /* Only where Flint keeps anything, and cached: this rides along on every
      page, so it must not be a request per navigation. */
@@ -190,11 +210,11 @@ function Nav({ config }: { config: AppConfig | undefined }) {
             <Link
               key={space.id}
               to={space.home}
-              className={`chrome__space${here.id === space.id ? ' active' : ''}`}
+              className={`chrome__space${!outside && here.id === space.id ? ' active' : ''}`}
               /* Not `aria-current="page"`: the space is the section of the site
                  you are in, not the page you are on — and the page link below
                  says that already. */
-              aria-current={here.id === space.id ? 'true' : undefined}
+              aria-current={!outside && here.id === space.id ? 'true' : undefined}
             >
               {space.label}
               <Badge count={countIn(items, space.id)} />
@@ -204,7 +224,7 @@ function Nav({ config }: { config: AppConfig | undefined }) {
         </nav>
       ) : null}
       <nav className="chrome__sections" aria-label={`${here.label} sections`}>
-        {here.sections.map((item) => (
+        {(outside ? [] : here.sections).map((item) => (
           <NavLink
             key={item.id}
             to={item.to}

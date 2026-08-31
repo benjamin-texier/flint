@@ -4912,6 +4912,126 @@ tr:hover .stratum__fill {
   word-break: break-word;
 }
 
+/* ═══ The checkup ═════════════════════════════════════════════════════════
+ * One page for "what do I have to do". Its whole layout is the refusal to
+ * produce a score: findings sit in the four questions a reader actually has,
+ * and what acting gives back is printed with its unit attached — never as a
+ * bare number that could be read against another kind. */
+
+.chrome__checkup {
+  padding: 4px var(--s3);
+  font-size: var(--size-label);
+  font-weight: 500;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+  transition: color var(--motion-fast) var(--ease);
+}
+.chrome__checkup:hover,
+.chrome__checkup.active {
+  color: var(--accent-strong);
+  border-color: var(--accent);
+}
+
+.checkup__asks {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  margin-bottom: var(--s4);
+}
+
+/* The sentence beside the button needs room to be one: as a bare flex item it
+ * shrank to its content box and wrapped every four words. */
+.checkup__asks .says {
+  flex: 1 1 22rem;
+  min-width: 0;
+  max-width: 48rem;
+}
+
+.checkup__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  margin: var(--s3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.checkup__row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  padding: var(--s3);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+/* The only visual difference between the two urgencies, and it is a rule and
+ * not a colour wash: something already happening gets the danger edge, and
+ * everything else is left alone. A page where every row is coloured is a page
+ * where the colour says nothing. */
+.checkup__row--now {
+  border-left-color: var(--danger);
+}
+
+.checkup__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s3);
+}
+
+.checkup__title {
+  font-size: var(--size-body);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* The figure and its unit are one thing, stacked, so the unit cannot be lost
+ * to a line break and read against a different kind. */
+.checkup__worth {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex: none;
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.checkup__worthlabel {
+  font-family: var(--font-sans);
+  font-size: var(--size-label);
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.checkup__why {
+  color: var(--text-secondary);
+}
+
+.checkup__evidence {
+  font-family: var(--font-data);
+  color: var(--text-muted);
+}
+
+.checkup__act {
+  align-self: flex-start;
+  font-size: var(--size-label);
+}
+
+/* "Nothing yet" and "nothing to say" are different answers, so they do not
+ * look the same. */
+.checkup__waiting {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
 /* ═══ Loading a file ══════════════════════════════════════════════════════
  * The whole panel is the word *before*: what the file turns out to hold, how
  * it lines up with the table, and its rows parsed the way the import will
