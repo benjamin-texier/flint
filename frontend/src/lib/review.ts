@@ -277,11 +277,20 @@ export function nullFill(from: string, to: string): string | null {
  *  `false` and no longer distinguishable from them. Flint counted zero nulls
  *  over what it read; the clause is a licence to overwrite any it did not see.
  *  Which is the whole risk of this finding, so it is stated wherever the DDL is
- *  rather than left to be inferred from the type. */
+ *  rather than left to be inferred from the type.
+ *
+ *  And it says the expression is the reader's, because the zero value is only
+ *  Flint's answer to a question it was not asked. `defaultValueOfTypeName` is
+ *  chosen for being the least eventful thing that can go there — for a `UUID` it
+ *  is the nil one, which announces itself. The conventional default for a UUID
+ *  column, `generateUUIDv4()`, is a *different clause doing a different job*:
+ *  put here it gives every null a distinct, well-formed identifier that nothing
+ *  afterwards can tell from a real one. Somebody who knows what a null in their
+ *  column ought to mean should write that, and has to know they may. */
 function fillCaution(verified: boolean): string {
   return verified
-    ? 'Dropping the Nullable needs a DEFAULT, and ClickHouse will not run the statement without one — so a null does not fail the ALTER, it silently becomes the type’s zero value. Every row here was read and none was null, but the source can still send one tomorrow and the column will have nowhere to put it.'
-    : 'Dropping the Nullable needs a DEFAULT, and ClickHouse will not run the statement without one — so a null this sample did not see does not fail the ALTER, it silently becomes the type’s zero value, indistinguishable from a real one and with no undo. Verify over every row first.'
+    ? 'Dropping the Nullable needs a DEFAULT, and ClickHouse will not run the statement without one — so a null does not fail the ALTER, it silently becomes the type’s zero value. That expression is only Flint’s least eventful answer; change it if a null here should mean something in particular. Every row was read and none was null, but the source can still send one tomorrow and the column will have nowhere to put it.'
+    : 'Dropping the Nullable needs a DEFAULT, and ClickHouse will not run the statement without one — so a null this sample did not see does not fail the ALTER, it silently becomes the type’s zero value, indistinguishable from a real one and with no undo. That expression is only Flint’s least eventful answer; change it if a null here should mean something in particular. Verify over every row first.'
 }
 
 /** One `MODIFY COLUMN`, or two statements when the first cannot stand alone.
