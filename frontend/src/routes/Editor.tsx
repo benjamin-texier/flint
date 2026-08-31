@@ -7,17 +7,81 @@ import { Prec } from '@codemirror/state'
 
 import { api, FlintError, type AppConfig, type QueryResult, type SchemaEntry } from '../lib/api'
 import { bytes, count, duration } from '../lib/format'
-import { statementAt, tableInStatement } from '../lib/sql'
+import { statementAt } from '../lib/sql'
+import { rememberedDatabase, resolveDatabase } from '../lib/database'
 import { formatDdl } from '../lib/ddl'
 import { ResultView } from '../components/ResultView'
-import { EmptyNote, ErrorNote } from '../components/Note'
+import type { GridQuery } from '../components/ResultsGrid'
+import { EmptyNote, ErrorNote, Loading } from '../components/Note'
 import { HistoryPanel } from './History'
 import { SavedPanel } from './Saved'
 import { DashPanel } from './DashPanel'
 import { DESTINATIONS, handoffPath, type Destination } from '../lib/handoff'
 import { clickhouseSql, flintHighlighting, flintTheme } from '../editor/setup'
-import { useTabs } from '../editor/tabs'
+import { flintCompletion } from '../editor/complete'
+import { BuildPane } from '../editor/BuildPane'
+import { canSwitch, useTabs, type TabMode, type QueryTab } from '../editor/tabs'
+import { asResult, specToDsl } from '../lib/dsl'
+import { builtDownloadNote } from '../lib/export'
+import {
+  clearSpecOrder,
+  cycleSpecOrder,
+  describe as describeSpec,
+  dropSpecColumn,
+  filterSpec,
+  literal,
+  quoteIdent,
+  type Op,
+  type QuerySpec,
+} from '../lib/query'
+import { rerunPolicy, worthExplaining } from '../lib/cost'
+import { readPlan, verdicts } from '../lib/plan'
+import {
+  addFilter,
+  bodyOf,
+  cellPredicate,
+  groupTerms,
+  isDistinct,
+  removeGroupTerm,
+  untouched,
+  clearOrder,
+  cycleOrder,
+  dropColumn,
+  fromRef,
+  orderTerms,
+  removeOrderTerm,
+  removeTerm,
+  rewritable,
+  selectItems,
+  setLimit,
+  setSelectList,
+  shapeOf,
+  whereTerms,
+  type CellOp,
+} from '../lib/rewrite'
+import { TypeIcon } from '../components/TypeIcon'
 
+/** The query page: one question, asked either way.
+ *
+ *  Writing SQL and building a question without writing any used to be two
+ *  pages. They were never two products — the same database picker, the same run,
+ *  the same statistics, the same grid, the same charts, the same handoffs —
+ *  and keeping them apart meant every one of those had to be built twice, so
+ *  half of them only ever got built once. The form had no chart, no download and
+ *  no history; the editor had no way to ask a question without knowing the
+ *  language.
+ *
+ *  So it is one page with a switch on it, and the switch belongs to the tab —
+ *  see `TabMode`. Everything below the composing band is identical in both
+ *  modes, because it *is* the same code: one stats strip, one result view, one
+ *  set of panels. What differs is only what a run posts (a statement, or the
+ *  document the server writes the statement from) and what a click on a column
+ *  header edits (the text, or the form).
+ *
+ *  The one asymmetry is deliberate and stated on the control: a form becomes
+ *  SQL, and SQL becomes a form again only while it is still the statement the
+ *  form wrote. Nothing here parses SQL back into a spec, and a switch that
+ *  pretended otherwise would be the mode switch that eats your work. */
 export function Editor() {
   const [params, setParams] = useSearchParams()
   const navigate = useNavigate()
@@ -25,12 +89,38 @@ export function Editor() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [savedOpen, setSavedOpen] = useState(false)
   const [dashOpen, setDashOpen] = useState(false)
-  // Whatever form the reader last chose for the result, so a dashboard tile can
-  // be built to match what they are looking at.
-  const [chart, setChart] = useState<import('../lib/chart').ChartSpec | null>(null)
   // null = follow the content. A drag pins it, and a double-click on the grip
   // hands it back.
   const [codeHeight, setCodeHeight] = useState<number | null>(null)
+  /** Why a gesture on the grid could not be carried into the form — the
+   *  bucketed column that cannot be filtered, the total that cannot be matched
+   *  with `contains`. Cleared as soon as anything else happens. */
+  const [refused, setRefused] = useState<string | null>(null)
+  /** Why the last rewrite was not run for you — null when everything on screen
+   *  is what the statement says. */
+  const [awaiting, setAwaiting] = useState<string | null>(null)
+  /** What the plan on screen actually answers, when that needs saying. An
+   *  EXPLAIN is the one result on this page that is not the query's own answer,
+   *  and which pass produced it changes how to read it. */
+  const [explainNote, setExplainNote] = useState<string | null>(null)
+  /** The plan read back for the statement whose rows are on screen.
+   *
+   *  Deliberately *not* through `runSql`: asking why a read was large must not
+   *  cost you the rows you were looking at, which is what the Explain menu does
+   *  by design. This fetch keeps the result and puts the verdicts beside it. */
+  const [why, setWhy] = useState<{
+    said: ReturnType<typeof verdicts>
+    sql: string
+    /** True when the EXPLAIN itself was refused. Different from a plan that
+     *  simply had nothing to say — a read of `system.numbers` prunes nothing
+     *  because there is nothing to prune, and telling somebody the server
+     *  refused would be a lie about their query. */
+    failed: boolean
+  } | null>(null)
+  const [whyRunning, setWhyRunning] = useState(false)
+  /** The editor view exists only after CodeMirror mounts, and the rail's clicks
+   *  need it. */
+  const [ready, setReady] = useState(false)
   const tabs = useTabs()
   const editor = useRef<ReactCodeMirrorRef>(null)
 
@@ -51,7 +141,7 @@ export function Editor() {
   // refresh does not keep re-seeding it. Keyed on the SQL itself, because the
   // effect runs twice on mount in development and would otherwise open the
   // same query in two tabs.
-  const { openWith } = tabs
+  const { openWith, openBuild } = tabs
   const seeded = useRef<string | null>(null)
   useEffect(() => {
     const sql = params.get('sql')
@@ -61,28 +151,195 @@ export function Editor() {
     setParams(new URLSearchParams(), { replace: true })
   }, [params, setParams, openWith])
 
-  const run = useCallback(async () => {
-    if (!active || active.running) return
-    const view = editor.current?.view
-    const caret = view?.state.selection.main
-    const selected =
-      caret && !caret.empty ? active.sql.slice(caret.from, caret.to) : null
-    const statement = selected ?? statementAt(active.sql, caret?.head ?? active.sql.length)?.sql
-    if (!statement?.trim()) return
+  /* Arriving to look at the saved list rather than to write something —
+     `/query?panel=saved`, which is where the home's "All N statements" leads.
+     The list is a panel on this page and not a page of its own, so a link to it
+     has to be a link to this page with the panel open. Dropped from the URL like
+     the rest, so a refresh does not re-open a panel somebody has closed. */
+  const seededPanel = useRef(false)
+  useEffect(() => {
+    if (params.get('panel') !== 'saved' || seededPanel.current) return
+    seededPanel.current = true
+    setSavedOpen(true)
+    setParams(new URLSearchParams(), { replace: true })
+  }, [params, setParams])
 
+  /* Arriving on the form rather than on the editor — `/query?mode=build`, which
+     is where the old `/build` path now leads and what the palette's "Build"
+     opens. Dropped from the URL once honoured, for the same reason the seeded
+     statement is: a refresh should not open a second one. */
+  const seededMode = useRef(false)
+  useEffect(() => {
+    if (params.get('mode') !== 'build' || seededMode.current) return
+    seededMode.current = true
+    openBuild(params.get('database') ?? undefined)
+    setParams(new URLSearchParams(), { replace: true })
+  }, [params, setParams, openBuild])
+
+  /** Run one statement. Everything that runs anything goes through here —
+   *  the Run button, ⌘↵, an EXPLAIN, and every rewrite the grid makes — so there
+   *  is one place that records what was run beside its result. `ranSql` is what
+   *  lets the grid know which statement its headers are allowed to edit.
+   *
+   *  `remember` is false for an EXPLAIN: the plan of a query is not the query,
+   *  and letting a header click rewrite `EXPLAIN PLAN SELECT …` would be
+   *  nonsense. */
+  const runSql = useCallback(
+    async (statement: string, remember = true): Promise<boolean> => {
+      if (!active || !statement.trim()) return false
+      const queryId = crypto.randomUUID()
+      tabs.patch(active.id, { running: true, queryId, error: null })
+      setAwaiting(null)
+      setWhy(null)
+      if (remember) setExplainNote(null)
+      const startedAt = performance.now()
+      try {
+        const result = await api.run({ sql: statement, database, query_id: queryId })
+        tabs.patch(active.id, {
+          running: false,
+          queryId: null,
+          result,
+          ranSql: remember ? statement : null,
+          error: null,
+          wallMs: performance.now() - startedAt,
+        })
+        return true
+      } catch (error) {
+        tabs.patch(active.id, {
+          running: false,
+          queryId: null,
+          error,
+          wallMs: performance.now() - startedAt,
+        })
+        return false
+      }
+    },
+    [active, database, tabs],
+  )
+
+  /* ── The form's half of the page ───────────────────────────────────────
+     The spec lives on the tab; everything derived from it lives here, so that
+     the strip, the Run button and the grid all read one translation rather than
+     three that can disagree. */
+  const mode: TabMode = active?.mode ?? 'sql'
+  const spec = active?.spec ?? null
+
+  /* The question, as the server's own query language writes it.
+
+     The form used to build SQL in the browser and post the SQL. It no longer
+     does: two query languages in one product is two sets of rules that drift,
+     and these two had already drifted — `uniq` meant an estimate on this side
+     and an exact count on the other, under one word. So the spec becomes a
+     document, the server writes the statement, and there is one place that
+     decides what a filter or an aggregate means. */
+  const translated = useMemo(
+    () => (mode === 'build' && spec ? specToDsl(spec) : null),
+    [mode, spec],
+  )
+  const dsl = translated && 'query' in translated ? translated.query : null
+  const blocked = translated && 'blocked' in translated ? translated.blocked : null
+
+  /* And the server hands the statement back, so the strip below can show it
+     while somebody is assembling the question rather than only after they run
+     it. It reads no data — `explain` builds and returns. */
+  const explained = useQuery({
+    queryKey: ['dataset-sql', JSON.stringify(dsl)],
+    queryFn: () => api.datasetSql(dsl as NonNullable<typeof dsl>),
+    enabled: Boolean(dsl),
+    retry: false,
+    staleTime: 60_000,
+  })
+  const generated = explained.data?.sql ?? null
+
+  /* The generated statement, mirrored onto the tab.
+
+     This is what makes the rest of the page mode-blind: Save, Send to…, the
+     dashboard tile, the download and Explain all read `tab.sql`, and none of
+     them has to know whether a person or the server wrote it. `specSql` is
+     written with it, and is what `canSwitch` compares against to know whether
+     the statement is still the form's own. */
+  useEffect(() => {
+    if (!active || mode !== 'build' || !generated) return
+    if (active.specSql === generated && active.sql === generated) return
+    tabs.patch(active.id, { sql: generated, specSql: generated })
+  }, [active, mode, generated, tabs])
+
+  /* A form opens on a database worth opening on.
+     
+     The editor may sit on `default` forever — you type the name you want, and
+     an empty scratchpad on the wrong database costs nothing. A form on the
+     wrong database is not a form: it has no tables to offer, so it has no
+     question to ask. So a build tab that carries no database of its own is
+     given the one Explore would have opened on — the last you looked at, else
+     the fullest that is yours rather than ClickHouse's. */
+  const databases = useQuery({
+    queryKey: ['databases'],
+    queryFn: api.databases,
+    enabled: mode === 'build',
+  })
+  useEffect(() => {
+    if (mode !== 'build' || !active || active.database || !databases.data) return
+    const target = resolveDatabase(databases.data, rememberedDatabase())
+    if (target) tabs.patch(active.id, { database: target })
+  }, [mode, active, databases.data, tabs])
+
+  /* The question in words, above the SQL, because the mistake it catches — "by
+     city" where you meant "by day" — is invisible in a SELECT and obvious in
+     English. The column list is the same one the form reads: React Query hands
+     back the one request, not two. */
+  const built = useQuery({
+    queryKey: ['table', database, spec?.table],
+    queryFn: () => api.table(database!, spec!.table),
+    enabled: mode === 'build' && Boolean(database && spec?.table),
+    staleTime: 5 * 60_000,
+  })
+  const sentence = useMemo(
+    () =>
+      spec
+        ? describeSpec(
+            spec,
+            (built.data?.columns ?? []).map((c) => ({ name: c.name, type: c.type })),
+          )
+        : '',
+    [spec, built.data],
+  )
+
+  const setSpec = useCallback(
+    (next: QuerySpec) => {
+      if (!active) return
+      setRefused(null)
+      tabs.patch(active.id, { spec: next })
+    },
+    [active, tabs],
+  )
+
+  /** Ask the question the form is describing.
+   *
+   *  Through `/api/data`, never through the editor's own endpoint: the document
+   *  is what the server reads, and rendering its SQL here to post it back would
+   *  be the second query language all over again. The `query_id` is minted the
+   *  same way it is for a statement, so Stop stops this too. */
+  const runBuilt = useCallback(async () => {
+    if (!active || !dsl || active.running) return
     const queryId = crypto.randomUUID()
     tabs.patch(active.id, { running: true, queryId, error: null })
+    setAwaiting(null)
+    setRefused(null)
+    setWhy(null)
     const startedAt = performance.now()
     try {
-      const result = await api.run({
-        sql: statement,
-        database,
-        query_id: queryId,
-      })
+      const answer = await api.dataset({ ...dsl, query_id: queryId })
       tabs.patch(active.id, {
         running: false,
         queryId: null,
-        result,
+        result: asResult(answer, queryId),
+        // The statement the server actually ran, not the one it rendered a
+        // moment ago for the strip — they are the same today, and a download
+        // built from the wrong one would be nobody's fault and everybody's
+        // problem.
+        ranSql: answer.sql,
+        sql: answer.sql,
+        specSql: answer.sql,
         error: null,
         wallMs: performance.now() - startedAt,
       })
@@ -94,7 +351,40 @@ export function Editor() {
         wallMs: performance.now() - startedAt,
       })
     }
-  }, [active, database, tabs])
+  }, [active, dsl, tabs])
+
+  const runStatement = useCallback(async () => {
+    if (!active || active.running) return
+    const view = editor.current?.view
+    const caret = view?.state.selection.main
+    const selected = caret && !caret.empty ? active.sql.slice(caret.from, caret.to) : null
+    const statement = selected ?? statementAt(active.sql, caret?.head ?? active.sql.length)?.sql
+    if (!statement?.trim()) return
+    await runSql(statement)
+  }, [active, runSql])
+
+  /** One Run, whichever face the tab is wearing. Everything that runs from a
+   *  keystroke, a button or a rewritten filter comes through here. */
+  const run = useCallback(async () => {
+    if (mode === 'build') await runBuilt()
+    else await runStatement()
+  }, [mode, runBuilt, runStatement])
+
+  /* ⌘↵ runs in both modes. In SQL it is a CodeMirror binding, registered at
+     high precedence below; the form has no editor to bind it to, so it is a
+     window listener for exactly as long as the form is on screen. Same
+     shortcut, same meaning — a person should not have to remember which half
+     of the page they are on. */
+  useEffect(() => {
+    if (mode !== 'build') return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Enter' || !(event.metaKey || event.ctrlKey)) return
+      event.preventDefault()
+      void run()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [mode, run])
 
   /** The statement the caret is in, or the selection. Everything that acts on
    *  "the query" acts on this. */
@@ -127,31 +417,214 @@ export function Editor() {
    *  ordinary result set, so it travels the same path as any other query. */
   const explain = useCallback(
     async (kind: ExplainKind) => {
-      if (!active) return
       const target = currentStatement()
-      if (!target?.sql.trim()) return
-      const queryId = crypto.randomUUID()
-      tabs.patch(active.id, { running: true, queryId, error: null })
-      const startedAt = performance.now()
-      try {
-        const result = await api.run({
-          sql: EXPLAINS[kind].prefix + target.sql.trim(),
-          database,
-          query_id: queryId,
+      const statement = target?.sql.trim()
+      if (!statement) return
+      const explainer: Explainer = EXPLAINS[kind]
+      const shaped = shapeOf(statement)
+      // ClickHouse only explains a SELECT, and what it says otherwise is a
+      // syntax error pointing at the second word — which reads as "your SQL is
+      // wrong" when the SQL is fine and the question was.
+      if (!shaped.isSelect) {
+        setExplainNote(null)
+        tabs.patch(active!.id, {
+          error: new Error(
+            `${explainer.label} only works on a SELECT. This statement is something else, and ClickHouse will not explain it.`,
+          ),
+          result: null,
+          ranSql: null,
         })
-        tabs.patch(active.id, {
-          running: false,
-          queryId: null,
-          result,
-          error: null,
-          wallMs: performance.now() - startedAt,
-        })
-      } catch (error) {
-        tabs.patch(active.id, { running: false, queryId: null, error, wallMs: performance.now() - startedAt })
+        return
+      }
+      // The wrapped form only makes sense for a SELECT, and only where the
+      // author has not already had their say about the analyzer.
+      const wrappable =
+        explainer.wrap !== undefined &&
+        shaped.isSelect &&
+        !/analyz/i.test(bodyOf(shaped, 'settings'))
+      setExplainNote(null)
+      if (wrappable) {
+        if (await runSql(explainer.wrap!(statement), false)) {
+          setExplainNote(explainer.note ?? null)
+          return
+        }
+      }
+      if (await runSql(explainer.plain(statement), false)) {
+        setExplainNote(wrappable ? (explainer.fallbackNote ?? null) : (explainer.note ?? null))
       }
     },
-    [active, currentStatement, database, tabs],
+    [currentStatement, runSql],
   )
+
+  /* ── The statement the grid is showing ──────────────────────────────────
+     Not "the statement under the caret": the caret may have moved since the
+     query ran, and a header click has to edit the query whose rows are on
+     screen. The span is found by looking for that text in the document, which
+     survives edits elsewhere in the tab and fails safe — no match, no
+     rewriting. */
+  const ran = active?.ranSql ?? null
+  const shape = useMemo(() => (ran ? shapeOf(ran) : null), [ran])
+  const editable = shape !== null && rewritable(shape)
+
+  const ranSpan = useCallback((): { start: number; end: number } | null => {
+    if (!active || !ran) return null
+    const at = active.sql.indexOf(ran)
+    return at === -1 ? null : { start: at, end: at + ran.length }
+  }, [active, ran])
+
+  /** Put a rewritten statement back in the document, and run it if the last run
+   *  was cheap enough to make that a courtesy rather than a liberty. */
+  const rewrite = useCallback(
+    (next: string) => {
+      if (!active || !ran || next === ran) return
+      const span = ranSpan()
+      if (!span) return
+      const sql = active.sql.slice(0, span.start) + next + active.sql.slice(span.end)
+      tabs.patch(active.id, { sql })
+      const policy = rerunPolicy(
+        active.result
+          ? {
+              elapsed: active.result.statistics.elapsed,
+              bytesRead: active.result.statistics.bytes_read,
+            }
+          : null,
+      )
+      if (policy.auto) void runSql(next)
+      else {
+        // The text has changed and the rows have not. Say so, and say why.
+        tabs.patch(active.id, { ranSql: next })
+        setAwaiting(policy.why)
+      }
+    },
+    [active, ran, ranSpan, runSql, tabs],
+  )
+
+  /** How to order by a result column.
+   *
+   *  By the select-list expression when the column *is* one — ordering by an
+   *  alias that shadows a column name resolves to the wrong thing — and by the
+   *  name otherwise, which is what an aliased aggregate needs. */
+  const orderRef = useCallback(
+    (column: string): string => {
+      const item = shape ? (selectItems(shape) ?? []).find((i) => i.resultName === column) : null
+      if (item && !item.alias && item.expr !== '*') return item.expr
+      return quoteIdent(column)
+    },
+    [shape],
+  )
+
+  const columnNames = useMemo(
+    () => (active?.result?.columns ?? []).map((c) => c.name),
+    [active?.result],
+  )
+
+  /* A gesture on the grid, carried into the form.
+
+     The form has no text to rewrite, so a re-run cannot simply follow the
+     statement: the spec changes, React renders, and only then is there a new
+     document to post. This flag is that one tick of patience. */
+  const rerun = useRef(false)
+  useEffect(() => {
+    if (!rerun.current || !dsl) return
+    rerun.current = false
+    void runBuilt()
+  }, [dsl, runBuilt])
+
+  /** Apply a spec edit the grid asked for, and re-run it if the last run was
+   *  cheap enough to make that a courtesy rather than a liberty — the same
+   *  policy, off the same figures, as a rewritten statement. */
+  const editSpec = useCallback(
+    (edit: ReturnType<typeof filterSpec> | QuerySpec) => {
+      if (!active) return
+      if ('refused' in edit) {
+        setRefused(edit.refused)
+        return
+      }
+      const next = 'spec' in edit ? edit.spec : edit
+      setRefused(null)
+      tabs.patch(active.id, { spec: next })
+      const policy = rerunPolicy(
+        active.result
+          ? {
+              elapsed: active.result.statistics.elapsed,
+              bytesRead: active.result.statistics.bytes_read,
+            }
+          : null,
+      )
+      if (policy.auto) rerun.current = true
+      else setAwaiting(policy.why)
+    },
+    [active, tabs],
+  )
+
+  /** What the grid may do to the form. Every gesture the statement offers, on
+   *  the question instead — see `lib/query`, which decides which section of the
+   *  form each one lands in. */
+  const buildGrid: GridQuery | undefined = useMemo(() => {
+    if (mode !== 'build' || !spec || spec.projections.length === 0) return undefined
+    return {
+      // Not "add to the WHERE": which side of the grouping this lands on is the
+      // form's decision, not the clicker's, and `filterSpec` makes it.
+      filterLabel: 'Add this filter',
+      order: spec.orderings.map((o) => ({ column: o.ref, desc: o.desc })),
+      onSort: (column, extend) => editSpec(cycleSpecOrder(spec, column.name, extend)),
+      onClearOrder: () => editSpec(clearSpecOrder(spec)),
+      onFilter: (column, op, value) => editSpec(filterSpec(spec, column.name, op as Op, value)),
+      // The same rule the statement follows: a question that selects one thing
+      // cannot be narrowed by dropping it.
+      onDrop:
+        spec.projections.length > 1
+          ? (column) => editSpec(dropSpecColumn(spec, column.name))
+          : undefined,
+    }
+  }, [mode, spec, editSpec])
+
+  /** What the grid may do to the statement. Absent — and every gesture stays
+   *  local — when the statement is one this app declines to rewrite. */
+  const sqlGrid: GridQuery | undefined = useMemo(() => {
+    if (!shape || !editable || !ran) return undefined
+    return {
+      order: orderTerms(shape).map((term) => ({
+        column: term.expr.replace(/`/g, ''),
+        desc: term.desc,
+      })),
+      onSort: (column, extend) => rewrite(cycleOrder(ran, orderRef(column.name), extend)),
+      onClearOrder: () => rewrite(clearOrder(ran)),
+      onFilter: (column, op, value) => {
+        const predicate = cellPredicate(column.name, column.type, op as CellOp, value, literal)
+        if (predicate) rewrite(addFilter(ran, predicate))
+      },
+      // A statement whose select list cannot be narrowed — one bare `count()` —
+      // simply does not offer it, rather than offering it and doing nothing.
+      onDrop:
+        columnNames.length > 1
+          ? (column) => rewrite(dropColumn(ran, column.name, columnNames))
+          : undefined,
+    }
+  }, [shape, editable, ran, rewrite, orderRef, columnNames])
+
+  const gridQuery = mode === 'build' ? buildGrid : sqlGrid
+
+  /** Read the plan of the statement whose rows are on screen. */
+  const explainWhy = useCallback(async () => {
+    if (!ran) return
+    setWhyRunning(true)
+    try {
+      const plan = await api.run({
+        sql: `EXPLAIN PLAN indexes = 1 ${ran.trim()}`,
+        database,
+        query_id: crypto.randomUUID(),
+      })
+      const text = plan.rows.map((row) => String(row[0] ?? '')).join('\n')
+      setWhy({ said: verdicts(readPlan(text)), sql: ran, failed: false })
+    } catch {
+      // An EXPLAIN the server refuses is not worth an error page over: the
+      // statistics it was offered beside are still true.
+      setWhy({ said: [], sql: ran, failed: true })
+    } finally {
+      setWhyRunning(false)
+    }
+  }, [database, ran])
 
   const cancel = useCallback(async () => {
     if (!active?.queryId) return
@@ -181,31 +654,64 @@ export function Editor() {
     [run],
   )
 
-  // Only the *name* of the FROM target is a dependency: rebuilding the
-  // language extension on every keystroke would be wasteful, and the target
-  // changes rarely.
-  const fromTable = active ? tableInStatement(active.sql)?.table : undefined
+  /* The completion reads the live document itself, so this no longer has to be
+     rebuilt when the FROM target changes — only when the schema snapshot or the
+     database does. */
   const extensions = useMemo(
     () => [
       runKeymap,
-      clickhouseSql(schema.data ?? [], database, fromTable),
+      clickhouseSql(),
+      flintCompletion({ schema: schema.data ?? [], database }),
       flintTheme,
       flintHighlighting,
     ],
-    [runKeymap, schema.data, database, fromTable],
+    [runKeymap, schema.data, database],
   )
+
+  /* The rail writes here. Bound while this page is mounted and the view exists;
+     unbound on the way out, so a click on a table elsewhere in the app goes back
+     to navigating. */
+  const { bindWriter } = tabs
+  useEffect(() => {
+    // Unbound while the form is up. There is no caret to honour then, and the
+    // rail sends its clicks to the form instead — see `pickTable`.
+    if (!ready || mode !== 'sql') return
+    bindWriter({
+      read: () => {
+        const view = editor.current?.view
+        const doc = view?.state.doc.toString() ?? ''
+        return { doc, pos: view?.state.selection.main.head ?? doc.length }
+      },
+      write: (insertion) => {
+        const view = editor.current?.view
+        if (!view) return
+        const caret = insertion.from + (insertion.caret ?? insertion.text.length)
+        view.dispatch({
+          changes: { from: insertion.from, to: insertion.to, insert: insertion.text },
+          selection: { anchor: caret },
+          scrollIntoView: true,
+        })
+        view.focus()
+      },
+    })
+    return () => bindWriter(null)
+  }, [bindWriter, ready, mode])
 
   if (!active) return null
 
   // A one-line query in a 370px pane is what the editor used to look like:
-  // mostly emptiness, with the results squeezed underneath. Follow the
-  // content instead, within bounds — enough room to keep typing, never more
-  // than half the screen.
+  // mostly emptiness, with the results squeezed underneath. Follow the content
+  // instead, within bounds. The ceiling is deliberately lower than it was — now
+  // that the grid can edit the statement, the statement is something you read a
+  // line of and the rows are what you look at.
   const lines = active.sql.split('\n').length
-  const autoHeight = Math.min(
-    Math.max(window.innerHeight * 0.45, 220),
-    Math.max(132, lines * 21.5 + 26),
-  )
+  const autoHeight =
+    mode === 'build'
+      ? // A form has no "content height" to follow — every group is there
+        // whether or not it has anything in it. So it opens at a size the
+        // column list is usable in, and the same grip resizes it.
+        Math.max(Math.min(window.innerHeight * 0.34, 380), 224)
+      : Math.min(Math.max(window.innerHeight * 0.32, 170), Math.max(96, lines * 21.5 + 22))
 
   return (
     <section className="editor">
@@ -215,19 +721,30 @@ export function Editor() {
           onChange={(next) => tabs.patch(active.id, { database: next })}
         />
 
+        <ModeSwitch tab={active} onSwitch={(next) => tabs.setMode(active.id, next)} />
+
         <div className="editor__actions">
           {active.running ? (
             <button className="btn" onClick={cancel}>
               Stop
             </button>
           ) : (
-            <button className="btn btn--spark" onClick={() => void run()}>
+            <button
+              className="btn btn--spark"
+              onClick={() => void run()}
+              disabled={mode === 'build' && !dsl}
+              title={mode === 'build' && blocked ? blocked : undefined}
+            >
               Run <span className="kbd">⌘↵</span>
             </button>
           )}
-          <button className="btn" onClick={() => void format()} disabled={active.running}>
-            Format
-          </button>
+          {/* Nothing to format in a generated statement: the server writes it,
+              and this button would tidy something the next keystroke rewrites. */}
+          {mode === 'sql' ? (
+            <button className="btn" onClick={() => void format()} disabled={active.running}>
+              Format
+            </button>
+          ) : null}
           <label className="explain">
             <select
               className="picker__select explain__select"
@@ -319,7 +836,20 @@ export function Editor() {
 
       <TabStrip />
 
-      <div className="editor__code" style={{ flex: `0 0 ${codeHeight ?? autoHeight}px` }}>
+      {/* The one place the two faces differ. Same band, same height, same grip
+          under it — so the switch above reads as a switch and not as a second
+          page that happens to look similar. */}
+      <div
+        className={`editor__code${mode === 'build' ? ' editor__code--build' : ''}`}
+        style={{ flex: `0 0 ${codeHeight ?? autoHeight}px` }}
+      >
+        {mode === 'build' ? (
+          active.spec ? (
+            <BuildPane spec={active.spec} onChange={setSpec} database={database} />
+          ) : (
+            <Loading label="Opening the form" />
+          )
+        ) : (
         <CodeMirror
           ref={editor}
           value={active.sql}
@@ -332,14 +862,18 @@ export function Editor() {
             lineNumbers: true,
             foldGutter: false,
             highlightActiveLine: true,
-            autocompletion: true,
+            // Off here, on in `extensions`: two `autocompletion()` instances
+            // would race to say what belongs at the caret.
+            autocompletion: false,
             bracketMatching: true,
             closeBrackets: true,
           }}
           extensions={extensions}
+          onCreateEditor={() => setReady(true)}
           onChange={(sql) => tabs.patch(active.id, { sql })}
           placeholder="SELECT … — ⌘↵ runs the statement under the caret"
         />
+        )}
       </div>
 
       {/* Drag to size the editor, double-click to let it follow the content
@@ -380,14 +914,79 @@ export function Editor() {
         error={active.error}
         wallMs={active.wallMs}
         maxRows={config.data?.max_result_rows}
+        awaiting={awaiting}
+        mode={mode}
       />
+
+      {/* A gesture the form could not carry. Said where the figures are, and
+          for exactly as long as it is true — a click that quietly does nothing
+          is the one that stops people trusting the ones that work. */}
+      {refused ? <p className="editor__refused">{refused}</p> : null}
+
+      {/* Why a large read was large — offered on the figures, never on a guess
+          about what the query meant, and never at the cost of the rows. */}
+      {active.result && ran && worthExplaining(active.result.statistics.bytes_read) ? (
+        <div className="whystrip">
+          {why && why.sql === ran ? (
+            why.said.length > 0 ? (
+              <ul className="planread">
+                {why.said.map((verdict) => (
+                  <li className={`planread__v planread__v--${verdict.tone}`} key={verdict.text}>
+                    <span className="planread__text">{verdict.text}</span>
+                    {verdict.evidence ? (
+                      <span className="planread__ev num">{verdict.evidence}</span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="bhint">
+                {why.failed
+                  ? 'The server would not explain this statement, so there is nothing to add to the figures above.'
+                  : 'The plan has nothing to add: this read had no parts or granules to skip, so the figures above are the whole story.'}
+              </p>
+            )
+          ) : (
+            <button className="whystrip__ask" onClick={() => void explainWhy()} type="button">
+              {whyRunning
+                ? 'Reading the plan…'
+                : `It read ${bytes(active.result.statistics.bytes_read)} — why?`}
+            </button>
+          )}
+        </div>
+      ) : null}
+
+      {/* What is about to run, said in the slot where the statement's own
+          clauses are said. In SQL that is a row of chips you can take back; in
+          the form it is the sentence and the statement the form produced —
+          which the brief asks to be on screen always, so nobody has to trust a
+          generated query blindly. */}
+      {mode === 'build' ? (
+        <BuiltStrip
+          sentence={sentence}
+          sql={active.sql}
+          blocked={blocked}
+          limit={active.spec?.limit ?? 0}
+          pending={explained.isFetching}
+          error={explained.error}
+        />
+      ) : active.result && shape && ran ? (
+        <QueryStrip
+          shape={shape}
+          sql={ran}
+          editable={editable}
+          database={database}
+          resultColumns={columnNames}
+          onRewrite={rewrite}
+        />
+      ) : null}
 
       <div className="editor__results">
         {dashOpen ? (
           <DashPanel
             sql={currentStatement()?.sql ?? active.sql}
             database={database ?? ''}
-            chart={chart}
+            chart={active.chart}
             suggestedTitle={active.title || 'Untitled'}
             workspace={config.data?.workspace ?? null}
             onClose={() => setDashOpen(false)}
@@ -410,7 +1009,11 @@ export function Editor() {
           <HistoryPanel
             onClose={() => setHistoryOpen(false)}
             onPick={(sql) => {
-              tabs.patch(active.id, { sql })
+              // A statement out of the history is a statement, whatever this
+              // tab was showing: nothing reads it back into a form, so the tab
+              // turns over with it rather than holding a form its SQL no longer
+              // matches. The form stays on the tab — it is one Escape back.
+              tabs.patch(active.id, { sql, mode: 'sql' })
               setHistoryOpen(false)
             }}
           />
@@ -426,12 +1029,33 @@ export function Editor() {
               The query ran and came back empty. Loosen the WHERE clause and run it again.
             </EmptyNote>
           ) : isPlan(active.result) ? (
-            <pre className="code code--wrap plan">
-              {active.result.rows.map((r) => String(r[0] ?? '')).join('\n')}
-            </pre>
+            <PlanView
+              text={active.result.rows.map((r) => String(r[0] ?? '')).join('\n')}
+              note={explainNote}
+            />
           ) : (
-            <ResultView result={active.result} onChartChange={setChart} />
+            <ResultView
+              /* Keyed by tab so the chart and the analyses panel belong to the
+                 question they were opened on. Without it React keeps one
+                 instance across a tab switch, and the form you picked for one
+                 result describes another result's columns. */
+              key={active.id}
+              result={active.result}
+              chosenKind={active.chart?.kind ?? null}
+              onChartChange={(chart) => tabs.patch(active.id, { chart })}
+              query={gridQuery}
+              /* `ranSql`, not what is in the editor now. The file has to be the
+                 result on screen — a reader who typed three more characters
+                 after running would otherwise download an answer to a question
+                 they never asked, and nothing would say so. */
+              download={ran ? downloadFor(mode, ran, active.spec, database, active.title) : undefined}
+            />
           )
+        ) : mode === 'build' ? (
+          <EmptyNote title="Nothing has run in this tab yet">
+            Pick a column or two above and press ⌘↵. The statement in between is exactly what
+            will be sent — switch to SQL whenever you want to go further than the form allows.
+          </EmptyNote>
         ) : (
           <EmptyNote title="Nothing has run in this tab yet">
             Write a statement above and press ⌘↵. Only the statement under the caret runs, so
@@ -443,15 +1067,613 @@ export function Editor() {
   )
 }
 
+/** Which face this tab wears, and whether it may change.
+ *
+ *  Two buttons rather than a checkbox, because there are two named things here
+ *  and neither is the negation of the other. The direction that cannot be taken
+ *  is disabled and carries its reason — see `canSwitch`, which owns the rule. A
+ *  control that is simply missing teaches nothing; one that says "the statement
+ *  has been edited since the form wrote it" teaches the whole design in a
+ *  sentence. */
+function ModeSwitch({ tab, onSwitch }: { tab: QueryTab; onSwitch: (mode: TabMode) => void }) {
+  return (
+    <div className="segmented" role="group" aria-label="How to ask this question">
+      {MODES.map(({ id, label, hint }) => {
+        const allowed = canSwitch(tab, id)
+        const on = tab.mode === id
+        return (
+          <button
+            key={id}
+            className={`segmented__item${on ? ' is-on' : ''}`}
+            aria-pressed={on}
+            disabled={!allowed.ok}
+            title={allowed.ok ? hint : allowed.why}
+            onClick={() => onSwitch(id)}
+            type="button"
+          >
+            {label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+const MODES: { id: TabMode; label: string; hint: string }[] = [
+  { id: 'build', label: 'Form', hint: 'Ask without writing SQL. The statement is generated and shown.' },
+  { id: 'sql', label: 'SQL', hint: 'Write the statement yourself.' },
+]
+
+/** What a download will hand over, which is a different fact in each mode.
+ *
+ *  In SQL the statement is the whole truth and the note reads the result. A
+ *  generated statement carries one figure nobody typed — the row past the page,
+ *  which is how the answer knows there is more behind it — and exporting that
+ *  row would hand over a file with one more line than the question asked for.
+ *  So the form's limit is put back before the statement leaves, and the note
+ *  names the limit rather than the rows that happened to come back. */
+function downloadFor(
+  mode: TabMode,
+  ran: string,
+  spec: QuerySpec | null,
+  database: string | undefined,
+  stem: string,
+): { sql: string; database?: string; stem?: string; note?: string } {
+  if (mode !== 'build' || !spec) return { sql: ran, database, stem }
+  return {
+    sql: setLimit(ran, spec.limit),
+    database,
+    stem,
+    note: builtDownloadNote(spec.limit),
+  }
+}
+
+/** The statement the form is about to send, and the sentence it says.
+ *
+ *  It sits where the SQL tab's clause chips sit, and it is deliberately not
+ *  editable: this text is regenerated on every change to the form, so an edit
+ *  here would be lost on the next keystroke without a word. The way to take it
+ *  over is the switch above, which keeps it.
+ *
+ *  **Open by default, and closable.** The brief is explicit that the generated
+ *  statement should be on screen rather than hidden, so that is where a first
+ *  visit finds it — the whole argument for a form that stays close to SQL is
+ *  that you can read what it wrote. But it is also six lines of vertical space
+ *  taken from the answer, on the page where the answer is the point, and the
+ *  sentence above it already carries the reading that catches a wrong grouping.
+ *  So somebody who has learned to trust it can fold it away, and the choice is
+ *  remembered. The sentence never folds: a question with nothing on screen
+ *  saying what it asks is the thing this strip exists to prevent. */
+function BuiltStrip({
+  sentence,
+  sql,
+  blocked,
+  limit,
+  pending,
+  error,
+}: {
+  sentence: string
+  sql: string
+  blocked: string | null
+  limit: number
+  pending: boolean
+  error: unknown
+}) {
+  const [open, setOpen] = useState(() => {
+    try {
+      return localStorage.getItem('flint.builtSql') !== 'closed'
+    } catch {
+      /* private browsing, blocked storage — the default is the promise */
+      return true
+    }
+  })
+  const toggle = () => {
+    setOpen((was) => {
+      try {
+        localStorage.setItem('flint.builtSql', was ? 'closed' : 'open')
+      } catch {
+        /* nothing to do: the fold still holds for this session */
+      }
+      return !was
+    })
+  }
+
+  return (
+    <div className={`builtstrip${open ? '' : ' is-folded'}`}>
+      <p className="builtstrip__says">
+        <span className="label">{blocked ? 'not yet a question' : 'asking'}</span>
+        <span className="builtstrip__sentence">{blocked ?? sentence}</span>
+        {blocked ? null : (
+          <button
+            className="builtstrip__fold"
+            onClick={toggle}
+            aria-expanded={open}
+            title={open ? 'Fold the generated statement away' : 'Show the statement this will send'}
+            type="button"
+          >
+            SQL <span aria-hidden="true">{open ? '▾' : '▸'}</span>
+          </button>
+        )}
+      </p>
+      {error ? (
+        <ErrorNote error={error} />
+      ) : blocked || !open ? null : (
+        <>
+          <pre className={`code code--wrap builtstrip__sql${pending ? ' is-stale' : ''}`}>{sql}</pre>
+          {/* The one figure in there that nobody typed. Said here rather than
+              left to look like an off-by-one — and only where the figure is,
+              which is inside the fold with the statement it belongs to. */}
+          {limit > 0 && sql.includes(`LIMIT ${limit + 1}`) ? (
+            <p className="builtstrip__note mono-dim">
+              One row past your {limit}: it is how the answer knows whether there is more behind
+              it, and it is dropped before you see it.
+            </p>
+          ) : null}
+        </>
+      )}
+    </div>
+  )
+}
+
+/** The query, as a row of things you can take back.
+ *
+ *  Every gesture on this page that edits the SQL — a header click, a cell
+ *  filter, a top value in the analyses panel — adds a clause to a statement the
+ *  reader may not be looking at. Without this strip the page would be doing
+ *  arithmetic behind their back: the rows change, and *why* they changed is four
+ *  lines up in a text editor they were not reading.
+ *
+ *  So this states the query as a sentence of removable parts. Each chip is one
+ *  clause of the statement, in the order SQL writes them, and each one can be
+ *  undone where it is. It is not a second model of the query — every chip is read
+ *  from the statement on each render and every × writes back to it.
+ */
+function QueryStrip({
+  shape,
+  sql,
+  editable,
+  database,
+  resultColumns,
+  onRewrite,
+}: {
+  shape: import('../lib/rewrite').Shape
+  sql: string
+  editable: boolean
+  database: string | undefined
+  resultColumns: string[]
+  onRewrite: (next: string) => void
+}) {
+  const ref = fromRef(shape)
+  if (!editable || !ref) {
+    return (
+      <div className="qstrip qstrip--closed">
+        <span className="qstrip__note">
+          {shape.compound
+            ? 'A statement with a UNION in it is read-only here — its clauses belong to more than one SELECT. The editor above still runs it.'
+            : shape.isSelect
+              ? 'This statement reads something other than a plain table, so the grid leaves its clauses alone. The editor above still runs it.'
+              : 'Only a SELECT can be edited from the grid. The editor above still runs this.'}
+        </span>
+      </div>
+    )
+  }
+
+  const prewhere = whereTerms(shape, 'prewhere')
+  const where = whereTerms(shape)
+  const group = groupTerms(shape)
+  const having = whereTerms(shape, 'having')
+  const order = orderTerms(shape)
+  const limit = Number(bodyOf(shape, 'limit'))
+  const skipped = untouched(shape)
+
+  return (
+    <div className="qstrip">
+      <span className="qstrip__key label">from</span>
+      <span className="qstrip__from">
+        {ref.database ? `${ref.database}.` : ''}
+        {ref.table}
+      </span>
+
+      <SelectChip
+        shape={shape}
+        sql={sql}
+        database={ref.database ?? database}
+        table={ref.table}
+        resultColumns={resultColumns}
+        onRewrite={onRewrite}
+      />
+
+      {/* Not a chip: removing the DISTINCT would change the row count, which is
+          not what anybody clicking around a strip of filters expects. Stated
+          because nothing else on the page reveals it. */}
+      {isDistinct(shape) ? (
+        <span className="qstrip__flag" title="Only distinct rows are returned">
+          distinct
+        </span>
+      ) : null}
+
+      {prewhere.length > 0 ? (
+        <>
+          <span
+            className="qstrip__key label"
+            title="Filtered before the other columns are read — ClickHouse’s own trick for a wide table"
+          >
+            prewhere
+          </span>
+          {prewhere.map((term) => (
+            <Chip
+              key={term.start}
+              label={term.text}
+              title={`Take ${term.text} out of the PREWHERE`}
+              onRemove={() => onRewrite(removeTerm(sql, term, 'prewhere'))}
+            />
+          ))}
+        </>
+      ) : null}
+
+      {where.length > 0 ? (
+        <>
+          <span className="qstrip__key label">where</span>
+          {where.map((term) => (
+            <Chip
+              key={term.start}
+              label={term.text}
+              title={`Take ${term.text} out of the WHERE`}
+              onRemove={() => onRewrite(removeTerm(sql, term))}
+            />
+          ))}
+        </>
+      ) : null}
+
+      {group.terms.length > 0 ? (
+        <>
+          <span className="qstrip__key label">by</span>
+          {group.terms.map((term) => (
+            <Chip
+              key={term.start}
+              label={term.text}
+              title={`Stop grouping by ${term.text}`}
+              onRemove={() => onRewrite(removeGroupTerm(sql, term.text))}
+            />
+          ))}
+          {/* Shown, never removable: WITH TOTALS modifies the grouping rather
+              than adding to it. */}
+          {group.modifier ? (
+            <span className="qstrip__flag" title="One extra row for the whole set">
+              {group.modifier.toLowerCase()}
+            </span>
+          ) : null}
+        </>
+      ) : null}
+
+      {having.length > 0 ? (
+        <>
+          <span
+            className="qstrip__key label"
+            title="Applied after the grouping, so it can filter an aggregate"
+          >
+            having
+          </span>
+          {having.map((term) => (
+            <Chip
+              key={term.start}
+              label={term.text}
+              title={`Take ${term.text} out of the HAVING`}
+              onRemove={() => onRewrite(removeTerm(sql, term, 'having'))}
+            />
+          ))}
+        </>
+      ) : null}
+
+      {order.length > 0 ? (
+        <>
+          <span className="qstrip__key label">order</span>
+          {order.map((term) => (
+            <Chip
+              key={term.expr}
+              label={`${term.expr}${term.desc ? ' ↓' : ' ↑'}`}
+              title={`Stop ordering by ${term.expr}`}
+              onRemove={() => onRewrite(removeOrderTerm(sql, term.expr))}
+            />
+          ))}
+        </>
+      ) : null}
+
+      <label className="qstrip__limit">
+        <span className="label">limit</span>
+        <select
+          className="picker__select"
+          value={Number.isFinite(limit) && limit > 0 ? String(limit) : ''}
+          onChange={(event) => onRewrite(setLimit(sql, Number(event.target.value)))}
+          aria-label="How many rows to ask for"
+        >
+          {/* The statement's own cap is always an option, even an odd one:
+              a picker that silently rounds 250 to 500 is a picker that edits
+              your query for having opened it. */}
+          {LIMITS.includes(limit) ? null : (
+            <option value={String(limit)}>{Number.isFinite(limit) && limit > 0 ? limit : 'none'}</option>
+          )}
+          {LIMITS.map((n) => (
+            <option key={n} value={String(n)}>
+              {n}
+            </option>
+          ))}
+          <option value="0">none</option>
+        </select>
+      </label>
+
+      {/* The clauses this strip cannot act on, named rather than skipped: a
+          sentence that reads the query back has to admit the words it left
+          out. */}
+      {skipped.length > 0 ? (
+        <span
+          className="qstrip__skipped"
+          title="This strip does not edit these — the editor above does"
+        >
+          also {skipped.map((name) => SKIPPED_LABEL[name]).join(', ')}
+        </span>
+      ) : null}
+    </div>
+  )
+}
+
+const SKIPPED_LABEL: Partial<Record<import('../lib/rewrite').ClauseName, string>> = {
+  with: 'a WITH',
+  offset: 'an OFFSET',
+  settings: 'SETTINGS',
+  format: 'a FORMAT',
+}
+
+const LIMITS = [100, 500, 1000, 10_000]
+
+function Chip({
+  label,
+  title,
+  onRemove,
+}: {
+  label: string
+  title: string
+  onRemove: () => void
+}) {
+  return (
+    <span className="qchip">
+      <span className="qchip__text" title={label}>
+        {label}
+      </span>
+      <button className="qchip__x" onClick={onRemove} title={title} aria-label={title} type="button">
+        ×
+      </button>
+    </span>
+  )
+}
+
+/** The columns the query asks for, and the ones it could.
+ *
+ *  This is the chip that answers "give me these four fields of this table"
+ *  without writing them out: it lists the table's columns, ticks the ones the
+ *  select list names, and rewrites the list when one is toggled. Reading a
+ *  `SELECT *` back as "all of them" is safe here because the result's own column
+ *  list *is* what the star expanded to.
+ *
+ *  It steps aside for a select list it cannot represent. `SELECT host,
+ *  count()` is not a subset of the table's columns, and a tick-list that
+ *  pretended otherwise would drop the aggregate the moment anybody used it. */
+function SelectChip({
+  shape,
+  sql,
+  database,
+  table,
+  resultColumns,
+  onRewrite,
+}: {
+  shape: import('../lib/rewrite').Shape
+  sql: string
+  database: string | undefined
+  table: string
+  resultColumns: string[]
+  onRewrite: (next: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const box = useRef<HTMLDivElement>(null)
+
+  const detail = useQuery({
+    queryKey: ['table', database, table],
+    queryFn: () => api.table(database!, table),
+    enabled: open && Boolean(database),
+    staleTime: 5 * 60_000,
+  })
+
+  useEffect(() => {
+    if (!open) return
+    const onDown = (event: PointerEvent) => {
+      if (!box.current?.contains(event.target as Node)) setOpen(false)
+    }
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    window.addEventListener('pointerdown', onDown, true)
+    window.addEventListener('keydown', onKey, true)
+    return () => {
+      window.removeEventListener('pointerdown', onDown, true)
+      window.removeEventListener('keydown', onKey, true)
+    }
+  }, [open])
+
+  const items = selectItems(shape) ?? []
+  const star = items.length === 1 && items[0]!.expr === '*'
+  const named = items.map((item) => item.resultName)
+  const plain = star || named.every((name) => name !== null)
+  const chosen = new Set(star ? resultColumns : named.filter((n): n is string => n !== null))
+
+  const all = detail.data?.columns.map((c) => ({ name: c.name, type: c.type })) ?? []
+
+  const toggle = (name: string) => {
+    const next = new Set(chosen)
+    if (next.has(name)) next.delete(name)
+    else next.add(name)
+    // The last column stays: a SELECT with nothing in it is not a narrower
+    // query, it is a syntax error.
+    if (next.size === 0) return
+    const ordered = all.filter((column) => next.has(column.name)).map((column) => column.name)
+    if (ordered.length === 0) return
+    onRewrite(
+      ordered.length === all.length
+        ? setSelectList(sql, ['*'])
+        : setSelectList(sql, ordered.map(quoteIdent)),
+    )
+  }
+
+  if (!plain) {
+    return (
+      <>
+        <span className="qstrip__key label">select</span>
+        <span className="qstrip__from" title={items.map((i) => i.text).join(', ')}>
+          {items.length} {items.length === 1 ? 'expression' : 'expressions'}
+        </span>
+      </>
+    )
+  }
+
+  return (
+    <>
+      <span className="qstrip__key label">select</span>
+      {/* Naming the columns is worth one click of its own.
+ 
+          A star is the fastest thing to type and the worst thing to keep: on a
+          columnar store the columns you do not name are the ones you do not pay
+          for, and a named list is also what makes every other affordance on this
+          page possible — you cannot drop a column out of a `*`. The expansion
+          uses the result's own column list, which *is* what the star meant on
+          the last run, so this needs nothing from the server. */}
+      {star && resultColumns.length > 0 ? (
+        <button
+          className="qchip qchip--button"
+          onClick={() => onRewrite(setSelectList(sql, resultColumns.map(quoteIdent)))}
+          title={`Write the ${resultColumns.length} columns out, so the query names what it reads`}
+          type="button"
+        >
+          expand ★
+        </button>
+      ) : null}
+      <div className="qstrip__pick" ref={box}>
+        <button
+          className={`qchip qchip--button${open ? ' is-on' : ''}`}
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+          title="Which of this table’s columns the query asks for"
+          type="button"
+        >
+          {star ? `all ${resultColumns.length}` : `${chosen.size} of this table’s columns`}
+        </button>
+        {open ? (
+          <div className="selpick" role="group" aria-label={`Columns of ${table} to select`}>
+            {detail.isPending ? <p className="bhint">Reading the column list…</p> : null}
+            {detail.error ? <ErrorNote error={detail.error} /> : null}
+            {all.length > 0 ? (
+              <div className="selpick__list">
+                {all.map((column) => (
+                  <label className="selpick__item" key={column.name}>
+                    <input
+                      type="checkbox"
+                      checked={chosen.has(column.name)}
+                      onChange={() => toggle(column.name)}
+                    />
+                    <TypeIcon type={column.type} />
+                    <span className="selpick__name">{column.name}</span>
+                  </label>
+                ))}
+              </div>
+            ) : null}
+            {all.length > 0 ? (
+              <p className="bhint">
+                Unticking one takes it out of the SELECT, so the server stops reading it.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </>
+  )
+}
+
+interface Explainer {
+  label: string
+  /** The plain form, which every server understands. */
+  plain: (sql: string) => string
+  /** A better form to try first, when there is one. */
+  wrap?: (sql: string) => string
+  /** What the answer on screen is, when the plain reading of it would mislead. */
+  note?: string
+  /** What it is instead, when `wrap` was refused by the server. */
+  fallbackNote?: string
+}
+
+/** A plan, read back as statements and then printed in full.
+ *
+ *  The figures are already in the text — parts and granules against the totals,
+ *  which index pruned, the PREWHERE the server chose, which side a join builds.
+ *  Nobody reads them out of forty lines of box drawing, so `lib/plan` does the
+ *  arithmetic and this puts the sentences above the text rather than instead of
+ *  it: the plan stays, because a verdict somebody cannot check is a verdict they
+ *  have to take on faith. */
+function PlanView({ text, note }: { text: string; note: string | null }) {
+  const said = useMemo(() => verdicts(readPlan(text)), [text])
+  return (
+    <div className="planview">
+      {note ? <p className="planview__note">{note}</p> : null}
+      {said.length > 0 ? (
+        <ul className="planread">
+          {said.map((verdict) => (
+            <li className={`planread__v planread__v--${verdict.tone}`} key={verdict.text}>
+              <span className="planread__text">{verdict.text}</span>
+              {verdict.evidence ? (
+                <span className="planread__ev num">{verdict.evidence}</span>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <pre className="code code--wrap plan">{text}</pre>
+    </div>
+  )
+}
+
 /** The EXPLAIN family, in the order they are useful: what it will do, how it
- *  will do it, how much it thinks it will read, how it read your SQL. */
+ *  will do it, how much it thinks it will read, how it read your SQL.
+ *
+ *  `Rewritten SQL` needs the wrapper, and the reason is worth writing down.
+ *  Since the new analyzer became the default, `EXPLAIN SYNTAX` prints your query
+ *  back at you almost unchanged — the rewriting it used to show (a `*` expanded
+ *  into real columns, constants folded, predicates moved) now happens in the
+ *  query tree instead. The pass that answers "what did ClickHouse turn my SQL
+ *  into" still exists, behind `enable_analyzer = 0`, and the only way to ask for
+ *  it without that setting appearing in the answer is to put it on a wrapper
+ *  query: `viewExplain` runs the EXPLAIN as a table function, so the setting
+ *  belongs to the wrapper and the output is nothing but the rewritten SQL.
+ *
+ *  On a server where that setting does not exist the wrapper fails, the plain
+ *  form runs instead, and the note says which one you are reading. */
 const EXPLAINS = {
-  plan: { label: 'Plan (with indexes)', prefix: 'EXPLAIN PLAN indexes = 1 ' },
-  pipeline: { label: 'Pipeline', prefix: 'EXPLAIN PIPELINE ' },
-  estimate: { label: 'Estimate', prefix: 'EXPLAIN ESTIMATE ' },
-  syntax: { label: 'Rewritten SQL', prefix: 'EXPLAIN SYNTAX ' },
-  tree: { label: 'Query tree', prefix: 'EXPLAIN QUERY TREE ' },
-} as const
+  plan: { label: 'Plan (with indexes)', plain: (sql) => `EXPLAIN PLAN indexes = 1 ${sql}` },
+  pipeline: { label: 'Pipeline', plain: (sql) => `EXPLAIN PIPELINE ${sql}` },
+  estimate: { label: 'Estimate', plain: (sql) => `EXPLAIN ESTIMATE ${sql}` },
+  syntax: {
+    label: 'Rewritten SQL',
+    wrap: (sql) =>
+      `SELECT * FROM viewExplain('EXPLAIN SYNTAX', '', (${sql}))\nSETTINGS enable_analyzer = 0`,
+    plain: (sql) => `EXPLAIN SYNTAX ${sql}`,
+    note: 'How the pre-analyzer pass rewrites your SQL — the one that expands `*` into real columns, folds constants and moves predicates. The current analyzer does this in the query tree instead, so this is a reading of your query rather than the plan that will run.',
+    fallbackNote:
+      'This server would not answer for the older analyzer, so this is the current one — which mostly prints your query back. Try the query tree for what it actually resolved to.',
+  },
+  tree: {
+    label: 'Query tree',
+    plain: (sql) => `EXPLAIN QUERY TREE ${sql}`,
+    note: 'The analyzer’s own resolution: every column it worked out, with the type it gave it.',
+  },
+  // `satisfies` rather than an annotation, so the keys stay the five literals
+  // the picker walks and every entry is still checked against the shape.
+} satisfies Record<string, Explainer>
 
 type ExplainKind = keyof typeof EXPLAINS
 
@@ -531,6 +1753,13 @@ function SettingsPanel({
   )
 }
 
+/** The open questions.
+ *
+ *  A tab says which face it wears, because the strip is how somebody finds the
+ *  one they were working in and "the form on system.query_log" and "the SQL on
+ *  system.query_log" are two different tabs with the same name. The mark is
+ *  read out too — a glyph nobody can hear is a distinction only sighted readers
+ *  get. */
 function TabStrip() {
   const tabs = useTabs()
   return (
@@ -544,6 +1773,11 @@ function TabStrip() {
         >
           <button className="tabstrip__pick" onClick={() => tabs.select(t.id)}>
             {t.running ? <span className="tabstrip__running" aria-label="running" /> : null}
+            {t.mode === 'build' ? (
+              <span className="tabstrip__mode" title="A form">
+                <span className="sr-only">form: </span>⊞
+              </span>
+            ) : null}
             {t.title || `query ${i + 1}`}
           </button>
           {tabs.tabs.length > 1 ? (
@@ -557,8 +1791,19 @@ function TabStrip() {
           ) : null}
         </div>
       ))}
-      <button className="tabstrip__add" onClick={() => tabs.open()} aria-label="New query tab">
+      <button className="tabstrip__add" onClick={() => tabs.open()} aria-label="New SQL tab">
         +
+      </button>
+      {/* The other way in, offered rather than hidden behind the switch: a tab
+          that has never held anything can become a form, but so can a person
+          who simply wants one and does not want to think about tabs. */}
+      <button
+        className="tabstrip__add"
+        onClick={() => tabs.openBuild()}
+        aria-label="New form tab"
+        title="A new question, without writing SQL"
+      >
+        ⊞
       </button>
     </div>
   )
@@ -603,12 +1848,20 @@ function StatsStrip({
   error,
   wallMs,
   maxRows,
+  awaiting,
+  mode,
 }: {
   running: boolean
   result: QueryResult | null
   error: unknown
   wallMs: number | null
   maxRows: number | undefined
+  /** Set when a click rewrote the statement but the rows on screen are still
+   *  the old ones, with the reason it was not run for you. */
+  awaiting: string | null
+  /** What changed under the rows, in the words of the face the reader is
+   *  looking at: a statement in SQL, a question in the form. */
+  mode: TabMode
 }) {
   const facts: string[] = []
   if (result) {
@@ -628,8 +1881,17 @@ function StatsStrip({
   return (
     <div className={`stats${running ? ' stats--running' : ''}`} aria-live="polite">
       <span className="stats__state label">
-        {running ? 'running' : error ? 'failed' : result ? 'done' : 'idle'}
+        {running ? 'running' : awaiting ? 'changed' : error ? 'failed' : result ? 'done' : 'idle'}
       </span>
+      {/* The rows on screen no longer answer the statement above them, and this
+          is the only place that can admit it. It says why rather than just
+          nagging: a re-run was withheld because the last one was expensive. */}
+      {awaiting && !running ? (
+        <span className="stats__changed">
+          the {mode === 'build' ? 'question' : 'statement'} changed — ⌘↵ to run it
+          <span className="stats__why">{awaiting}</span>
+        </span>
+      ) : null}
       {facts.map((f) => (
         <span className="stats__fact" key={f}>
           {f}

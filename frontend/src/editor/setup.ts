@@ -1,10 +1,9 @@
-import { sql, SQLDialect, type SQLNamespace } from '@codemirror/lang-sql'
+import { sql, SQLDialect } from '@codemirror/lang-sql'
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import { EditorView } from '@codemirror/view'
 import type { Extension } from '@codemirror/state'
 import { tags as t } from '@lezer/highlight'
 
-import type { SchemaEntry } from '../lib/api'
 
 /** ClickHouse's SQL, as far as the highlighter needs to know: backtick-quoted
  *  identifiers, `--` and `/* *\/` comments, and its own keyword set. */
@@ -23,45 +22,14 @@ const ClickHouse = SQLDialect.define({
   backslashEscapes: true,
 })
 
-/** Turn Flint's flat schema snapshot into the nested namespace CodeMirror
- *  wants, so `events.` completes columns and `analytics.` completes tables.
- *  The current database is also lifted to the top level, which is what you
- *  actually type. */
-function toNamespace(entries: SchemaEntry[], currentDatabase: string | undefined): SQLNamespace {
-  const root: Record<string, SQLNamespace> = {}
-
-  for (const entry of entries) {
-    const columns = entry.columns.map((name, i) => ({
-      label: name,
-      type: 'property' as const,
-      detail: entry.types[i] ?? '',
-    }))
-    const db = (root[entry.database] ??= { self: { label: entry.database, type: 'schema' }, children: {} }) as {
-      children: Record<string, SQLNamespace>
-    }
-    db.children[entry.table] = { self: { label: entry.table, type: 'type' }, children: columns }
-
-    if (entry.database === currentDatabase) {
-      root[entry.table] = { self: { label: entry.table, type: 'type' }, children: columns }
-    }
-  }
-  return root
-}
-
-export function clickhouseSql(
-  entries: SchemaEntry[],
-  currentDatabase: string | undefined,
-  /** The table the caret's statement reads from, so bare column names
-   *  complete without having to qualify them. */
-  defaultTable?: string | undefined,
-): Extension {
-  return sql({
-    dialect: ClickHouse,
-    schema: toNamespace(entries, currentDatabase),
-    defaultSchema: currentDatabase,
-    defaultTable,
-    upperCaseKeywords: true,
-  })
+/** The dialect, for the highlighter and the bracket matching.
+ *
+ *  No `schema` and no `defaultTable`: completion is `editor/complete`'s job now,
+ *  registered as an override so this extension's own sources never run. Passing
+ *  a schema here as well would put two answers on screen for the same
+ *  question — see the note at the top of that file. */
+export function clickhouseSql(): Extension {
+  return sql({ dialect: ClickHouse, upperCaseKeywords: true })
 }
 
 /** The editor is dressed entirely from the app's tokens, so it changes with
@@ -115,7 +83,15 @@ export const flintTheme: Extension = EditorView.theme({
     color: 'var(--chalk)',
   },
   '.cm-completionDetail': { color: 'var(--chalk-faint)', fontStyle: 'normal', marginLeft: '1em' },
-  '.cm-completionIcon': { color: 'var(--chalk-faint)' },
+  '.cm-completionIcon': { color: 'var(--chalk-faint)', opacity: '1' },
+  /* CodeMirror's default glyphs put a 🔑 emoji beside every keyword, which is
+     the only emoji anywhere in this product. These are the same four kinds the
+     rail and the grid already distinguish, in the same monochrome key: a clause
+     is a rule, a table a stack of rows, a database a box, a column a field. */
+  '.cm-completionIcon-keyword::after': { content: '"§"' },
+  '.cm-completionIcon-class::after': { content: '"▤"' },
+  '.cm-completionIcon-namespace::after': { content: '"▣"' },
+  '.cm-completionIcon-text::after': { content: '"¶"' },
 })
 
 /// Syntax colours, keyed on lezer tags rather than CSS classes — CodeMirror 6

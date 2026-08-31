@@ -25,18 +25,12 @@ import {
   widthChars,
 } from '../lib/grid'
 import { TypeIcon } from './TypeIcon'
-import { count, exact } from '../lib/format'
+import { exact, figure } from '../lib/format'
+import { CELL_OP_LABEL, cellOpsFor, type CellOp } from '../lib/rewrite'
 
 /* The virtualizer needs these as numbers, so they are stated here and again as
  * `--table-row-h`, `--table-head-h` and `--table-pad` in the stylesheet, where
  * the reference tables read them too. The two statements have to agree. */
-/** A computed figure, at the size it reads best: compact past a thousand, where
- *  the digits stop carrying information and start costing width, and two
- *  decimals below it, where an average of 3.22 is the answer and 3 is not. */
-function figure(value: number): string {
-  if (Math.abs(value) >= 1000) return count(value)
-  return Number.isInteger(value) ? String(value) : (Math.round(value * 100) / 100).toString()
-}
 
 /** One figure over the selection, with the exact number in the title: something
  *  about to be pasted into a report has to be readable in full somewhere. */
@@ -61,6 +55,9 @@ const MAX_W = 900
  *  does not show a bare stripe before React catches up. */
 const OVERSCAN_X = 320
 const FALLBACK_CH = 7.8
+/** Wide enough for an operator, a value and a sentence about what the two
+ *  buttons underneath do. Stated here because the menu is positioned by hand. */
+const MENU_W = 268
 
 /** A virtualized result grid.
  *
@@ -71,7 +68,43 @@ const FALLBACK_CH = 7.8
  *  actually present, and a column you drag wider stays wider for that shape of
  *  result. Cells are selectable and copy out as TSV, because reading a value is
  *  only half of what anyone does with a query result. */
-export function ResultsGrid({ result }: { result: QueryResult }) {
+/** What this grid is allowed to do to the statement behind it.
+ *
+ *  Absent — a dashboard tile, the builder's preview — the grid sorts the rows it
+ *  holds and hides columns for the eye only, which is all a result with no
+ *  editable statement behind it can honestly offer.
+ *
+ *  Present, on the Query page, those same gestures rewrite the SQL and run it
+ *  again. That changes what the arrow in a header *means*: not "these 500 rows
+ *  are in this order" but "the server ordered the table this way", which is a
+ *  far stronger claim and usually the one somebody clicking a header wanted. The
+ *  bar above the grid says which of the two is on screen. */
+export interface GridQuery {
+  /** The statement's own ORDER BY, named by result column. */
+  order: { column: string; desc: boolean }[]
+  onSort: (column: GridColumn, extend: boolean) => void
+  onClearOrder: () => void
+  onFilter: (column: GridColumn, op: CellOp, value: string) => void
+  /** What the button that applies it says.
+   *
+   *  Default is SQL's own word, because on a statement the filter *is* a
+   *  `WHERE` and naming the clause is how somebody learns where it went. A form
+   *  decides that for itself — a filter on a total has to run after the
+   *  grouping — so it says the truthful, vaguer thing rather than naming a
+   *  clause the click may not land in. */
+  filterLabel?: string
+  /** Absent when the select list cannot be narrowed — a single `count()`, a
+   *  statement this app declines to rewrite. */
+  onDrop?: (column: GridColumn) => void
+}
+
+export function ResultsGrid({
+  result,
+  query,
+}: {
+  result: QueryResult
+  query?: GridQuery
+}) {
   const scroller = useRef<HTMLDivElement>(null)
   const dragging = useRef(false)
   // Focus stays on the grid while the arrow keys move a cell inside it, so the
@@ -98,6 +131,10 @@ export function ResultsGrid({ result }: { result: QueryResult }) {
   const [aggregates, setAggregates] = useState<Record<number, Aggregate>>({})
   const [picking, setPicking] = useState(false)
   const picker = useRef<HTMLDivElement>(null)
+  /** The column whose menu is open, by index — where filtering and dropping a
+   *  column from the query live. */
+  const [menuFor, setMenuFor] = useState<number | null>(null)
+  const menu = useRef<HTMLDivElement>(null)
   const [flash, setFlash] = useState<string | null>(null)
   const [scrollX, setScrollX] = useState(0)
   const [portW, setPortW] = useState(0)
@@ -115,6 +152,7 @@ export function ResultsGrid({ result }: { result: QueryResult }) {
     setAnchor(null)
     setHead(null)
     setInspecting(false)
+    setMenuFor(null)
   }, [shape])
 
   useEffect(() => {
@@ -158,6 +196,24 @@ export function ResultsGrid({ result }: { result: QueryResult }) {
       window.removeEventListener('keydown', onKey, true)
     }
   }, [picking])
+
+  // The column menu keeps the same contract the column picker does: Escape, or
+  // a press anywhere outside it.
+  useEffect(() => {
+    if (menuFor === null) return
+    const onDown = (event: PointerEvent) => {
+      if (!menu.current?.contains(event.target as Node)) setMenuFor(null)
+    }
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenuFor(null)
+    }
+    window.addEventListener('pointerdown', onDown, true)
+    window.addEventListener('keydown', onKey, true)
+    return () => {
+      window.removeEventListener('pointerdown', onDown, true)
+      window.removeEventListener('keydown', onKey, true)
+    }
+  }, [menuFor])
 
   const baseCh = useMemo(
     () => columns.map((c, i) => widthChars(c, sampleColumn(result.rows, i))),
@@ -397,6 +453,13 @@ export function ResultsGrid({ result }: { result: QueryResult }) {
   }
 
   const applySort = (index: number, extend: boolean) => {
+    const column = columns[index]
+    // With a statement behind the grid the click belongs to the query, not to
+    // the rows: the server re-sorts the whole table rather than this page of it.
+    if (query && column) {
+      query.onSort(column, extend)
+      return
+    }
     setSort((current) => nextSort(current, index, extend))
     setAnchor(null)
     setHead(null)
@@ -407,8 +470,20 @@ export function ResultsGrid({ result }: { result: QueryResult }) {
   const headCell = (index: number, col: number, style: CSSProperties) => {
     const column = columns[index]
     if (!column) return null
-    const level = sort.findIndex((s) => s.column === index)
-    const sorted = level === -1 ? null : sort[level]!.dir
+    // One of two sources, never both: the statement's ORDER BY when there is a
+    // statement to read, this grid's own stack otherwise.
+    const level = query
+      ? query.order.findIndex((term) => term.column === column.name)
+      : sort.findIndex((s) => s.column === index)
+    const sorted =
+      level === -1
+        ? null
+        : query
+          ? query.order[level]!.desc
+            ? 'desc'
+            : 'asc'
+          : sort[level]!.dir
+    const depth = query ? query.order.length : sort.length
     const isPinned = pinned.includes(index)
     return (
       <div
@@ -422,20 +497,38 @@ export function ResultsGrid({ result }: { result: QueryResult }) {
         <button
           className="grid__sort"
           onClick={(event) => applySort(index, event.shiftKey)}
-          title={`Sort the ${result.rows.length} rows on screen by ${column.name} · shift-click to add a level`}
+          title={
+            query
+              ? `Order the query by ${column.name} · shift-click to add a level`
+              : `Sort the ${result.rows.length} rows on screen by ${column.name} · shift-click to add a level`
+          }
           type="button"
         >
           <TypeIcon type={column.type} />
           <span className="grid__colname">{column.name}</span>
-          <span className="grid__coltype" style={{ color: familyColor(column.type) }}>
+          <span
+            className="grid__coltype"
+            style={{ color: familyColor(column.type) }}
+            title={column.type}
+          >
             {shortType(column.type)}
           </span>
           {sorted ? <SortMark dir={sorted} /> : null}
           {/* The rank only appears once there is a stack to rank within. */}
-          {sorted && sort.length > 1 ? (
-            <span className="grid__sortlevel">{level + 1}</span>
-          ) : null}
+          {sorted && depth > 1 ? <span className="grid__sortlevel">{level + 1}</span> : null}
         </button>
+        {query ? (
+          <button
+            className={`grid__more${menuFor === index ? ' is-on' : ''}`}
+            onClick={() => setMenuFor((open) => (open === index ? null : index))}
+            aria-expanded={menuFor === index}
+            aria-haspopup="dialog"
+            title={`Filter on ${column.name}, or take it out of the query`}
+            type="button"
+          >
+            <FilterMark />
+          </button>
+        ) : null}
         <button
           className={`grid__pin${isPinned ? ' is-on' : ''}`}
           onClick={() => togglePin(index)}
@@ -541,11 +634,88 @@ export function ResultsGrid({ result }: { result: QueryResult }) {
   const inspected = inspecting && head ? visual[head.col] : undefined
   const inspectedColumn = inspected === undefined ? undefined : columns[inspected]
 
+  /** The cell under the keyboard, which is what "filter to this" acts on. */
+  const activeIndex = head ? visual[head.col] : undefined
+  const activeColumn = activeIndex === undefined ? undefined : columns[activeIndex]
+  const activeValue =
+    head && activeIndex !== undefined
+      ? (result.rows[order[head.row] ?? 0] ?? [])[activeIndex]
+      : undefined
+
+  const menuColumn = menuFor === null ? undefined : columns[menuFor]
+  /** Where the open menu hangs: under its own column, and never past the right
+   *  edge of the port. Computed rather than nested inside the header, because the
+   *  header lives in a scroller that would clip it. */
+  const menuLeft = (() => {
+    if (menuFor === null) return 0
+    const frozenAt = layout.frozen.indexOf(menuFor)
+    const x =
+      frozenAt !== -1
+        ? GUTTER_W + layout.frozen.slice(0, frozenAt).reduce((sum, i) => sum + (widths[i] ?? 0), 0)
+        : layout.frozenW + (layout.flow.find((item) => item.index === menuFor)?.x ?? 0) - scrollX
+    return Math.max(0, Math.min(x, Math.max(0, portW - MENU_W - 8)))
+  })()
+
+  /** And where it hangs on the *screen*.
+   *
+   *  Placing it inside the grid was right about the horizontal axis and wrong
+   *  about the vertical one, and the difference only shows on a short answer:
+   *  this menu is 266px tall and a six-row result is not, so it hung out of the
+   *  bottom of a box with `overflow: hidden` on it and the button that applies
+   *  the filter was cut in half — the control was on screen and unusable, which
+   *  is the worst of the three states it has.
+   *
+   *  So it is fixed to the screen, for the reason the diagram's own node menu
+   *  already is: a menu belongs to the viewport, not to the thing that clips.
+   *  It flips above the header when there is no room under it, and it is
+   *  re-placed rather than closed while anything scrolls — reading a few values
+   *  before deciding what to filter on is exactly what this menu is open for. */
+  const [menuAt, setMenuAt] = useState<{ left: number; top: number } | null>(null)
+  useLayoutEffect(() => {
+    if (menuFor === null) {
+      setMenuAt(null)
+      return
+    }
+    const place = () => {
+      const port = scroller.current?.getBoundingClientRect()
+      if (!port) return
+      const h = menu.current?.offsetHeight ?? 0
+      const below = port.top + HEAD_H
+      const top =
+        below + h + 8 > window.innerHeight ? Math.max(8, window.innerHeight - h - 8) : below
+      setMenuAt({ left: port.left + menuLeft, top })
+    }
+    place()
+    // Capture, so a scroll inside the grid or anywhere above it counts.
+    window.addEventListener('scroll', place, true)
+    window.addEventListener('resize', place)
+    return () => {
+      window.removeEventListener('scroll', place, true)
+      window.removeEventListener('resize', place)
+    }
+  }, [menuFor, menuLeft])
+
   return (
     <div className="gridshell">
       <div className="gridshell__bar">
         <div className="gridshell__state">
-          {sort.length > 0 ? (
+          {query && query.order.length > 0 ? (
+            <>
+              <span className="gridshell__sorted">
+                ordered by{' '}
+                {query.order
+                  .map((term) => `${term.column} ${term.desc ? 'descending' : 'ascending'}`)
+                  .join(', then ')}
+              </span>
+              {/* The counterpart to the local sort's caveat, and the reason both
+                  say something: this order came from the server, over the whole
+                  table, not from the rows that happen to be here. */}
+              <span className="gridshell__caveat">in the query, over the whole table</span>
+              <button className="gridshell__clear" onClick={query.onClearOrder} type="button">
+                clear
+              </button>
+            </>
+          ) : sort.length > 0 ? (
             <>
               <span className="gridshell__sorted">
                 sorted by{' '}
@@ -586,6 +756,27 @@ export function ResultsGrid({ result }: { result: QueryResult }) {
             </>
           ) : null}
         </div>
+        {query && activeColumn && !inspecting ? (
+          <div className="gridshell__chips">
+            <span className="gridshell__chipkey label">filter to</span>
+            <button
+              className="gridshell__chip"
+              onClick={() => query.onFilter(activeColumn, '=', rawText(activeValue))}
+              title={`Add ${activeColumn.name} = this cell to the WHERE`}
+              type="button"
+            >
+              {activeColumn.name} = {clip(rawText(activeValue))}
+            </button>
+            <button
+              className="gridshell__chip"
+              onClick={() => query.onFilter(activeColumn, '!=', rawText(activeValue))}
+              title={`Add ${activeColumn.name} != this cell to the WHERE`}
+              type="button"
+            >
+              ≠
+            </button>
+          </div>
+        ) : null}
         {columns.length > 1 ? (
           <div className="gridshell__picker" ref={picker}>
             <button
@@ -768,6 +959,26 @@ export function ResultsGrid({ result }: { result: QueryResult }) {
           </div>
         </div>
 
+        {query && menuColumn ? (
+          <ColumnMenu
+            boxRef={menu}
+            column={menuColumn}
+            query={query}
+            prefill={
+              activeColumn?.name === menuColumn.name ? rawText(activeValue) : ''
+            }
+            onHide={() =>
+              setHidden((current) => {
+                const next = new Set(current)
+                if (columns.length - next.size > 1) next.add(menuFor!)
+                return next
+              })
+            }
+            onClose={() => setMenuFor(null)}
+            style={{ left: menuAt?.left ?? 0, top: menuAt?.top ?? 0 }}
+          />
+        ) : null}
+
         {inspectedColumn && head ? (
           <CellInspector
             column={inspectedColumn}
@@ -779,6 +990,129 @@ export function ResultsGrid({ result }: { result: QueryResult }) {
             }}
           />
         ) : null}
+      </div>
+    </div>
+  )
+}
+
+/** Filtering, and the difference between two kinds of hiding.
+ *
+ *  Both of the actions at the foot of this menu take a column off the screen,
+ *  and they are not the same thing at all: one narrows the SELECT so the server
+ *  stops reading that column — the single biggest performance lever ClickHouse
+ *  has — and the other only stops drawing it. Conflating them is how a reader
+ *  ends up believing they made a query cheaper by tidying their screen, so the
+ *  two are separate buttons and each says what it does. */
+function ColumnMenu({
+  boxRef,
+  column,
+  query,
+  prefill,
+  onHide,
+  onClose,
+  style,
+}: {
+  boxRef: React.RefObject<HTMLDivElement | null>
+  column: GridColumn
+  query: GridQuery
+  /** The value of the cell the reader had selected in this column, if any. A
+   *  filter form that opens already holding the value you were looking at is the
+   *  difference between two clicks and retyping a UUID. */
+  prefill: string
+  onHide: () => void
+  onClose: () => void
+  style: CSSProperties
+}) {
+  const ops = cellOpsFor(column.type)
+  const [op, setOp] = useState<CellOp>(ops[0] ?? '=')
+  const [value, setValue] = useState(prefill)
+  const needsValue = op !== 'isNull' && op !== 'isNotNull'
+
+  return (
+    <div
+      className="colmenu"
+      role="dialog"
+      aria-label={`${column.name}: filter, or take it out of the query`}
+      ref={boxRef}
+      style={{ ...style, width: MENU_W }}
+    >
+      <header className="colmenu__head">
+        <TypeIcon type={column.type} />
+        <span className="colmenu__name">{column.name}</span>
+        <span
+          className="colmenu__type"
+          style={{ color: familyColor(column.type) }}
+          title={column.type}
+        >
+          {shortType(column.type)}
+        </span>
+      </header>
+
+      <form
+        className="colmenu__form"
+        onSubmit={(event) => {
+          event.preventDefault()
+          query.onFilter(column, op, value)
+          onClose()
+        }}
+      >
+        <div className="colmenu__row">
+          <span className="label">keep rows where</span>
+          <select
+            className="picker__select"
+            value={op}
+            onChange={(event) => setOp(event.target.value as CellOp)}
+            aria-label={`How to compare ${column.name}`}
+          >
+            {ops.map((candidate) => (
+              <option key={candidate} value={candidate}>
+                {CELL_OP_LABEL[candidate]}
+              </option>
+            ))}
+          </select>
+        </div>
+        {needsValue ? (
+          <input
+            className="colmenu__value"
+            value={value}
+            onChange={(event) => setValue(event.target.value)}
+            placeholder="value"
+            aria-label={`Value to compare ${column.name} against`}
+            autoFocus
+          />
+        ) : null}
+        <button className="btn btn--spark colmenu__go" type="submit">
+          {query.filterLabel ?? 'Add to the WHERE'}
+        </button>
+      </form>
+
+      <div className="colmenu__acts">
+        {query.onDrop ? (
+          <button
+            className="colmenu__act"
+            onClick={() => {
+              query.onDrop?.(column)
+              onClose()
+            }}
+            type="button"
+          >
+            Stop selecting it
+            <span className="colmenu__hint">
+              out of the SELECT — the server stops reading the column
+            </span>
+          </button>
+        ) : null}
+        <button
+          className="colmenu__act"
+          onClick={() => {
+            onHide()
+            onClose()
+          }}
+          type="button"
+        >
+          Hide it here
+          <span className="colmenu__hint">off the screen only; still read and still returned</span>
+        </button>
       </div>
     </div>
   )
@@ -843,6 +1177,27 @@ function SortMark({ dir }: { dir: 'asc' | 'desc' }) {
       <path d={dir === 'asc' ? 'M4 1.5 7 6H1z' : 'M4 6.5 1 2h6z'} fill="currentColor" />
     </svg>
   )
+}
+
+function FilterMark() {
+  return (
+    <svg viewBox="0 0 12 12" aria-hidden="true">
+      <path
+        d="M1.6 2.2h8.8L7.1 6.1v3.7L4.9 8.6V6.1z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.1"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+/** A cell value on a chip. Long enough to recognise, short enough that the chip
+ *  stays a chip. */
+function clip(text: string): string {
+  if (text === '') return "''"
+  return text.length > 22 ? text.slice(0, 21) + '…' : text
 }
 
 function PinMark() {
