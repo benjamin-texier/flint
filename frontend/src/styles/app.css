@@ -4950,6 +4950,38 @@ tr:hover .stratum__fill {
   max-width: 48rem;
 }
 
+/* The session: a mark, and a window computed from it. Set apart from the
+ * seven-day button because it answers a different question — "what did *this*
+ * do" rather than "what has been happening". */
+.checkup__session {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  padding: var(--s3);
+  margin-bottom: var(--s4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-2);
+}
+
+.checkup__session .says {
+  flex: 1 1 22rem;
+  min-width: 0;
+  max-width: 48rem;
+}
+
+/* A running session says so in the accent, because the page looks otherwise
+ * identical whether one is running or not — and forgetting a mark from an
+ * hour ago is how somebody reads an hour as ten minutes. */
+.checkup__watching {
+  color: var(--accent-strong);
+}
+
+.checkup__window {
+  margin-bottom: var(--s3);
+}
+
 .checkup__list {
   display: flex;
   flex-direction: column;

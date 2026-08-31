@@ -865,10 +865,17 @@ export const api = {
    *  diagnostic's, and a day asked for as `days=1` reads as a rounding. */
   news: (hours = 24) =>
     request<import('./news').NewsReport>(`/diagnostics/news?hours=${hours}`),
-  diagnoseQueries: (days: number) =>
-    request<import('./diagnose').QueryReport>(`/diagnostics/queries?days=${days}`),
-  diagnoseTraffic: (days: number) =>
-    request<import('./diagnose').TrafficReport>(`/diagnostics/traffic?days=${days}`),
+  /** The query log over a window. `seconds` is the checkup's traffic session —
+   *  somebody marks a moment and comes back — and wins over `days` when given.
+   *  Nothing else has ever wanted a window finer than a day. */
+  diagnoseQueries: (days: number, seconds?: number) =>
+    request<import('./diagnose').QueryReport>(
+      `/diagnostics/queries?${seconds === undefined ? `days=${days}` : `seconds=${seconds}`}`,
+    ),
+  diagnoseTraffic: (days: number, seconds?: number) =>
+    request<import('./diagnose').TrafficReport>(
+      `/diagnostics/traffic?${seconds === undefined ? `days=${days}` : `seconds=${seconds}`}`,
+    ),
   diagnoseStorage: () => request<import('./diagnose').StorageReport>('/diagnostics/storage'),
   diagnoseActivity: () => request<import('./diagnose').ActivityReport>('/diagnostics/activity'),
 

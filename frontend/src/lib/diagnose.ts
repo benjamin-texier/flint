@@ -52,6 +52,10 @@ export interface QueryReport {
   available: boolean
   reason?: string
   window_days: number
+  /** The same window to the second — `window_days` is this divided down, so
+   *  they cannot disagree. A session is minutes, so its `window_days` is zero
+   *  and the page phrases it from here. */
+  window_seconds: number
   summary: Summary | null
   patterns: Pattern[]
   failures: Failure[]
@@ -80,6 +84,7 @@ export interface TrafficReport {
   available: boolean
   reason?: string
   window_days: number
+  window_seconds: number
   traffic: TableTraffic[]
   unused: UnusedTable[]
 }

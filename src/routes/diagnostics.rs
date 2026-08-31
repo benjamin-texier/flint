@@ -12,8 +12,23 @@ use super::{AppState, Caller};
 pub struct Window {
     #[serde(default = "default_days")]
     days: u64,
+    /// A window in seconds, which wins over `days` when it is given.
+    ///
+    /// One caller uses it: the checkup's traffic session, where somebody marks
+    /// a moment and comes back. Nothing else has ever wanted a window finer
+    /// than a day, so it is an option rather than a replacement.
+    seconds: Option<u64>,
     #[serde(default = "default_limit")]
     limit: u64,
+}
+
+impl Window {
+    fn span(&self) -> diagnostics::Span {
+        match self.seconds {
+            Some(n) => diagnostics::Span::seconds(n),
+            None => diagnostics::Span::days(self.days),
+        }
+    }
 }
 
 fn default_days() -> u64 {
@@ -28,7 +43,7 @@ pub async fn queries(
     Caller(ch): Caller,
     Query(w): Query<Window>,
 ) -> Result<Json<diagnostics::QueryReport>> {
-    Ok(Json(diagnostics::queries(&ch, w.days, w.limit).await?))
+    Ok(Json(diagnostics::queries(&ch, w.span(), w.limit).await?))
 }
 
 pub async fn traffic(
@@ -39,7 +54,7 @@ pub async fn traffic(
     Ok(Json(
         diagnostics::traffic(
             &ch,
-            w.days,
+            w.span(),
             w.limit,
             state.config.workspace_database.as_deref(),
         )
@@ -169,6 +184,8 @@ pub async fn audit(
         crate::clickhouse::audit::report(
             &ch,
             state.config.workspace_database.as_deref(),
+            // Days, not the span: the trail has never wanted a window finer
+            // than one, and the seconds are the checkup session's alone.
             w.days,
             w.limit,
         )
@@ -449,7 +466,7 @@ pub async fn backup_runs(
     // whose credentials took the backup.
     if let Some(ws) = state.workspace.as_ref() {
         let by_job: std::collections::HashMap<String, String> = ws
-            .jobs(&state.ch, 200)
+            .jobs(200)
             .await
             .unwrap_or_default()
             .into_iter()
