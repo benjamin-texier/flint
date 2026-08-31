@@ -1,0 +1,5 @@
+# One line ending in the repository, whoever checks it out. `text=auto` lets git
+# decide what is text — a file holding a NUL byte is left alone, which matters
+# here: `DatabaseReview.tsx` keys its tick map with a literal NUL and would be
+# corrupted by normalisation.
+* text=auto eol=lf
