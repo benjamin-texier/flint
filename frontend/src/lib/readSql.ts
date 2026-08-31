@@ -37,6 +37,7 @@ import {
   type Shape,
 } from './rewrite'
 import {
+  aliasOf,
   startingSpec,
   type Agg,
   type Bucket,
@@ -160,11 +161,17 @@ function readShape(shape: Shape, options: ReadOptions): Reading {
    *  back from the server for the emptiest question there is, and a reader
    *  that could not see through one layer of it would refuse its own output. */
   let base: QuerySpec
+  /** Whether this is one of the product's own generated reads, which is a fact
+   *  about the *shape*: a wrapper whose inner statement is a bare `SELECT *`
+   *  off one table and nothing else. See `readLimit` for the one thing that
+   *  turns on. */
+  let generated = false
   if (inner) {
     const read = readSpec(inner, options)
     if ('unread' in read) return read
     base = read.spec
     dropped.push(...read.dropped)
+    generated = BARE_READ.test(inner)
   } else {
     base = startingSpec(target!.database ?? options.database ?? '', target!.table)
   }
@@ -175,25 +182,38 @@ function readShape(shape: Shape, options: ReadOptions): Reading {
     if (shape.clauses[clause]) dropped.push(said)
   }
 
+  /* The zone is a setting in the text and a picker on the form, so it is read
+     rather than dropped. It matters more than it looks: the whole reason the
+     generated statement carries `SETTINGS session_timezone` is that a question
+     handed over without its zone quietly answers about different days. Losing
+     it on the way back would be that same defect, arriving by the other door. */
+  const zone = readTimezone(shape)
+  if (zone) spec.timezone = zone.zone
+  if (zone?.andMore || (shape.clauses.settings && !zone)) {
+    dropped.push(
+      'The SETTINGS clause is dropped: the form sends a question, and the settings a statement carries are not part of one.',
+    )
+  }
+
   const projections = readProjections(shape, dropped)
   // `SELECT *` selects everything, which is what an empty projection list means
   // to the form — so an outer `*` keeps whatever the inner statement chose
   // rather than blanking it.
   if (projections !== null) spec.projections = projections
 
-  const conditions = [
+  const conditions = closeWindows([
     ...readConditions(shape, 'prewhere', dropped, options.prior),
     ...readConditions(shape, 'where', dropped, options.prior),
-  ]
+  ])
   if (conditions.length) spec.conditions = [...spec.conditions, ...conditions]
 
   const having = readHaving(shape, dropped, options.prior)
   if (having.length) spec.having = having
 
-  const orderings = readOrderings(shape, dropped)
+  const orderings = readOrderings(shape, spec.projections, dropped)
   if (orderings.length) spec.orderings = orderings
 
-  const limit = readLimit(shape, dropped, options.prior)
+  const limit = readLimit(shape, dropped, options.prior, generated)
   if (limit !== null) spec.limit = limit
 
   checkGrouping(shape, spec, dropped)
@@ -207,10 +227,6 @@ const UNREADABLE_CLAUSES: [keyof Shape['clauses'], string][] = [
   [
     'with',
     'The WITH at the top defines names the form has no place for — it is gone, and any clause that used it went with it.',
-  ],
-  [
-    'settings',
-    'The SETTINGS clause is dropped: the form sends a question, and the settings a statement carries are not part of one.',
   ],
   ['format', 'The FORMAT clause is dropped — the form always reads rows back as rows.'],
 ]
@@ -236,6 +252,35 @@ function subqueryOf(shape: Shape): string | null {
     }
   }
   return null
+}
+
+/** A rolling window is two predicates, and the second one is not a filter.
+ *
+ *  `in the last 7 days` renders as `ts >= now() - INTERVAL 7 DAY AND ts < now()`
+ *  — half-open, deliberately, so the boundary row is not counted twice. Read
+ *  literally that trailing half comes back as an ordinary `ts < now()` filter,
+ *  and the form would then show a chip nobody wrote and generate it *again* on
+ *  top of the window it already writes. So it is absorbed into the window it
+ *  belongs to, which is the same question and not a loss. */
+function closeWindows(conditions: Condition[]): Condition[] {
+  const windowed = new Set(
+    conditions.filter((c) => c.op === 'since').map((c) => c.column),
+  )
+  if (!windowed.size) return conditions
+  return conditions.filter(
+    (c) => !(c.op === '<' && c.value === 'now()' && windowed.has(c.column)),
+  )
+}
+
+const SESSION_TIMEZONE = /^\s*session_timezone\s*=\s*'((?:[^']|'')*)'\s*(,(.*))?$/is
+
+/** The zone out of a `SETTINGS session_timezone = '…'`, and whether anything
+ *  else was in there with it. Null when there is no settings clause at all. */
+function readTimezone(shape: Shape): { zone: string; andMore: boolean } | null {
+  if (!shape.clauses.settings) return null
+  const match = SESSION_TIMEZONE.exec(bodyOf(shape, 'settings'))
+  if (!match) return null
+  return { zone: match[1]!.replace(/''/g, "'"), andMore: Boolean(match[3]?.trim()) }
 }
 
 /* ── The select list ─────────────────────────────────────────────────────── */
@@ -494,13 +539,24 @@ function readHaving(shape: Shape, dropped: string[], prior: QuerySpec | null | u
   return out
 }
 
-function readOrderings(shape: Shape, dropped: string[]): Ordering[] {
+/** The order, whose terms the form names by *alias* and a statement may name by
+ *  expression.
+ *
+ *  The generated statement does exactly that: an aggregated answer is ordered
+ *  by `count()` rather than by `rows`, because ClickHouse is handed the
+ *  expression that computes the column and not the label put on it. Matching
+ *  only plain columns dropped the sort off every aggregate the product itself
+ *  wrote — so an expression is read the way a select item is, and looked up
+ *  among the projections to find the name the form knows it by. */
+function readOrderings(shape: Shape, projections: Projection[], dropped: string[]): Ordering[] {
   const out: Ordering[] = []
   for (const term of orderTerms(shape)) {
-    const ref = columnOf(term.expr)
-    if (ref && !term.tail) {
-      out.push({ id: id(), ref, desc: term.desc })
-      continue
+    if (!term.tail) {
+      const ref = columnOf(term.expr) ?? aliasFor(term.expr, projections)
+      if (ref) {
+        out.push({ id: id(), ref, desc: term.desc })
+        continue
+      }
     }
     dropped.push(
       `The order by \`${oneLine(term.expr)}${term.tail ? ' ' + term.tail : ''}\` is not a plain column — it is gone.`,
@@ -509,12 +565,30 @@ function readOrderings(shape: Shape, dropped: string[]): Ordering[] {
   return out
 }
 
+/** The alias a projection carries, found by what the expression computes rather
+ *  than by how it is spelled. */
+function aliasFor(expr: string, projections: Projection[]): string | null {
+  const wanted = readProjection(expr, [])
+  if (!wanted) return null
+  const found = projections.find(
+    (p) => p.column === wanted.column && p.agg === wanted.agg && p.bucket === wanted.bucket,
+  )
+  return found ? aliasOf(found) : null
+}
+
 const LIMIT_BY = /\bBY\b/i
+
+/** `SELECT * FROM db.t` — the whole of it, which is what `Dataset` emits as the
+ *  statement a dataset read is built over, and is not a thing anybody writes by
+ *  hand and then wraps. */
+const BARE_READ =
+  /^\s*SELECT\s+\*\s+FROM\s+(`(?:[^`]|\\`)+`|[A-Za-z_]\w*)(\s*\.\s*(`(?:[^`]|\\`)+`|[A-Za-z_]\w*))?\s*$/i
 
 function readLimit(
   shape: Shape,
   dropped: string[],
   prior: QuerySpec | null | undefined,
+  generated: boolean,
 ): number | null {
   if (shape.clauses.offset) {
     dropped.push(`The OFFSET ${bodyOf(shape, 'offset')} is dropped — the form always reads the first page.`)
@@ -531,10 +605,21 @@ function readLimit(
   }
   const rows = Number(parts[parts.length - 1])
   if (!Number.isFinite(rows) || rows <= 0) return null
-  // The generated statement asks for one row more than the page, so that "there
-  // is more behind this" is a fact rather than a guess. Reading that literally
-  // would walk the limit up by one every time somebody turned a tab over.
+  /* The probe row, taken back off.
+   *
+   *  A generated statement asks for one row more than the page, so that "there
+   *  is more behind this" is a fact rather than a guess. That extra row is not
+   *  part of anybody's question — and the form's limit box means *the page*, so
+   *  reading 41 into it would make the box say something nobody asked for, and
+   *  walk the number up by one on every trip through the editor.
+   *
+   *  Recognised two ways. From the form that wrote it, where there is one. And
+   *  otherwise from the shape, which is evidence rather than a guess: a wrapper
+   *  over a bare `SELECT *` off one table is what `Dataset` emits and nothing
+   *  else does. A limit on a statement that is not that shape is left exactly
+   *  as written. */
   if (prior && rows === prior.limit + 1) return prior.limit
+  if (generated && rows > 1) return Math.floor(rows) - 1
   return Math.floor(rows)
 }
 
