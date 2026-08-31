@@ -394,15 +394,111 @@ depth survives where it was always the strongest — in the caption, beside the
 count of what was kept — and the canvas gained a `here` marker, because on eleven
 boxes the caption naming one is not enough to find it in.
 
-### A1. The Explorer finishes its write half
+### A1. The Explorer finishes its write half — **built**
 
-Insert by form, built from the column types `chType.ts` and the profile already
-read: defaults, `Nullable`, enums as a list rather than free text.
+All three of it: a row from a form, a file from disk, and mutations as jobs.
+Rows are Data, so all of it lives on the table's own page beside the reader —
+and the two-space rule permits it there precisely because nothing on that tab
+can change a column, a key or an engine.
 
-Import a file — CSV, JSONEachRow, Parquet — with the schema inferred by
-`DESCRIBE file()`, the mapping and a sample of parsed rows shown *before*
-anything is written, and rows accepted and rows rejected counted separately.
-This is the feature that gets a browser tab used instead of `clickhouse-client`.
+**One sentence carries the whole design: Flint never formats a value into
+SQL.** Every field a person fills in travels as a ClickHouse query parameter
+declared with the column's own type — `{price:Decimal(9,2)}` — so the server
+parses it, against the type it is about to store it in, and a value cannot
+become syntax however it is typed. That binding was already how the whole
+product *reads*; this is the first place it writes. An apostrophe in a name and
+a `'); DROP TABLE` in a text box both come back as what they are: text.
+
+Four things were asked of a real server before the form was written, and each
+settled a decision:
+
+- **Parameters work in `INSERT … VALUES`**, not only in a `SELECT`. That is
+  what makes an enum a list rather than free text, since
+  `Enum8('ok'=1,'bad'=2)` binds.
+- **A column left out of the list takes its `DEFAULT`.** So "leave this to the
+  table" is an *absence* rather than a magic value in a box. There is no string
+  meaning *default* that is not also a string somebody might have meant to
+  store.
+- **An empty box is an empty string, not a null.** Binding `''` stores a
+  zero-length string and `IS NULL` comes back false. So a value, a null and no
+  value at all are three states, every field says which one it is in, and none
+  of them is inferred from whether a box looks empty.
+- **A parameter may be named after its column**, which makes the server's own
+  error name the field somebody was typing in: *Value oops cannot be parsed as
+  UInt32 for query parameter 'id'*. Worth more than any message Flint could
+  write. A name ClickHouse will not take as a parameter — one with a space in
+  it is a syntax error, not a bad value — falls back to a position.
+
+`MATERIALIZED` and `ALIAS` columns are left out of the form and *said*, because
+the server's two refusals are different codes and neither states what is true:
+the column is there, and it is computed. And the column names and declared
+types are read from the server at the moment of writing rather than taken from
+the caller — an identifier is not a literal and no binding exists for one.
+
+**Loading a file**, and the whole of it is the word *before*: what the file
+turns out to hold, how it lines up with the table, and a page of its rows
+parsed exactly as the import will parse them, all on screen before a byte is
+written.
+
+`DESCRIBE file()` is not available to Flint — `file()` reads the *server's*
+`user_files_path`, which Flint cannot write to and should not want to. The
+`format()` table function takes the data inline instead, so
+`DESCRIBE format(CSVWithNames, {sample:String})` infers the schema and
+`SELECT * FROM format(…)` parses the rows, with nothing touching a disk
+anywhere. Two limits came out of measuring it:
+
+- **A `String` parameter stops at the first newline** — a raw sample answers
+  *only 9 of 28 bytes was parsed*. The parameter is read with TSV escaping, so
+  a newline written as two characters arrives as one, and a tab or a backslash
+  inside a field round-trips.
+- **The sample is capped at 8 KB, and that is the transport rather than a
+  judgement.** It rides in a URL and `http::Uri` stops at 65,535 bytes: a 64 KB
+  sample became a 69 KB request that reqwest refused with `builder error`
+  before anything left the process — a failure with no server in it and no
+  message a reader could act on.
+
+The file itself streams. The browser posts it as one body and
+`Client::insert_rows` passes it through, so nothing is held in Flint's memory —
+which is the point for the file somebody could not load another way. 50,000
+rows through the browser, and 200,100 through the route.
+
+**Rows accepted and rejected counted separately is not implementable**, and
+that is a measurement rather than a decision. With
+`input_format_allow_errors_num` set, a four-row file with two bad rows answered
+`read_rows: 2, written_rows: 2` — the server counts what it accepted and says
+nothing whatever about what it turned away. Flint would have to count the
+file's records itself to subtract, and counting records in a CSV means parsing
+CSV, because a quoted field may hold a newline.
+
+So the import does not tolerate errors at all, which is the safer answer as
+well as the honest one: a partial load that silently dropped rows it cannot
+count is the shape this document refuses everywhere else. A bad row stops the
+file and the server names it. Measured, and the reason that is tolerable: a
+file with 200,000 good rows and one bad one at the end left the table at zero.
+Flint does not take even that on trust — it counts the table either side, so
+"how many rows arrived" is read off the table rather than off a summary.
+
+**Parquet is not offered**, and its absence is a consequence rather than an
+omission: the sample travels as a `String` parameter and a `String` is text. A
+binary file could be escaped into one, but the preview is the promise that
+would break, and an import with no preview is a different feature wearing this
+one's name. CSV, TSV, their `WithNames` forms and JSONEachRow are there.
+
+**The mapping is a report, not a control.** ClickHouse matches a `*WithNames`
+file to a table by name itself and a headerless one by position, so a mapping
+widget would be Flint reimplementing that and doing it differently. What is
+worth saying is what will not land — and the two cases are kept apart, because
+an unknown column stops a named file and is never consulted in a headerless
+one. Reporting the second as the first would send somebody renaming columns for
+no reason.
+
+Three defects the browser pass found that `tsc` and Vitest could not: the type
+printed twice beside every field name, because `TypeBadge` already prints it; a
+textarea for every `String`, which is ClickHouse's only string type and holds
+an email as often as a blob; and literal backticks on the screen, which
+`Note.tsx`'s own comment says had already shipped twice before. The sentences
+are strings in `lib/` now, rendered by `Sentence` — the convention that keeps
+the wording assertable in a test and the backticks off the page.
 
 ~~Export a table or a result as CSV, JSONL or Parquet in one click.~~ **Built**
 for a result — the editor's result bar carries the three formats, ClickHouse
@@ -461,10 +557,65 @@ the same question the tab list asks, so the two cannot drift.
 **Not** inline cell editing. ClickHouse has no cell edit: an
 `ALTER TABLE ... UPDATE` is an asynchronous rewrite and a lightweight `DELETE` is
 a mask that still costs a merge. A pencil icon would lie about what the click
-does. "Update these rows" and "delete these rows" are jobs instead — the `WHERE`
-previewed with the count it matches, progress against `system.mutations`, and a
-plain refusal where the predicate does not narrow to a partition. Same rule as
-dropping an absent figure rather than dashing it.
+does. **"Update these rows" and "delete these rows" are jobs instead** — and
+they are built.
+
+**Nothing runs without a preview**, which is the shape of the whole feature
+rather than a courtesy. The figure a reader needs is not how many rows match
+but how many *parts* get rewritten, and those are different numbers: a
+predicate matching one row in every part costs exactly what one matching all of
+them costs. Only the server can answer it, so the button that runs the mutation
+does not exist until the answer is on screen — and it disappears again the
+moment the predicate is edited, because a preview of one question beside a
+button that would run another is the worst thing this control could do.
+
+**Whether a predicate narrows is measured, not parsed.** Flint does not parse
+SQL and does not start here: `EXPLAIN ESTIMATE SELECT * FROM t WHERE …` answers
+with the parts, rows and marks a read would touch, against totals that are
+known. On a 300,000-row table in three monthly partitions —
+
+| predicate | parts | rows |
+|---|---|---|
+| on the partition key, one month | 1 of 3 | 93,324 |
+| on the sorting key's prefix | 3 of 3 | 114,688 |
+| on an unindexed column | 3 of 3 | 300,000 |
+| matching nothing | 0 | 0 |
+
+The probe is `SELECT *` and not `SELECT count()`, and that is not a detail: a
+`count()` filtered on exact partition boundaries is answered from part metadata
+without reading marks, so the estimate comes back **empty** — the most sharply
+narrowed case looking identical to a syntax error. Both readings were taken;
+only one is usable. A second thing falls out free: `EXPLAIN ESTIMATE` compiles
+the predicate without running it, so a mistyped column is refused by the
+preview rather than by the job.
+
+**`ALTER … DELETE` rather than the lightweight one**, for two measured reasons.
+A lightweight `DELETE FROM` is recorded in `system.mutations` as
+`(UPDATE _row_exists = 0 WHERE …)`, so a reader who asked Flint to delete rows
+and then went to look at the mutation would find an update of a column their
+table does not appear to have. And it works on servers older than 23.3, where
+the lightweight form was experimental — the rest of this codebase degrades
+rather than requiring a recent server.
+
+**The "plain refusal" above turned out to be the wrong instrument**, and this is
+the one place A1 departs from what this document asked for. Only an empty
+predicate, `1` and `true` are refused outright — a whole-table rewrite wearing a
+filter's clothes, and the control that exists to make scope deliberate cannot
+also be the one that lets it be skipped. Everything narrower is measured and
+*said* instead: a delete on an unindexed column is expensive and is sometimes
+exactly right, and refusing it would be Flint deciding for somebody who can see
+the figures. A mutation matching zero rows is refused too, on a different
+ground — it is all of the cost and none of the effect.
+
+One collision found by pointing it at a real table rather than at a fixture. The
+count was `SELECT count() AS n FROM t WHERE <predicate>`, and a table with a
+column called `n` resolves `n > 5` against the *alias*: *Aggregate function
+count() AS n is found in WHERE in query*. The predicate sits in a subquery now.
+Any alias can collide with some column; a scope cannot.
+
+Progress is `system.mutations`, per table and unfinished only, with
+`parts_to_do` and the failure reason that a wedged mutation reports nowhere else
+in Data. Same rule as dropping an absent figure rather than dashing it.
 
 ### A2. Dashboards grow the controls a dashboard needs — **built**
 
@@ -2724,6 +2875,11 @@ run.
 the brief promised; Infrastructure is where the ambition is. Finishing A1–A3 makes
 Flint the best ClickHouse explorer that exists. Starting B2–B3 makes it something
 nobody has built. Either is a good next release. Doing halves of both is not.
+
+**A1 through A4 are done now**, and B2 through B8 with them, so that paragraph
+has been overtaken: what is left on Data is A5's ingestion APIs and A7.5's
+naming, and neither is a foundation anything else waits on. The next release is
+a choice between them rather than between the tracks.
 
 ---
 
