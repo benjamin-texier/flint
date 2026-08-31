@@ -6,15 +6,22 @@ PNPM ?= pnpm
 FRONTEND := frontend
 BASE ?= http://localhost:8080
 
-.PHONY: help install build build-frontend test test-backend test-frontend \
+.PHONY: help install hooks build build-frontend test test-backend test-frontend \
         lint lint-backend lint-frontend fmt fmt-backend dev run check-live clean
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*## "} \
 		/^[a-zA-Z0-9_-]+:.*## / {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-install: ## Install the frontend toolchain
+install: hooks ## Install the frontend toolchain and the git hooks
 	cd $(FRONTEND) && $(PNPM) install
+
+# Versioned rather than copied into .git/hooks, so a hook is reviewed like any
+# other file and a fix reaches everybody on the next pull. One setting, and git
+# looks here instead.
+hooks: ## Point git at the versioned hooks in .githooks
+	@git config core.hooksPath .githooks
+	@echo "hooks: git will run .githooks (commit-msg, pre-commit, pre-push)"
 
 build: build-frontend ## Build the frontend, then the binary that embeds it
 	$(CARGO) build --release
