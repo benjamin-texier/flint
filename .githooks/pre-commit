@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+#
+# The checks that are worth a second, on the files actually staged.
+#
+# Not the test suites: those are the push's job. The rule this follows is that a
+# hook people wait on is a hook people pass `--no-verify` to, and a check nobody
+# runs is worse than no check. So everything here is either scoped to the staged
+# files or measured in single seconds on a warm cache.
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+
+staged() { git diff --cached --name-only --diff-filter=ACM -- "$@"; }
+fail() { echo "pre-commit: $*" >&2; exit 1; }
+
+# ── Nothing half-merged ──────────────────────────────────────────────────
+# A conflict marker committed is a file that compiles nowhere and reads as a
+# mystery in review. Checked on the staged content, not the working tree.
+for f in $(staged); do
+  if git show ":$f" 2>/dev/null | grep -qE '^(<<<<<<< |>>>>>>> |=======$)'; then
+    fail "$f still has a merge conflict marker in it"
+  fi
+done
+
+# ── Nothing that carries a credential ────────────────────────────────────
+# `.gitignore` already refuses `.env` and its variants; this catches the file
+# that arrives under another name, and the `git add -f` that overrode the rule.
+for f in $(staged); do
+  case "$f" in
+    .env.example) continue ;;
+    *.env|.env*|*credentials*|*secrets*) fail "$f looks like a secret; commit the template instead" ;;
+  esac
+done
+
+# ── Rust, formatted ──────────────────────────────────────────────────────
+# `cargo fmt --check` reads the files and compiles nothing, so it costs a
+# quarter of a second whatever the state of the target directory.
+if [ -n "$(staged '*.rs')" ]; then
+  cargo fmt --check || fail "run \`make fmt\`"
+fi
+
+# ── The stylesheet's one rule ────────────────────────────────────────────
+# A colour or a duration written as a literal in a rule is a bug: the tokens are
+# a contract with Dashfile, and one physics for the product means the five
+# --motion-* values and nothing else. Where a literal is genuinely the right
+# answer — a unit conversion, a geometry no token expresses — the line above it
+# says `token-exempt:` and why, so a decision is never mistaken for an oversight.
+if [ -n "$(staged 'frontend/src/styles/app.css')" ]; then
+  git show ":frontend/src/styles/app.css" | python3 .githooks/check-css-tokens.py \
+    || fail "app.css: a literal where a token belongs"
+fi
+
+# ── Types and lint, over the whole frontend ──────────────────────────────
+# Not scoped to the staged files, deliberately: a type error is rarely in the
+# file that caused it, and tsc has no useful single-file mode over a project
+# this size. It reads a warm cache in under a second.
+#
+# Their output is held and shown only on failure. oxlint exits 0 with a page of
+# warnings this repository has decided to live with, and a hook that prints
+# fifty lines every time it passes trains people to stop reading it.
+if [ -n "$(staged 'frontend/*')" ]; then
+  if ! out=$( cd frontend && pnpm --silent typecheck 2>&1 ); then
+    echo "$out" >&2
+    fail "tsc"
+  fi
+  if ! out=$( cd frontend && pnpm --silent lint 2>&1 ); then
+    echo "$out" >&2
+    fail "oxlint"
+  fi
+fi
+
+exit 0

@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+#
+# The subject line, checked against the one format this repository uses.
+#
+#   type(scope): lowercase subject
+#
+# Types are the four that say something about the change: feat, fix, refactor,
+# chore. Not a longer list — `style` and `perf` are arguments about a diff that
+# the body should be making in words, and a vocabulary nobody can recite is a
+# vocabulary people guess at.
+#
+# Only the subject is checked. The body is prose and this has no opinion about
+# it, beyond the one every git guide has: leave a blank line after the subject.
+set -euo pipefail
+
+msg_file="$1"
+subject=$(sed -n '1p' "$msg_file")
+
+# Git's own commits are not ours to judge: a merge, a revert, a fixup and a
+# squash all carry a subject git wrote or that names another commit.
+case "$subject" in
+  "Merge "*|"Revert "*|"fixup! "*|"squash! "*|"amend! "*) exit 0 ;;
+esac
+
+# A commented-out or empty message: git will abort on its own, and failing here
+# first would replace its clear message with ours.
+#
+# Written as an `if` and not `[ … ] && exit 0`, because under `set -e` a test
+# that is simply false is a statement that returned 1, and the shell takes the
+# whole hook down with it. That mistake rejected every well-formed subject.
+if [ -z "${subject// /}" ]; then
+  exit 0
+fi
+
+# Held in variables and used unquoted: an inline `=~` pattern containing
+# escaped parentheses is parsed by the shell before the regex engine ever sees
+# it, and bash answers with "syntax error in conditional expression".
+ok_re='^(feat|fix|refactor|chore)(\([a-z0-9._-]+\))?: [a-z]'
+capitalised_re='^(feat|fix|refactor|chore)(\([a-z0-9._-]+\))?: [A-Z]'
+prefixed_re='^[A-Za-z]+(\([^)]*\))?:'
+
+fail() {
+  echo "commit-msg: $1" >&2
+  echo >&2
+  echo "  subject: $subject" >&2
+  echo >&2
+  echo "  expected: type(scope): lowercase subject" >&2
+  echo "  types:    feat  fix  refactor  chore" >&2
+  echo "  examples: feat(review): filter findings by kind" >&2
+  echo "            fix(publish): document the types the wire actually sends" >&2
+  echo "            chore(dev): compose fixtures for a used server" >&2
+  echo >&2
+  echo "  --no-verify skips this, and every check below it." >&2
+  exit 1
+}
+
+if ! [[ "$subject" =~ $ok_re ]]; then
+  if [[ "$subject" =~ $capitalised_re ]]; then
+    fail "the subject starts with a capital"
+  fi
+  if [[ "$subject" =~ $prefixed_re ]]; then
+    fail "that is not one of the four types"
+  fi
+  fail "no conventional-commit prefix"
+fi
+
+# 72 is where `git log --oneline` starts truncating in a standard terminal, and
+# a subject nobody can read whole is a subject nobody reads.
+if [ "${#subject}" -gt 72 ]; then
+  fail "the subject is ${#subject} characters; 72 is the ceiling"
+fi
+
+# The blank line, so `git log --format=%s` does not swallow the first sentence
+# of the body.
+second=$(sed -n '2p' "$msg_file")
+if [ -n "$second" ]; then
+  fail "no blank line between the subject and the body"
+fi
+
+exit 0
