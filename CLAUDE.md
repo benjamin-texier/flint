@@ -19,7 +19,7 @@ identifier is quoted by the server rather than by us.
 - **`src/clickhouse/`** — everything that speaks to the server. `mod.rs` is the
   HTTP client (formats, settings, the `system_columns` probe that lets an older
   server degrade one field instead of failing a page); `meta.rs` the object
-  metadata; `graph.rs` the schema graph (mostly *inferred* — see the README);
+  metadata; `graph.rs` the schema graph (mostly *inferred* — see `docs/features.md`);
   `profile.rs` the per-column profile; `diagnostics.rs` the query-log reads.
 - **`src/routes/`** — thin handlers over the above, plus `spa.rs`, which serves
   the embedded frontend.
