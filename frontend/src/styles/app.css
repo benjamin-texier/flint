@@ -4700,6 +4700,186 @@ tr:hover .stratum__fill {
   stroke-width: 1;
 }
 
+/* A stacked band. The stroke is the 2px surface gap the marks spec asks for
+ * between adjacent fills — drawn as a stroke rather than as a real gap so the
+ * bands still meet edge to edge and the top edge stays the sum. */
+.chart__band {
+  opacity: 0.82;
+}
+
+/* The gap between two bands. A line of its own rather than a stroke around
+ * each polygon: stroking scalloped the boundary — a round join is a 1px arc at
+ * every vertex, and a dense series puts a vertex every three pixels. */
+.chart__seam {
+  fill: none;
+  stroke: var(--bg-surface);
+  stroke-width: 2;
+}
+
+/* The total in a stacked tooltip: the figure the top edge asserts, set apart
+ * from the measures it is the sum of. */
+.chartip__row--total {
+  margin-top: var(--s1);
+  padding-top: var(--s1);
+  border-top: 1px solid var(--divider);
+}
+.chartip__key--none {
+  background: transparent;
+}
+
+/* ═══ The donut ══════════════════════════════════════════════════════════
+ * Named for the kind and not for the shape, because `.ring` is already the
+ * Clusters page's shards-and-replicas drawing — and that one defines a
+ * `.ring__name` of its own, which this would have inherited a serif weight and
+ * a border from.
+ *
+ * Shares of a whole, with the whole in the hole. Six slices at most — the cap
+ * lives in `suggestCharts`, which withholds the form rather than trimming the
+ * ring, so nothing here has to say what was left out. */
+
+.donut {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s4);
+}
+
+.donut__svg {
+  flex: none;
+}
+
+/* Same 2px surface gap as every other adjacent fill in the product. */
+.donut__slice {
+  stroke: var(--bg-surface);
+  stroke-width: 2;
+  transition: opacity var(--motion-fast) var(--ease);
+}
+.donut__slice.is-lit {
+  opacity: 0.78;
+}
+
+/* Outside the ring and in a text token. On the band it would be type on a
+ * categorical hue, which is the one thing this stylesheet never does — and it
+ * measured below AA on two of the six slots. */
+.donut__share {
+  fill: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.donut__total {
+  fill: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 1.375rem;
+  font-weight: 600;
+}
+.donut__totallabel {
+  fill: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: var(--size-label);
+  text-anchor: middle;
+}
+
+.donut__legend {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--s1) var(--s3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--size-label);
+  color: var(--text-secondary);
+  min-width: 200px;
+}
+
+.donut__key {
+  display: contents;
+}
+.donut__key.is-lit .donut__name,
+.donut__key.is-lit .donut__figure {
+  color: var(--text-primary);
+}
+
+.donut__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.donut__figure,
+.donut__pct {
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.donut__pct {
+  color: var(--text-muted);
+}
+
+/* ═══ The grid ═══════════════════════════════════════════════════════════
+ * One hue, more-is-darker: a heatmap encodes magnitude, so the colour job is
+ * sequential and the categorical palette is the wrong tool — six hues across a
+ * grid would say the cells are six different kinds of thing.
+ *
+ * It scrolls rather than truncating a label. Every other axis here has a fixed
+ * band to fit into and drops its labels when they do not fit; a grid has a
+ * scroll container, so the room is there for the asking. */
+
+.heat {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.heat__svg {
+  display: block;
+}
+
+.heat__cell {
+  fill: var(--cell-ink);
+}
+
+/* A crossing the query never returned, which is not a crossing that returned
+ * nothing: an outline rather than the palest step of the ramp, because the
+ * palest step is what a real zero wears. */
+.heat__none {
+  fill: none;
+  stroke: var(--divider);
+  stroke-width: 1;
+}
+
+.heat__x {
+  text-anchor: start;
+}
+
+.heat__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2) var(--s3);
+  font-size: var(--size-label);
+  color: var(--text-secondary);
+}
+
+.heat__ramp {
+  display: inline-flex;
+  gap: 2px;
+}
+.heat__ramp i {
+  width: 18px;
+  height: 10px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--cell-ink) calc(var(--fill, 0) * 100%), transparent);
+}
+
+.heat__scale {
+  font-variant-numeric: tabular-nums;
+}
+
 .facet + .facet {
   margin-top: var(--s2);
 }

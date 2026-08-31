@@ -67,3 +67,53 @@ describe('the order a line is drawn in', () => {
     expect(m?.series[0]!.points.map((p) => p.y)).toEqual([242, 230, 236])
   })
 })
+
+describe('the stack', () => {
+  it('bands each measure on top of the one below, and the top edge is the sum', () => {
+    const m = buildModel(result(['h', 'n', 'm'], rows), spec('area', [1, 2]))
+    expect(m?.stacked?.[0]!.lower).toEqual([0, 0, 0])
+    expect(m?.stacked?.[0]!.upper).toEqual([230, 236, 242])
+    expect(m?.stacked?.[1]!.upper).toEqual([640, 631, 644])
+    // The measures themselves stay raw, so the tooltip reports what each one
+    // was rather than where its band happened to sit.
+    expect(m?.series[1]!.points.map((p) => p.y)).toEqual([410, 395, 402])
+  })
+
+  it('baselines at zero and reaches the tallest total', () => {
+    const m = buildModel(result(['h', 'n', 'm'], rows), spec('area', [1, 2]))
+    expect(m?.yMin).toBe(0)
+    expect(m?.yMax).toBe(644)
+  })
+
+  it('drops a missing value out of the total instead of carrying it across', () => {
+    const gappy = [
+      ['2026-01-01 00:00:00', '10', '5'],
+      ['2026-01-01 01:00:00', '10', null],
+      ['2026-01-01 02:00:00', '10', '5'],
+    ]
+    const m = buildModel(result(['h', 'n', 'm'], gappy), spec('area', [1, 2]))
+    expect(m?.stacked?.[1]!.upper).toEqual([15, 10, 15])
+  })
+
+  it('refuses a negative in words rather than drawing a top edge that lies', () => {
+    // The picker offers the form from the shape of the result and never sees a
+    // value, so this is where the claim it makes meets the numbers.
+    const negative = [
+      ['2026-01-01 00:00:00', '10', '-5'],
+      ['2026-01-01 01:00:00', '10', '5'],
+    ]
+    const m = buildModel(result(['h', 'n', 'm'], negative), spec('area', [1, 2]))
+    expect(m?.refusal).toContain('stack cannot draw that')
+    expect(m?.stacked).toBeUndefined()
+  })
+
+  it('orders a stack left to right, like the line it is a fill of', () => {
+    const shuffled = [
+      ['2026-01-01 02:00:00', '1', '1'],
+      ['2026-01-01 00:00:00', '2', '2'],
+      ['2026-01-01 01:00:00', '3', '3'],
+    ]
+    const m = buildModel(result(['h', 'n', 'm'], shuffled), spec('area', [1, 2]))
+    expect(m?.series[0]!.points.map((p) => p.y)).toEqual([2, 3, 1])
+  })
+})

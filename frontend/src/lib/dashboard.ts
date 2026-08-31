@@ -4,7 +4,7 @@
  *  dashboard saved by an older Flint — or edited by hand — has to be made safe.
  *  Everything here is defensive on the way in and exact on the way out. */
 
-import type { ChartSpec } from './chart'
+import type { ChartKind, ChartSpec } from './chart'
 import { declaredParams, declaredParamsTyped } from './publish'
 
 export interface Tile {
@@ -156,11 +156,27 @@ function readVariables(value: unknown): Record<string, string> {
   return out
 }
 
+/** The kinds a stored tile may name.
+ *
+ *  Read off the union rather than written out a second time: a list here that
+ *  drifts from `ChartKind` fails in the one direction nobody notices — an
+ *  unrecognised kind falls through to `null`, and the tile comes back as a
+ *  table with no error anywhere saying a chart was dropped. */
+const KINDS: Record<ChartKind, true> = {
+  stat: true,
+  line: true,
+  area: true,
+  bar: true,
+  donut: true,
+  heatmap: true,
+  scatter: true,
+}
+
 function readChart(value: unknown): ChartSpec | null {
   if (!value || typeof value !== 'object') return null
   const c = value as Record<string, unknown>
   const kind = str(c.kind)
-  if (!['stat', 'line', 'bar', 'scatter'].includes(kind)) return null
+  if (!Object.hasOwn(KINDS, kind)) return null
   const series = Array.isArray(c.series)
     ? c.series.filter((n): n is number => typeof n === 'number')
     : []
@@ -168,6 +184,9 @@ function readChart(value: unknown): ChartSpec | null {
   return {
     kind: kind as ChartSpec['kind'],
     x: typeof c.x === 'number' ? c.x : -1,
+    // The heatmap's second axis, and only ever a real column index: a stored
+    // `y` of -1 would send the grid looking for a column that is not there.
+    ...(typeof c.y === 'number' && c.y >= 0 ? { y: c.y } : {}),
     series,
     why: str(c.why),
   }
