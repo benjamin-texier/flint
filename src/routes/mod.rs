@@ -172,6 +172,13 @@ impl AppState {
 /// face, which carries its own token. Exemption is therefore visible in a
 /// signature — with the corollary that a *new* handler is open until it asks for
 /// this or for [`SignedIn`], which is the thing to check when adding one.
+///
+/// Alongside those, `session::{whoami, login, logout}` are open by necessity —
+/// a browser that cannot reach them cannot sign in — and so is
+/// `session::preflight`, which is the only one of the set that opens a socket
+/// to an address the *caller* chose without creating a session. It is worth
+/// naming here because its openness is the least obvious: see its own doc, and
+/// [`AppState::dials`] for the budget it shares with signing in.
 /// Sign-in dials permitted at once. See [`AppState::dials`].
 ///
 /// A constant rather than a setting: somebody signs in once, so the number only
@@ -242,6 +249,9 @@ pub fn router(state: AppState) -> Router {
         // that cannot reach these cannot sign in.
         .route("/session", get(session::whoami))
         .route("/login", post(session::login))
+        // Open for the same reason `/login` is: it is asked by a browser that
+        // has nobody to be yet. It opens no session — see `session::preflight`.
+        .route("/preflight", post(session::preflight))
         .route("/logout", post(session::logout))
         .route("/server", get(explorer::server))
         .route("/timezones", get(explorer::timezones))
@@ -705,6 +715,64 @@ mod tests {
         // 502: through the gate and out to a port where nothing listens, which
         // is the proof that the refusal above was the gate and not the address.
         assert_eq!(status, StatusCode::BAD_GATEWAY, "{said}");
+    }
+
+    /// The preflight is the second unauthenticated route in this process, and
+    /// the first one to be added since the reasoning about the first was
+    /// written down. These hold it to the same three promises `/api/login`
+    /// makes, because it opens the same socket to the same address a browser
+    /// chose — and because the whole point of `session::target_for` and
+    /// `session::dial` being functions is that the two routes cannot drift.
+    #[tokio::test]
+    async fn the_preflight_is_open_and_vetted_exactly_as_signing_in_is() {
+        // Open: no cookie, and it must not answer 401. It gets as far as the
+        // address and fails there, which is the proof it was not gated.
+        let open = unpinned(&[]);
+        let body = r#"{"user":"analyst","endpoint":"http://127.0.0.1:1"}"#;
+        let (status, said) = post(&open, "/api/preflight", None, body).await;
+        assert_eq!(status, StatusCode::BAD_GATEWAY, "{said}");
+
+        // Vetted: an allow-list that does not name the host refuses before a
+        // socket is opened, with the same words the sign-in route uses.
+        let narrowed = unpinned(&["allowed:8123"]);
+        let (status, said) = post(&narrowed, "/api/preflight", None, body).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{said}");
+        assert!(said.contains("FLINT_TARGETS"), "{said}");
+
+        // And it will not be used to move a pinned Flint any more than signing
+        // in will.
+        let (pinned, _) = app(true);
+        let (status, said) = post(
+            &pinned,
+            "/api/preflight",
+            None,
+            r#"{"user":"analyst","endpoint":"http://elsewhere:8123"}"#,
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{said}");
+        assert!(said.contains("pointed at"), "{said}");
+    }
+
+    #[tokio::test]
+    async fn the_preflight_asks_for_a_server_when_there_is_none_to_ask_about() {
+        // The same refusal `/api/login` gives, from the same function: an
+        // unpinned Flint has no address of its own, so a body without one is
+        // not a request anybody can answer.
+        let open = unpinned(&[]);
+        let (status, said) = post(&open, "/api/preflight", None, r#"{"user":"analyst"}"#).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{said}");
+        assert!(said.contains("name the ClickHouse HTTP endpoint"), "{said}");
+
+        // And a nameless caller is refused before the socket, not after.
+        let (status, said) = post(
+            &open,
+            "/api/preflight",
+            None,
+            r#"{"user":"  ","endpoint":"http://127.0.0.1:1"}"#,
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{said}");
+        assert!(said.contains("user name is required"), "{said}");
     }
 
     #[tokio::test]

@@ -113,33 +113,7 @@ pub async fn login(
         return Err(Error::BadRequest("a user name is required".into()));
     }
 
-    // Where to. The two branches are refusals rather than a preference resolved
-    // quietly, for the reason on `LoginRequest::endpoint`.
-    let target = match (
-        state.config.pinned(),
-        req.endpoint.as_deref().map(str::trim).unwrap_or_default(),
-    ) {
-        (false, "") => {
-            return Err(Error::BadRequest(
-                "name the ClickHouse HTTP endpoint to sign in to — this Flint has none of its \
-                 own. Something like http://localhost:8123."
-                    .into(),
-            ))
-        }
-        // Vetted before it is dialled: it arrived from a browser, and this
-        // process is about to open a socket to it. See `src/target.rs`.
-        (false, raw) => {
-            Some(crate::target::vet(raw, &state.config.targets).map_err(Error::BadRequest)?)
-        }
-        (true, "") => None,
-        (true, _) => {
-            return Err(Error::BadRequest(format!(
-                "this Flint is pointed at {} by its manifest, and signing in cannot move it. \
-                 Unset FLINT_CLICKHOUSE_URL to run a Flint whose server the browser names.",
-                state.config.redacted_endpoint().unwrap_or_default()
-            )))
-        }
-    };
+    let target = target_for(&state, req.endpoint.as_deref())?;
 
     #[derive(serde::Deserialize)]
     struct Whoami {
@@ -157,21 +131,7 @@ pub async fn login(
     if let Some(endpoint) = &target {
         offered = offered.at(endpoint.clone());
     }
-    // Taken before the socket, released when the probe returns. This is the one
-    // place in Flint where an unauthenticated request causes an outbound
-    // connection to an address the request chose, so it is the one place worth
-    // counting — see `AppState::dials`, including what it does and does not buy.
-    // Refused rather than queued: a queue of waiters is its own way to spend this
-    // process's memory, and a person signing in will only meet this while
-    // something else is holding every connection open, which is worth being told.
-    let _dial = state.dials.clone().try_acquire_owned().map_err(|_| {
-        Error::Throttled(
-            "too many sign-ins are being attempted at once for Flint to open another connection. \
-             Try again in a moment — and if this Flint is reachable by anyone, FLINT_TARGETS is \
-             what stops its sign-in form being used to probe a network."
-                .into(),
-        )
-    })?;
+    let _dial = dial(&state)?;
     let probe = state.ch.as_user(&offered);
     let (who, zone) = match probe
         .row::<Whoami>("SELECT currentUser() AS user, timezone() AS timezone")
@@ -181,19 +141,13 @@ pub async fn login(
         // A server that answers the query with no rows is not something to
         // guess about, so take the name the form gave and carry on.
         Ok(None) => (offered.user().to_string(), String::new()),
-        // The credentials themselves were wrong. ClickHouse appends a
-        // multi-paragraph hint to these — where to reset a cloud password,
-        // which file holds the default one — and a sign-in form wants the first
-        // line of that, not the essay.
+        // The credentials themselves were wrong. See `refusal`.
         Err(
             e @ Error::ClickHouse {
                 code: 516 | 194 | 193 | 192,
                 ..
             },
-        ) => {
-            let first = e.to_string().lines().next().unwrap_or_default().to_string();
-            return Err(Error::Unauthorized(first));
-        }
+        ) => return Err(refusal(e)),
         // Accepted, and then refused for something else. `readonly=1` is the one
         // that happens in practice: it forbids *changing settings*, and Flint
         // attaches a timeout and a row cap to every statement it sends. Worth
@@ -257,6 +211,143 @@ pub async fn login(
         Json(json!({ "user": who })),
     )
         .into_response())
+}
+
+/// ClickHouse's rejection of a credential, trimmed to its first line.
+///
+/// ClickHouse appends a multi-paragraph hint to these — where to reset a cloud
+/// password, which file holds the default one — and a sign-in form wants the
+/// first line of that, not the essay. Shared by `login` and `preflight` so that
+/// a wrong password reads the same whichever of the two met it first: the
+/// preflight now usually does, and it would have been the one route answering
+/// with the wall of text.
+///
+/// Anything that is not one of those four codes passes through untouched. A
+/// transport failure is not a wrong password, and saying it is sends somebody
+/// to retype a correct one.
+fn refusal(e: Error) -> Error {
+    match &e {
+        Error::ClickHouse {
+            code: 516 | 194 | 193 | 192,
+            ..
+        } => Error::Unauthorized(e.to_string().lines().next().unwrap_or_default().to_string()),
+        _ => e,
+    }
+}
+
+/// Which server this request is for, or a refusal.
+///
+/// Shared by `login` and `preflight` rather than written twice. It is the one
+/// decision in Flint that turns a string from a browser into an address this
+/// process will open a socket to, and two copies of it are two places for the
+/// vetting to drift out of agreement — which is the shape of the bug nobody
+/// finds until the second route is the one being used.
+///
+/// The branches are refusals rather than a preference resolved quietly, for the
+/// reason on `LoginRequest::endpoint`.
+fn target_for(state: &AppState, endpoint: Option<&str>) -> Result<Option<String>> {
+    match (
+        state.config.pinned(),
+        endpoint.map(str::trim).unwrap_or_default(),
+    ) {
+        (false, "") => Err(Error::BadRequest(
+            "name the ClickHouse HTTP endpoint to sign in to — this Flint has none of its \
+             own. Something like http://localhost:8123."
+                .into(),
+        )),
+        // Vetted before it is dialled: it arrived from a browser, and this
+        // process is about to open a socket to it. See `src/target.rs`.
+        (false, raw) => Ok(Some(
+            crate::target::vet(raw, &state.config.targets).map_err(Error::BadRequest)?,
+        )),
+        (true, "") => Ok(None),
+        (true, _) => Err(Error::BadRequest(format!(
+            "this Flint is pointed at {} by its manifest, and signing in cannot move it. \
+             Unset FLINT_CLICKHOUSE_URL to run a Flint whose server the browser names.",
+            state.config.redacted_endpoint().unwrap_or_default()
+        ))),
+    }
+}
+
+/// A permit to open one outbound connection on behalf of nobody.
+///
+/// Taken before the socket, released when the probe returns. These are the only
+/// places in Flint where an unauthenticated request causes an outbound
+/// connection to an address the request chose, so they are the ones worth
+/// counting — see `AppState::dials`, including what it does and does not buy.
+/// Refused rather than queued: a queue of waiters is its own way to spend this
+/// process's memory, and a person signing in will only meet this while
+/// something else is holding every connection open, which is worth being told.
+///
+/// `preflight` shares the same pool as `login` deliberately. It is the same
+/// socket to the same chosen address, and giving the newer route a budget of its
+/// own would double what one caller can hold open while each limit looked
+/// correctly small.
+fn dial(state: &AppState) -> Result<tokio::sync::OwnedSemaphorePermit> {
+    state.dials.clone().try_acquire_owned().map_err(|_| {
+        Error::Throttled(
+            "too many sign-ins are being attempted at once for Flint to open another connection. \
+             Try again in a moment — and if this Flint is reachable by anyone, FLINT_TARGETS is \
+             what stops its sign-in form being used to probe a network."
+                .into(),
+        )
+    })
+}
+
+/// What these credentials would be able to do here, without signing in with
+/// them.
+///
+/// Open, like `login`, and for the same reason: it is asked by a browser that
+/// has nobody to be yet. It takes the same body, vets the same address through
+/// the same function and spends a permit from the same pool — but it opens no
+/// session and sets no cookie, so a caller who runs it a hundred times has a
+/// hundred read-only probes and is still nobody.
+///
+/// Why it exists: credentials that are *accepted* and then cannot read
+/// `system.query_log`, or cannot create the table an alert needs, used to be
+/// discovered three clicks past this form as a page that loads and says nothing.
+/// The measurement is `clickhouse::preflight`; what it means for each section is
+/// decided in the frontend, which is where that judgement is testable.
+pub async fn preflight(
+    State(state): State<AppState>,
+    Json(req): Json<LoginRequest>,
+) -> Result<Json<serde_json::Value>> {
+    if !state.config.sign_in_required() {
+        return Err(Error::BadRequest(
+            "this Flint does not sign anyone in, so there are no credentials to check — it \
+             connects as the account in its manifest."
+                .into(),
+        ));
+    }
+    if req.user.trim().is_empty() {
+        return Err(Error::BadRequest("a user name is required".into()));
+    }
+
+    let target = target_for(&state, req.endpoint.as_deref())?;
+    let mut offered = Identity::new(req.user.trim(), req.password);
+    if let Some(endpoint) = &target {
+        offered = offered.at(endpoint.clone());
+    }
+
+    let _dial = dial(&state)?;
+    let ch = state.ch.as_user(&offered);
+    let reading = crate::clickhouse::preflight::measure(&ch, offered.user())
+        .await
+        .map_err(refusal)?;
+
+    Ok(Json(json!({
+        "reading": reading,
+        // Two facts about *this Flint* rather than about the server, and they
+        // belong in the same answer because the screen reads them together: a
+        // backup capability is the user's grants AND a disk this deployment is
+        // allowed to write to, and an alert is grants AND somewhere to keep it
+        // AND something that ticks. Sent here rather than left to `/api/config`
+        // so the panel is assembled from one payload and cannot show half of a
+        // verdict while the other half is still in flight.
+        "backups": state.config.backup_disk.is_some(),
+        "workspace": state.config.workspace_database,
+        "scheduled": state.config.workspace_database.is_some() && state.config.pinned(),
+    })))
 }
 
 /// Sign out. Idempotent: signing out when you are not signed in is not an

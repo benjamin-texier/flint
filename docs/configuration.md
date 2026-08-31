@@ -74,6 +74,51 @@ What it costs, said plainly rather than discovered later:
   therefore same-origin: `FLINT_CORS_ORIGIN` is for a dev server proxying `/api`,
   not for a separate front end holding a session.
 
+#### What the screen tells you before you sign in
+
+A wrong password is a wrong password, and the form has always said so. The
+expensive failure is the one that *succeeds*: credentials that are accepted and
+then cannot read `system.query_log`, or a server whose session log is switched
+off, or a Flint with no backup disk. All three used to be discovered three clicks
+later, as a page that loads and says nothing.
+
+So the sign-in screen asks first. `POST /api/preflight` takes the same body as
+`/api/login`, opens no session, and runs the reads Flint's own sections are built
+on **as the credentials on the form** — then the panel beside the fields says what
+each one will be able to do.
+
+- **It attempts the read rather than interpreting the grant.** `SHOW GRANTS` has
+  to be parsed — wildcards, roles, revokes — and every parse is a second
+  implementation of ClickHouse's access rules that can disagree with it.
+  `SELECT count() FROM system.query_log WHERE 0` cannot disagree with anything.
+  The grants are still read, for a different job: to *name* what a verdict rests
+  on, because "granted" beside `SELECT on analytics.*` is a sentence somebody can
+  check and "granted" on its own asks to be trusted.
+- **Four verdicts, because three were wrong.** Measured on a real server:
+  `system.session_log` came back *absent* — the log is off, the grants are fine,
+  and reporting that as "refused" sends somebody to write a `GRANT` that will
+  change nothing. So: `granted`, `refused` (a `GRANT` fixes it), `partial` (and
+  which half is missing), `off` (the server or this deployment does not have the
+  thing at all; a configuration change fixes it, a grant will not).
+- **Two rows are not about your grants**, and say so. Backups need a destination
+  this deployment may write to; alerts need somewhere for Flint to keep them and
+  something that ticks. Flint writes its own bookkeeping with its own account, so
+  naming your `CREATE TABLE` there would be a plausible sentence that is false —
+  those rows name `FLINT_BACKUP_DISK` and `FLINT_WORKSPACE_DATABASE` instead.
+- **It fires on blur, not on keystroke**, once every field has been visited. A
+  debounce would send the password to a browser-named address every time somebody
+  paused mid-word — and probing on *any* blur meant leaving the user field fired a
+  probe with the password still empty, so everybody with a password watched the
+  panel go red before they had finished filling the form in.
+- **It shares the sign-in dial budget** rather than getting one of its own. It is
+  the same socket to the same chosen address, and a second pool of eight would
+  double what one caller can hold open while each limit looked correctly small.
+  It is vetted by the same `FLINT_TARGETS` fence, through the same function.
+
+Measurement lives in `src/clickhouse/preflight.rs` and decides nothing;
+`frontend/src/lib/preflight.ts` decides what any of it means and is where the
+tests are. That split is deliberate — the judgement is the part that changes.
+
 **A script signs in the same way, and holds a bearer instead of a cookie.** Post
 `bearer: true` and the session comes back in the body rather than as a
 `Set-Cookie`:
