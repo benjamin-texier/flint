@@ -11,29 +11,36 @@
 --     docker exec -i flint-dev-clickhouse-1 clickhouse-client --user default \
 --       --password flint --multiquery < contrib/dev-access.sql
 
+-- Its own database, created here. This file used to borrow one from the schema
+-- fixture that ran before it, which made an access-control fixture silently
+-- depend on which tables the demo schema happened to hold; the tables under
+-- `contrib/play-schema.sql` are ClickHouse's and nothing here should be reaching
+-- into them. `access_probe` holds only what this file puts there.
+CREATE DATABASE IF NOT EXISTS access_probe;
+
 -- A tenant table with rows belonging to three different people.
-CREATE TABLE IF NOT EXISTS analytics.policy_probe (tenant String, v UInt32)
+CREATE TABLE IF NOT EXISTS access_probe.policy_probe (tenant String, v UInt32)
   ENGINE = MergeTree ORDER BY tenant;
-TRUNCATE TABLE analytics.policy_probe;
-INSERT INTO analytics.policy_probe VALUES ('a', 1), ('b', 2), ('c', 3);
+TRUNCATE TABLE access_probe.policy_probe;
+INSERT INTO access_probe.policy_probe VALUES ('a', 1), ('b', 2), ('c', 3);
 
 CREATE USER IF NOT EXISTS probe_a IDENTIFIED WITH plaintext_password BY 'p';
 CREATE USER IF NOT EXISTS probe_none IDENTIFIED WITH plaintext_password BY 'p';
-GRANT SELECT ON analytics.* TO probe_a, probe_none;
+GRANT SELECT ON access_probe.* TO probe_a, probe_none;
 
 CREATE ROLE IF NOT EXISTS analyst;
-GRANT SELECT ON analytics.* TO analyst;
+GRANT SELECT ON access_probe.* TO analyst;
 GRANT analyst TO probe_a;
 
 -- Row policies, in the three shapes whose composition is the whole subject:
 -- two permissive ones that union, and a restrictive one that intersects what
 -- they left. `probe_none` is named by none of them and therefore sees every
 -- row — which is the fact about row policies most likely to be got wrong.
-CREATE ROW POLICY OR REPLACE only_a ON analytics.policy_probe
+CREATE ROW POLICY OR REPLACE only_a ON access_probe.policy_probe
   USING tenant = 'a' TO probe_a;
-CREATE ROW POLICY OR REPLACE also_b ON analytics.policy_probe
+CREATE ROW POLICY OR REPLACE also_b ON access_probe.policy_probe
   USING tenant = 'b' TO probe_a;
-CREATE ROW POLICY OR REPLACE not_b ON analytics.policy_probe
+CREATE ROW POLICY OR REPLACE not_b ON access_probe.policy_probe
   AS RESTRICTIVE USING tenant != 'b' TO probe_a;
 
 -- A quota with ceilings on two dimensions over two intervals, so the page has
@@ -80,7 +87,7 @@ ALTER USER probe_a SETTINGS max_memory_usage = 2000000000;
 CREATE SETTINGS PROFILE OR REPLACE old_ways SETTINGS compatibility = '24.8';
 CREATE USER IF NOT EXISTS probe_old IDENTIFIED WITH plaintext_password BY 'p'
   SETTINGS PROFILE old_ways;
-GRANT SELECT ON analytics.* TO probe_old;
+GRANT SELECT ON access_probe.* TO probe_old;
 
 -- Two accounts for "What you may see", the read-only grants panel in Data.
 --
@@ -98,10 +105,10 @@ CREATE USER IF NOT EXISTS probe_bare IDENTIFIED WITH plaintext_password BY 'p';
 -- Printed among them, it tells the reader they may read the one table they may
 -- not.
 CREATE USER IF NOT EXISTS probe_cols IDENTIFIED WITH plaintext_password BY 'p';
-GRANT SELECT ON analytics.* TO probe_cols;
-REVOKE SELECT ON analytics.orders FROM probe_cols;
+GRANT SELECT ON access_probe.* TO probe_cols;
+REVOKE SELECT ON access_probe.orders FROM probe_cols;
 GRANT SELECT(event_time, query_duration_ms) ON system.query_log TO probe_cols;
 
--- `probe_a` already holds `SELECT ON analytics.*` directly, and the `analyst`
+-- `probe_a` already holds `SELECT ON access_probe.*` directly, and the `analyst`
 -- role above carries the same grant — which is the third shape: one privilege
 -- arriving by two paths, folded into one row that names both.

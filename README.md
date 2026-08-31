@@ -3430,17 +3430,25 @@ permission.
 ## Develop
 
 Everything in containers, hot reload on both sides, against a throwaway
-ClickHouse seeded with `contrib/demo-schema.sql`:
+ClickHouse seeded with `contrib/play-schema.sql`:
 
 ```bash
 docker compose -f docker-compose.dev.yml up --build
 ```
 
-Open <http://localhost:5173>. The demo schema is one raw table feeding three
-materialized views into three rollup tables, plus plain views and a
-cross-database dictionary — enough to exercise every edge the schema diagram
-knows how to draw. ClickHouse is on `:8123` (user `default`, password `flint`)
-and the API on `:8080` if you want to hit either directly.
+Open <http://localhost:5173>. The seed is ClickHouse's own: 85 tables and 5
+views lifted from [play.clickhouse.com](https://play.clickhouse.com) across four
+databases — `hits` at 105 columns wide, `noaa` with a `Point` and 22 weather
+enums, `countries` holding a `MultiPolygon`, a materialized view, three
+projections, 42 skip indices and 204 column comments. None of it was designed to
+flatter a schema diagram, which is why it is here. The extract is about 150 MiB,
+fetched by the server itself on first boot, sized from the bytes-per-row measured
+on the playground rather than a round number guessed here; `contrib/pull-play.mjs`
+regenerates the file. Dictionaries, row policies, quotas and a delegation role
+come from the other fixtures in `contrib/`, applied on the same boot.
+
+ClickHouse is on `:8125` (user `default`, password `flint`) and the API on
+`:8080` if you want to hit either directly.
 
 The first `up` is slow: it installs `cargo-watch` and builds the dependency
 tree. After that the cargo registry and target directory live in volumes, so
