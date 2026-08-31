@@ -83,14 +83,64 @@ describe('what the form can hold whole', () => {
     expect(spec.dropped).toEqual([])
   })
 
+  it('reads an order by an aggregate expression back to the name the form uses', () => {
+    // The generated statement orders by `count()`, never by the alias it put on
+    // it — matching plain columns only dropped the sort off every aggregate.
+    const spec = read(
+      'SELECT toStartOfHour(ts) AS ts_hour, count() AS rows FROM web.hits ' +
+        'GROUP BY toStartOfHour(ts) ORDER BY count() DESC, toStartOfHour(ts)',
+    )
+    expect(spec.orderings).toEqual([
+      { ref: 'rows', desc: true },
+      { ref: 'ts_hour', desc: false },
+    ])
+    expect(spec.dropped).toEqual([])
+  })
+
+  it('reads a rolling window as one window, not a window and a filter', () => {
+    // Both halves, exactly as the server renders them: half-open, so the
+    // boundary row is counted once.
+    const spec = read(
+      "SELECT * FROM web.hits WHERE `ts` >= now() - INTERVAL 7 DAY AND `ts` < now()",
+    )
+    expect(spec.conditions).toEqual([{ column: 'ts', op: 'since', value: '7d', value2: '' }])
+    expect(spec.dropped).toEqual([])
+  })
+
+  it('keeps a `< now()` that is nobody window', () => {
+    const spec = read('SELECT * FROM web.hits WHERE `ts` < now()')
+    expect(spec.conditions).toEqual([{ column: 'ts', op: '<', value: 'now()', value2: '' }])
+  })
+
+  it('reads the zone out of the settings the generated statement carries', () => {
+    const spec = read(
+      "SELECT * FROM web.hits WHERE `ts` >= now() - INTERVAL 1 DAY\nSETTINGS session_timezone = 'Europe/Oslo'",
+    )
+    expect(spec.timezone).toBe('Europe/Oslo')
+    expect(spec.dropped).toEqual([])
+  })
+
+  it('still drops the settings when they say more than the zone', () => {
+    const spec = read("SELECT * FROM t SETTINGS session_timezone = 'UTC', max_threads = 1")
+    expect(spec.timezone).toBe('UTC')
+    expect(spec.dropped[0]).toMatch(/SETTINGS/)
+  })
+
   it('sees through the wrapper the server generates', () => {
     const spec = read(
       'SELECT *\nFROM (\nSELECT * FROM `default`.`raw_parking_spot_data`\n)\nLIMIT 501',
     )
     expect(spec.table).toBe('raw_parking_spot_data')
     expect(spec.database).toBe('default')
-    expect(spec.limit).toBe(501)
+    // The probe row is not part of the question, so it is not in the box.
+    expect(spec.limit).toBe(500)
     expect(spec.dropped).toEqual([])
+  })
+
+  it('leaves a limit alone on a statement that is not a generated wrapper', () => {
+    expect(read('SELECT * FROM db.t LIMIT 501').limit).toBe(501)
+    // A wrapper, but over a question rather than over a bare table read.
+    expect(read('SELECT * FROM (SELECT a FROM db.t WHERE a > 1) LIMIT 501').limit).toBe(501)
   })
 
   it('keeps the page the form asked for rather than the extra row', () => {
