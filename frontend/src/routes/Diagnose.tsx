@@ -7,18 +7,25 @@ import { bytes, count, duration, exact, relativeTime } from '../lib/format'
 import {
   actualWindow,
   costShare,
+  databaseOf,
   editorLink,
   everRead,
   percent,
+  projectionsLink,
   scanShare,
   scanVerdict,
+  tableLink,
+  worthAskingAboutProjections,
   timeSpent,
+  type Pattern,
   type QueryReport,
   type StorageReport,
   type TrafficReport,
 } from '../lib/diagnose'
 import { concerns, summarise, type Item } from '../lib/attention'
-import { Flag, Says, Section, type Q } from '../components/Diag'
+import { keeps } from '../lib/spaces'
+import { readPlan, verdicts } from '../lib/plan'
+import { Flag, Says, Section, SectionIndex, type Q } from '../components/Diag'
 import { MetricLine } from '../components/MetricLine'
 import { EmptyNote } from '../components/Note'
 import { ShareBar } from '../components/StratumBar'
@@ -77,8 +84,23 @@ export function DiagnosePage() {
   /* What Flint is watching on your behalf. The reader is already here asking
      what is wrong, so this is where it belongs — and every one of these is a
      query the pages themselves cache anyway. */
-  const alerts = useQuery({ queryKey: ['alerts'], queryFn: () => api.alerts(), retry: false })
-  const reportList = useQuery({ queryKey: ['reports'], queryFn: () => api.reports(), retry: false })
+  const config = useQuery({ queryKey: ['config'], queryFn: () => api.config() })
+  /* Only where Flint keeps any. Watching nothing is the correct answer on a
+     stateless Flint — asking anyway returns a refusal, and a refusal counted as
+     "no alerts" is a distinction this panel cannot draw. */
+  const stateful = keeps(config.data)
+  const alerts = useQuery({
+    queryKey: ['alerts'],
+    queryFn: () => api.alerts(),
+    enabled: stateful,
+    retry: false,
+  })
+  const reportList = useQuery({
+    queryKey: ['reports'],
+    queryFn: () => api.reports(),
+    enabled: stateful,
+    retry: false,
+  })
   const usage = useQuery({
     queryKey: ['api-usage', 7],
     queryFn: () => api.apiUsage(7),
@@ -102,44 +124,55 @@ export function DiagnosePage() {
         <div className="page__titlerow">
           <h1 className="page__title page__title--hero">What your queries cost</h1>
         </div>
-        {/* One filter row, above everything it scopes — and now everything on
-            the page really is scoped by it, which was not true when the server's
-            point-in-time figures shared the page. */}
-        <div className="diag__filter">
-          <span className="label">WINDOW</span>
-          <div className="segmented">
-            {WINDOWS.map((w) => (
-              <button
-                key={w}
-                className={`segmented__item${days === w ? ' is-on' : ''}`}
-                onClick={() => setDays(w)}
-              >
-                {w === 1 ? '24 hours' : `${w} days`}
-              </button>
-            ))}
+        {/* One filter row, above everything it scopes — and now everything it
+            scopes really is on the page, which was not true when the server's
+            point-in-time figures shared it. Dropped entirely where the role can
+            read none of it: a window over nothing is a control that cannot
+            change anything, which is worse than no control at all. */}
+        {shutOut ? null : (
+          <div className="diag__filter">
+            <span className="label">WINDOW</span>
+            <div className="segmented">
+              {WINDOWS.map((w) => (
+                <button
+                  key={w}
+                  className={`segmented__item${days === w ? ' is-on' : ''}`}
+                  onClick={() => setDays(w)}
+                >
+                  {w === 1 ? '24 hours' : `${w} days`}
+                </button>
+              ))}
+            </div>
+            {queries.data?.available ? (
+              <span className="diag__filternote">
+                covering {actualWindow(queries.data.summary, days)}
+              </span>
+            ) : null}
           </div>
-          {queries.data?.available ? (
-            <span className="diag__filternote">
-              covering {actualWindow(queries.data.summary, days)}
-            </span>
-          ) : null}
-        </div>
+        )}
       </header>
+
+      <SectionIndex />
+
+      {/* Outside the shut-out branch, deliberately. What Flint is watching comes
+          from its own workspace, not from `system.*`, so a role denied the query
+          log has not lost it — and it used to vanish along with everything else,
+          which told somebody their alerts were unreadable when they were fine. */}
+      <Watching
+        items={concerns({
+          alerts: alerts.data,
+          reports: reportList.data,
+          usage: usage.data,
+        })}
+        anything={Boolean(
+          alerts.data?.length || reportList.data?.length || usage.data?.usage.length,
+        )}
+      />
 
       {shutOut ? (
         <ShutOut obstacles={obstacles} />
       ) : (
         <>
-          <Watching
-            items={concerns({
-              alerts: alerts.data,
-              reports: reportList.data,
-              usage: usage.data,
-            })}
-            anything={Boolean(
-              alerts.data?.length || reportList.data?.length || usage.data?.usage.length,
-            )}
-          />
           <Load report={queries} days={days} />
           <Patterns report={queries} />
           <Failures report={queries} />
@@ -154,7 +187,6 @@ export function DiagnosePage() {
 /** Flint's own side of the ledger: the things it watches for you, and whether
  *  any is unhappy. Only the unhappy ones are listed — a list of things that are
  *  fine is a vanity number. */
-
 function Watching({ items, anything }: { items: Item[]; anything: boolean }) {
   if (!anything) return null
   const line = summarise(items)
@@ -206,7 +238,7 @@ function Load({ report, days }: { report: Q<QueryReport>; days: number }) {
             {
               value: s.failures ? count(s.failures) : '0',
               label: 'FAILED',
-              accent: s.failures > 0,
+              level: s.failures > 0 ? 'throw' : 'ok',
             },
             { value: `${exact(Math.round(s.p95_ms))}`, unit: 'ms', label: 'P95' },
             { value: bytes(s.read_bytes), label: 'READ' },
@@ -274,13 +306,16 @@ function Patterns({ report }: { report: Q<QueryReport> }) {
                       statement rather than in every row, where forty of them
                       would compete with the numbers. */}
                   {open === p.hash ? (
-                    <Link
-                      className="diag__open"
-                      to={editorLink(p)}
-                      onClick={(event) => event.stopPropagation()}
-                    >
-                      Open in editor →
-                    </Link>
+                    <>
+                      <Link
+                        className="diag__open"
+                        to={editorLink(p)}
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        Open in editor →
+                      </Link>
+                      <WhyPattern pattern={p} />
+                    </>
                   ) : null}
                 </td>
                 <td className="tbl--n">{count(p.runs)}</td>
@@ -304,6 +339,84 @@ function Patterns({ report }: { report: Q<QueryReport> }) {
         </EmptyNote>
       )}
     </Section>
+  )
+}
+
+/** Why the shape above cost what it cost.
+ *
+ *  This table says *which* statements are expensive, which is the question the
+ *  query log can answer. It cannot say why — but the plan can, and Flint can
+ *  read a plan. So the two are joined here: `EXPLAIN PLAN indexes = 1` over the
+ *  statement as it was logged, read back as sentences.
+ *
+ *  Explaining costs nothing to run — a plan reads metadata, not data — and it is
+ *  still behind a click, because it is a question about one row of a table of
+ *  forty and forty plans nobody asked for is forty queries.
+ *
+ *  One caveat is printed rather than left to be discovered: this is *today's*
+ *  plan for a statement that ran earlier. Parts have merged since, the data has
+ *  grown, and a filter that pruned nothing last week may prune today. */
+function WhyPattern({ pattern }: { pattern: Pattern }) {
+  const [asked, setAsked] = useState(false)
+  const database = databaseOf(pattern)
+  const plan = useQuery({
+    queryKey: ['pattern-plan', pattern.hash],
+    queryFn: () =>
+      api.run({
+        sql: `EXPLAIN PLAN indexes = 1 ${pattern.sample.trim()}`,
+        database,
+      }),
+    enabled: asked,
+    retry: false,
+    staleTime: 60_000,
+  })
+
+  if (!asked) {
+    return (
+      <button
+        className="diag__open"
+        onClick={(event) => {
+          event.stopPropagation()
+          setAsked(true)
+        }}
+        type="button"
+      >
+        Why it reads that much →
+      </button>
+    )
+  }
+  if (plan.isPending) return <p className="bhint">Reading the plan…</p>
+  if (plan.error) {
+    return (
+      <p className="bhint">
+        The server would not explain this statement as it was logged — a table it named may be gone,
+        or it may not be a SELECT.
+      </p>
+    )
+  }
+  const said = verdicts(readPlan((plan.data?.rows ?? []).map((row) => String(row[0] ?? '')).join('\n')))
+  if (said.length === 0) {
+    return (
+      <p className="bhint">
+        The plan has nothing to add: this read had no parts or granules to skip.
+      </p>
+    )
+  }
+  return (
+    <div className="diag__why" onClick={(event) => event.stopPropagation()}>
+      <ul className="planread">
+        {said.map((verdict) => (
+          <li className={`planread__v planread__v--${verdict.tone}`} key={verdict.text}>
+            <span className="planread__text">{verdict.text}</span>
+            {verdict.evidence ? <span className="planread__ev num">{verdict.evidence}</span> : null}
+          </li>
+        ))}
+      </ul>
+      <p className="bhint">
+        Today's plan for a statement that ran earlier: parts have merged since, and the data has
+        grown.
+      </p>
+    </div>
   )
 }
 
@@ -378,11 +491,29 @@ function Traffic({
           </thead>
           <tbody>
             {rows.map((t) => {
-              const share = scanShare(t, sizeOf.get(t.qualified) ?? 0)
+              const rowsOf = sizeOf.get(t.qualified) ?? 0
+              const share = scanShare(t, rowsOf)
               const verdict = share === null ? null : scanVerdict(share)
+              const at = tableLink(t.qualified)
+              /* The scan share is already the sentence a projection answers, and
+                 until now it led nowhere: a reader was told the sorting key was
+                 not narrowing these queries and left to find the table by hand.
+                 The link is offered from the point where the verdict fires, and
+                 it is worded as the question it is — whether a projection is
+                 worth its disk depends on the shapes behind those reads, which
+                 that tab reads and this page does not. */
+              const argues = worthAskingAboutProjections(share, rowsOf) ? projectionsLink(t.qualified) : null
               return (
                 <tr key={t.qualified}>
-                  <td className="tbl__key">{t.qualified}</td>
+                  <td className="tbl__key">
+                    {at ? (
+                      <Link className="link" to={at}>
+                        {t.qualified}
+                      </Link>
+                    ) : (
+                      t.qualified
+                    )}
+                  </td>
                   <td className={`tbl--n${t.reads ? '' : ' zero'}`}>{count(t.reads)}</td>
                   <td className={`tbl--n${t.writes ? '' : ' zero'}`}>{count(t.writes)}</td>
                   <td className="tbl--n mono-dim">
@@ -395,6 +526,11 @@ function Traffic({
                       <>
                         <span className="mono-dim">{percent(Math.min(share, 1))}</span>
                         {verdict ? <Says verdict={verdict} /> : null}
+                        {argues ? (
+                          <Link className="says says--ask" to={argues}>
+                            would a projection help?
+                          </Link>
+                        ) : null}
                       </>
                     )}
                   </td>

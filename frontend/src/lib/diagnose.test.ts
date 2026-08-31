@@ -1,28 +1,33 @@
 import { describe, expect, it } from 'vitest'
 import {
   actualWindow,
-  trafficIndex,
-  trafficMax,
-  usageIndex,
-  diskVerdict,
-  notable,
-  progressOf,
-  usableFree,
-  type Disk,
-  type Running,
   compressionVerdict,
   costShare,
+  databaseOf,
+  diskVerdict,
   editorLink,
   everRead,
+  notable,
   partitionVerdict,
   percent,
+  progressOf,
+  projectionsLink,
   scanShare,
   scanVerdict,
+  splitQualified,
+  tableLink,
+  timeSpent,
+  trafficIndex,
+  trafficMax,
+  type Disk,
   type Pattern,
+  type Running,
   type Summary,
   type TableTraffic,
   type Thresholds,
-  timeSpent,
+  usableFree,
+  usageIndex,
+  worthAskingAboutProjections,
 } from './diagnose'
 
 const thresholds: Thresholds = { delay_insert: 1000, throw_insert: 3000, from_server: true }
@@ -365,5 +370,74 @@ describe('notable', () => {
 
   it('leaves an ordinary query alone', () => {
     expect(notable(q({ elapsed: 2, memory: 10_000 }))).toBe(false)
+  })
+})
+
+describe('databaseOf', () => {
+  const pattern = (tables: string[]) => ({ tables, sample: 'SELECT 1' }) as never
+
+  it('takes the database from the first qualified table', () => {
+    expect(databaseOf(pattern(['analytics.events', 'other.x']))).toBe('analytics')
+  })
+
+  it('answers undefined when nothing was qualified', () => {
+    // Then the statement resolves against whatever the caller's default is,
+    // which is the honest answer rather than a guess at one.
+    expect(databaseOf(pattern(['events']))).toBeUndefined()
+    expect(databaseOf(pattern([]))).toBeUndefined()
+  })
+
+  it('is the same answer the editor link uses, so re-running and explaining agree', () => {
+    const p = pattern(['analytics.events'])
+    expect(editorLink(p)).toContain('database=analytics')
+    expect(editorLink(p)).toContain(databaseOf(p)!)
+  })
+})
+
+describe('where a logged table name leads', () => {
+  it('splits on the first dot, which is where the log puts it', () => {
+    expect(splitQualified('analytics.events')).toEqual({
+      database: 'analytics',
+      table: 'events',
+    })
+    // A table whose name contains a dot: the log writes it unquoted, so the
+    // first dot is the only boundary there is to find.
+    expect(splitQualified('lab.odd.name')).toEqual({ database: 'lab', table: 'odd.name' })
+  })
+
+  it('answers null rather than guessing at anything that is not two parts', () => {
+    // The callers turn this into a link, and a link to the wrong table is
+    // worse than no link at all.
+    expect(splitQualified('numbers')).toBeNull()
+    expect(splitQualified('.events')).toBeNull()
+    expect(splitQualified('analytics.')).toBeNull()
+    expect(tableLink('numbers')).toBeNull()
+    expect(projectionsLink('numbers')).toBeNull()
+  })
+
+  it('encodes both halves, because a database may be named anything', () => {
+    expect(tableLink('my db.my table')).toBe('/db/my%20db/my%20table')
+    expect(projectionsLink('analytics.events')).toBe('/db/analytics/events?tab=projections')
+  })
+})
+
+describe('when a scan share is worth a question', () => {
+  it('needs the reads to cover most of the table', () => {
+    expect(worthAskingAboutProjections(0.99, 5_000_000)).toBe(true)
+    expect(worthAskingAboutProjections(0.34, 5_000_000)).toBe(false)
+    expect(worthAskingAboutProjections(null, 5_000_000)).toBe(false)
+  })
+
+  it('and needs the table to be big enough for that to cost anything', () => {
+    // A five-row lookup reads 100% of itself and always will. Asking whether a
+    // projection would help it is not a question — it is advice, and it is
+    // wrong. Found by looking at the page rather than by reasoning about it:
+    // three of the six rows offering the link were dictionary sources.
+    expect(worthAskingAboutProjections(1, 5)).toBe(false)
+    expect(worthAskingAboutProjections(1, 400)).toBe(false)
+    // Eight granules at the default 8,192, which is where reading the whole
+    // table starts to be more than one gulp.
+    expect(worthAskingAboutProjections(1, 65_536)).toBe(true)
+    expect(worthAskingAboutProjections(1, 65_535)).toBe(false)
   })
 })

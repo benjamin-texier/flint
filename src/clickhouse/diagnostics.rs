@@ -34,7 +34,7 @@ fn window(days: u64) -> u64 {
 /// by cost finds its own metadata queries at the top, because they are the ones
 /// running every time someone opens it. `log_comment` arrived in ClickHouse 21,
 /// so an older server simply keeps them — better than a query that fails.
-async fn excluding_flint(ch: &Client) -> Result<String> {
+pub(super) async fn excluding_flint(ch: &Client) -> Result<String> {
     let tagged = ch
         .system_columns("query_log")
         .await?
@@ -54,7 +54,7 @@ async fn excluding_flint(ch: &Client) -> Result<String> {
 /// `system.columns` is grant-filtered too, so a role granted the log but not
 /// the catalogue would otherwise be told every column it needs is missing.
 /// When we cannot tell, we say nothing and let the real query speak.
-async fn missing(ch: &Client, table: &str, needed: &[&str]) -> Result<Vec<String>> {
+pub(super) async fn missing(ch: &Client, table: &str, needed: &[&str]) -> Result<Vec<String>> {
     let have = ch.system_columns(table).await?;
     if have.is_empty() {
         return Ok(Vec::new());
@@ -69,7 +69,7 @@ async fn missing(ch: &Client, table: &str, needed: &[&str]) -> Result<Vec<String
 /// The reason a report cannot be produced, in the reader's terms: a GRANT and a
 /// server setting are different problems with different fixes, so they get
 /// different sentences.
-fn blocked(reach: Reach, table: &str) -> Option<String> {
+pub(super) fn blocked(reach: Reach, table: &str) -> Option<String> {
     match reach {
         Reach::Readable => None,
         Reach::Denied => Some(format!("this user is not granted SELECT on system.{table}")),
@@ -77,12 +77,25 @@ fn blocked(reach: Reach, table: &str) -> Option<String> {
             "query_log" => "system.query_log is not enabled on this server".to_string(),
             other => format!("this server has no system.{other}"),
         }),
+        Reach::Unconfigured => Some(
+            "this server has no Keeper configured, so it is not part of a cluster and has \
+             nothing to report here"
+                .to_string(),
+        ),
     }
 }
 
 /// A restricted role is a configuration fact, so it is stated, not raised.
 fn denial(e: &Error, table: &str) -> Option<String> {
     match e {
+        // A server with no Keeper answers this to anything about the cluster.
+        // Stated like a grant failure, because it is the same kind of fact: not
+        // an error in the request, a shape of deployment.
+        Error::ClickHouse { code: 139, .. } => Some(
+            "this server has no Keeper configured, so it is not part of a cluster and has \
+             nothing to report here"
+                .to_string(),
+        ),
         Error::ClickHouse { code: 497, .. } | Error::ClickHouse { code: 164, .. } => {
             Some(format!("this user is not granted SELECT on system.{table}"))
         }
@@ -473,6 +486,15 @@ pub struct TableStorage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PartitionLoad {
     pub qualified: String,
+    /// The opaque id, which is what an action takes — `partition` is the human
+    /// expression and cannot be put in a statement without knowing the key's
+    /// type.
+    pub partition_id: String,
+    /// The two halves as well as the joined name, because an action needs them
+    /// separately and splitting `qualified` on a dot is wrong: a ClickHouse
+    /// database name may contain one.
+    pub database: String,
+    pub table: String,
     /// `tuple()` when the table has no partition key at all.
     pub partition: String,
     pub parts: u64,
@@ -530,7 +552,10 @@ pub async fn storage(ch: &Client, limit: u64) -> Result<StorageReport> {
 
     let partitions_sql = format!(
         "SELECT concat(database, '.', table)                  AS qualified, \
+                database                                      AS database, \
+                table                                         AS table, \
                 partition, \
+                any(partition_id)                             AS partition_id, \
                 count()                                       AS parts, \
                 sum(rows)                                     AS row_count, \
                 sum(bytes_on_disk)                            AS bytes, \
@@ -630,6 +655,15 @@ pub struct Replica {
     pub absolute_delay: u64,
     /// How long it has been read-only, when it is.
     pub readonly_for: u64,
+    /// What to do about it, when it is read-only. Empty otherwise.
+    ///
+    /// A sentence rather than a control, because the repair for the worst case
+    /// is `SYSTEM RESTORE REPLICA` and Flint has watched that refuse but never
+    /// succeed — see `sysops::readonly_remedy` for the three attempts at
+    /// provoking the state it fixes. The page names the statement; running it is
+    /// somebody's decision.
+    #[serde(default)]
+    pub remedy: String,
     pub queue_size: u64,
     pub inserts_in_queue: u64,
     pub merges_in_queue: u64,
@@ -707,11 +741,18 @@ pub async fn replication(ch: &Client) -> Result<ReplicationReport> {
     );
 
     match rows_or_denial::<Replica>(ch, &sql, "replicas").await? {
-        Ok(replicas) => Ok(ReplicationReport {
-            available: true,
-            reason: None,
-            replicas,
-        }),
+        Ok(mut replicas) => {
+            // Filled after the read rather than in SQL: it is prose about a
+            // state, and the state is what the row already says.
+            for r in replicas.iter_mut().filter(|r| r.is_readonly) {
+                r.remedy = super::sysops::readonly_remedy(&r.database, &r.table, r.readonly_for);
+            }
+            Ok(ReplicationReport {
+                available: true,
+                reason: None,
+                replicas,
+            })
+        }
         Err(reason) => Ok(ReplicationReport {
             available: false,
             reason: Some(reason),

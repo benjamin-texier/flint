@@ -249,7 +249,9 @@ async fn view_log(ch: &Client, days: u64) -> Result<(Vec<LogRow>, bool, Option<S
     let reason = match ch.reach("query_views_log").await? {
         Reach::Readable => None,
         Reach::Denied => Some("this user is not granted SELECT on system.query_views_log".into()),
-        Reach::Absent => Some(
+        // No Keeper is not a thing the view log depends on; folded in because
+        // "not enabled" remains the useful sentence if it ever appears.
+        Reach::Absent | Reach::Unconfigured => Some(
             "system.query_views_log is not enabled on this server, so per-view history is \
              unavailable"
                 .to_string(),
