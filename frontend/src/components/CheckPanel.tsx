@@ -14,6 +14,7 @@ export function CheckPanel({
   params,
   blocked,
   label = 'Test it',
+  onColumns,
 }: {
   sql: string
   database: string
@@ -28,6 +29,16 @@ export function CheckPanel({
    *  unhelpful. */
   blocked?: string
   label?: string
+  /** The columns the statement turned out to return, handed up as soon as it
+   *  has run once.
+   *
+   *  A `DESCRIBE` is the only way to know them, and this panel is already
+   *  doing one on the author's behalf — so a second round trip to learn the
+   *  same thing would be a second round trip. What wants them is the contract
+   *  editor above: a promise about a column the statement does not return is a
+   *  promise the endpoint cannot keep, and the moment it is typed is the
+   *  cheapest possible moment to say so. */
+  onColumns?: (columns: string[]) => void
 }) {
   const [result, setResult] = useState<CheckResult | null>(null)
   const [running, setRunning] = useState(false)
@@ -37,7 +48,12 @@ export function CheckPanel({
     setRunning(true)
     setFailed(null)
     try {
-      setResult(await api.check({ sql, database, condition, params }))
+      const answer = await api.check({ sql, database, condition, params })
+      setResult(answer)
+      // Only where it actually ran: a failed check knows nothing about the
+      // columns, and handing up an empty list would read as "this statement
+      // returns nothing" rather than "nobody has asked yet".
+      if (answer.ok) onColumns?.(answer.columns.map((c) => c.name))
     } catch (e) {
       setFailed(e instanceof Error ? e.message : String(e))
     } finally {

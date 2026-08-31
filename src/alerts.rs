@@ -376,10 +376,35 @@ impl Scheduler {
         if reports.iter().all(|r| !r.enabled) {
             return Ok(());
         }
-        let clock = self.workspace.clock(&self.ch).await?;
         let last = self.workspace.last_run_seconds(&self.ch).await?;
 
+        // One clock reading per distinct zone, not one per report: a fleet of
+        // twenty reports in three places costs three round trips, and reports
+        // sharing a zone must be judged against the same instant or two of them
+        // can straddle a minute boundary and disagree about whether it is nine.
+        let mut clocks: HashMap<String, reports::Clock> = HashMap::new();
+        for zone in reports
+            .iter()
+            .filter(|r| r.enabled)
+            .map(|r| r.timezone.clone())
+            .collect::<std::collections::BTreeSet<_>>()
+        {
+            match self.workspace.clock(&self.ch, &zone).await {
+                Ok(clock) => {
+                    clocks.insert(zone, clock);
+                }
+                Err(e) => {
+                    // A zone the server has stopped recognising is one report's
+                    // problem, not the sweep's: the others still run.
+                    tracing::warn!("reports: cannot read the clock in `{zone}`: {e}");
+                }
+            }
+        }
+
         for report in reports.into_iter().filter(|r| r.enabled) {
+            let Some(clock) = clocks.get(&report.timezone).copied() else {
+                continue;
+            };
             let schedule = match Schedule::parse(&report.schedule) {
                 Ok(s) => s,
                 Err(why) => {
