@@ -1,16 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import {
-  describeAlert,
-  describeCondition,
-  describeInterval,
-  deliveryNote,
-  intervalChoices,
-  parseCondition,
-  problemWith,
-  serialiseCondition,
-  toneOf,
-  type Alert,
-  type Condition,
+import { type Alert, type Condition, deliveryNote, describeAlert, describeCondition, describeInterval, inSpace, intervalChoices, parseCondition, problemWith, saysElsewhere, serialiseCondition, toneOf,
+  counts,
+  destinations,
+  selected,
+  standingOf,
+  STANDINGS,
 } from './alert'
 
 const cond = (over: Partial<Condition> = {}): Condition => ({
@@ -25,6 +19,8 @@ const alert = (over: Partial<Alert> = {}): Alert => ({
   name: 'A',
   sql: 'SELECT 1',
   database: '',
+  space: 'data',
+  space_note: '',
   condition: serialiseCondition(cond()),
   interval_seconds: 300,
   webhook: '',
@@ -37,6 +33,76 @@ const alert = (over: Partial<Alert> = {}): Alert => ({
   last_delivered: false,
   last_delivery_error: '',
   ...over,
+})
+
+describe('counts and standings', () => {
+  it('calls a paused alert paused, whatever state it last had', () => {
+    // "Firing but not being evaluated" is a thing somebody needs to see as
+    // paused. Counted as firing it would send them looking for an incident that
+    // nothing is watching.
+    expect(standingOf(alert({ enabled: false, state: 'firing' }))).toBe('paused')
+    expect(standingOf(alert({ state: 'firing' }))).toBe('firing')
+    expect(standingOf(alert({ state: '' }))).toBe('idle')
+  })
+
+  it('counts every alert exactly once', () => {
+    const list = [
+      alert({ state: 'firing' }),
+      alert({ state: 'firing' }),
+      alert({ state: 'error' }),
+      alert({ enabled: false, state: 'firing' }),
+      alert({ state: 'ok' }),
+      alert(),
+    ]
+    const c = counts(list)
+    expect(c).toEqual({ firing: 2, error: 1, paused: 1, ok: 1, idle: 1 })
+    expect(Object.values(c).reduce((a, b) => a + b, 0)).toBe(list.length)
+  })
+})
+
+describe('destinations', () => {
+  it('groups by host, because a token is not something to print in a rail', () => {
+    const list = [
+      alert({ webhook: 'https://hooks.slack.com/services/T00/B11/xoxb-secret' }),
+      alert({ webhook: 'https://hooks.slack.com/services/T00/B22/another-secret' }),
+      alert({ webhook: 'https://events.pagerduty.com/v2/enqueue' }),
+    ]
+    const where = destinations(list)
+    expect(where.map((d) => d.label)).toEqual(['hooks.slack.com', 'events.pagerduty.com'])
+    expect(where[0]!.alerts).toBe(2)
+  })
+
+  it('lists the alerts that tell nobody as a destination of their own', () => {
+    // "This one tells nobody" is the fact somebody most needs to see in a list
+    // of where things go.
+    expect(destinations([alert()])[0]!.label).toBe('history only')
+  })
+
+  it('puts a failing destination first, and says why it failed', () => {
+    const list = [
+      alert({ webhook: 'https://ok.example/hook', last_event: 'x', last_delivered: true }),
+      alert({
+        webhook: 'https://bad.example/hook',
+        last_event: 'x',
+        last_delivered: false,
+        last_delivery_error: '401 Unauthorized',
+      }),
+    ]
+    const where = destinations(list)
+    expect(where[0]!.label).toBe('bad.example')
+    expect(where[0]!.failing).toBe('401 Unauthorized')
+    expect(where[1]!.failing).toBeNull()
+  })
+
+  it('tells never tried apart from every delivery arrived', () => {
+    // Both have no failure to show, and they are not the same answer.
+    const never = destinations([alert({ webhook: 'https://x.example/h' })])[0]!
+    const arrived = destinations([
+      alert({ webhook: 'https://x.example/h', last_event: 'x', last_delivered: true }),
+    ])[0]!
+    expect(never.tried).toBe(false)
+    expect(arrived.tried).toBe(true)
+  })
 })
 
 describe('describeInterval', () => {
@@ -168,5 +234,74 @@ describe('deliveryNote, failed delivery', () => {
 
   it('does not accuse a brand-new alert of failing', () => {
     expect(deliveryNote({ ...failing, last_event: '' }, true)).toBeNull()
+  })
+})
+
+describe('inSpace', () => {
+  const at = (space: string, name = space): Alert =>
+    ({ id: name, name, space, space_note: '' }) as Alert
+
+  it('lists an alert where its subject lives, not where its author sits', () => {
+    // The rule the two spaces are built on. An operator watching
+    // `system.replicas` and an analyst watching `orders` each find their own.
+    const all = [at('data'), at('infra')]
+    expect(inSpace(all, 'data').map((a) => a.name)).toEqual(['data'])
+    expect(inSpace(all, 'infra').map((a) => a.name)).toEqual(['infra'])
+  })
+
+  it('shows an alert nobody can place in both, rather than in neither', () => {
+    // A `merge(...)` names no table, so what it reads is unknown. Dropped from
+    // both lists it becomes an alert that is switched on and invisible.
+    const all = [at('data'), at('unplaceable')]
+    expect(inSpace(all, 'data')).toHaveLength(2)
+    expect(inSpace(all, 'infra').map((a) => a.name)).toEqual(['unplaceable'])
+  })
+})
+
+describe('saysElsewhere', () => {
+  const at = (space: string): Alert => ({ id: space, name: space, space, space_note: '' }) as Alert
+
+  it('says what it is holding back, and where it went', () => {
+    expect(saysElsewhere([at('data'), at('infra'), at('infra')], 'data')).toBe(
+      '2 more alerts are listed under Infrastructure, beside what they watch.',
+    )
+  })
+
+  it('counts one as one', () => {
+    expect(saysElsewhere([at('infra'), at('data')], 'infra')).toBe(
+      '1 more alert is listed under Data, beside the tables they watch.',
+    )
+  })
+
+  it('stays quiet when nothing is elsewhere', () => {
+    expect(saysElsewhere([at('data'), at('unplaceable')], 'data')).toBeNull()
+  })
+})
+
+describe('the rail and the list read the same rule', () => {
+  const at = (state: string, enabled = true) => alert({ state, enabled })
+
+  it('selects exactly what it counted', () => {
+    /* The failure this pairing exists to prevent: a rail claiming "2 firing"
+       beside a list showing three. Held to each other here rather than trusted
+       to stay in step. */
+    const list = [at('firing'), at('firing'), at('error'), at('ok', false), at('')]
+    const tally = counts(list)
+    for (const standing of STANDINGS) {
+      expect(selected(list, standing)).toHaveLength(tally[standing])
+    }
+    expect(STANDINGS.reduce((n, s) => n + tally[s], 0)).toBe(list.length)
+  })
+
+  it('hands back the whole list when nothing is selected', () => {
+    const list = [at('firing'), at('')]
+    expect(selected(list, null)).toBe(list)
+    expect(selected(list, '')).toBe(list)
+  })
+
+  it('selects nothing for a standing that does not exist', () => {
+    // A link to a standing the product no longer has should come up empty and
+    // say so, not quietly return everything as though it had been honoured.
+    expect(selected([at('firing'), at('')], 'smouldering')).toHaveLength(0)
   })
 })

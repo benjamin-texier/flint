@@ -37,6 +37,15 @@ pub enum Schedule {
 }
 
 impl Schedule {
+    /// Whether this schedule has an opinion about when a day starts.
+    ///
+    /// An interval does not — "every six hours" is the same six hours in every
+    /// zone on earth — so attaching one to it would be a setting that changes
+    /// nothing, which is worse than a setting that is refused.
+    pub fn reads_a_wall_clock(self) -> bool {
+        !matches!(self, Schedule::Every { .. })
+    }
+
     pub fn parse(raw: &str) -> std::result::Result<Self, String> {
         let parsed: Self =
             serde_json::from_str(raw).map_err(|e| format!("unreadable schedule: {e}"))?;
@@ -195,6 +204,22 @@ pub struct SectionResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_a_time_of_day_has_a_zone_to_be_in() {
+        // The rule the save path enforces. An interval is the same six hours in
+        // every zone on earth, so a timezone beside it would be a setting that
+        // changes nothing — and a setting that silently changes nothing is
+        // worse than one that is refused, because the person who set it
+        // believes it did something.
+        assert!(!Schedule::Every { hours: 6 }.reads_a_wall_clock());
+        assert!(Schedule::Daily { minute: 540 }.reads_a_wall_clock());
+        assert!(Schedule::Weekly {
+            dow: 1,
+            minute: 540
+        }
+        .reads_a_wall_clock());
+    }
 
     /// Monday 2024-01-01, midnight at unix 1704067200, and it is 09:30.
     fn monday_at(minutes: i64) -> Clock {

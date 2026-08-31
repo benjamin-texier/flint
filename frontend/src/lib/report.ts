@@ -24,6 +24,10 @@ export interface Report {
   name: string
   spec: string
   schedule: string
+  /** The zone the schedule's time of day is read in. Empty means the server's
+   *  own — which is a choice, not a fact, and a report that must land at nine
+   *  in one place should say so rather than inherit wherever ClickHouse runs. */
+  timezone: string
   webhook: string
   enabled: boolean
   created_at: string

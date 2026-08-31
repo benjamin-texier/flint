@@ -32,6 +32,11 @@ export interface Alert {
   last_message: string
   last_delivered: boolean
   last_delivery_error: string
+  /** Which space lists this alert: `data`, `infra`, or `unplaceable`. Decided
+   *  by what the SQL reads, asked of the server each time the list is built. */
+  space: string
+  /** Why it is placed where it is, or why it could not be. */
+  space_note: string
 }
 
 export interface AlertEvent {
@@ -121,6 +126,95 @@ export const TONE_LABEL: Record<Tone, string> = {
   idle: 'Nothing yet',
 }
 
+/** The states the rail counts, in the order it lists them.
+ *
+ *  `paused` is not a tone: an alert with `enabled: false` has whatever state it
+ *  last had, and "firing but not being evaluated" is a thing somebody needs to
+ *  see as *paused* rather than as firing. So it is checked first and wins. */
+export type Standing = 'firing' | 'error' | 'paused' | 'ok' | 'idle'
+
+export const STANDINGS: Standing[] = ['firing', 'error', 'paused', 'ok', 'idle']
+
+export const STANDING_LABEL: Record<Standing, string> = {
+  firing: 'Firing',
+  error: 'Cannot run',
+  paused: 'Paused',
+  ok: 'Recovered',
+  idle: 'Nothing yet',
+}
+
+/** The same five, as the predicate of a sentence rather than as a chip. A page
+ *  stating what its filter held back reads "the 2 of 5 that cannot run", which
+ *  the noun form cannot supply. */
+export const STANDING_SAYS: Record<Standing, string> = {
+  firing: 'are firing',
+  error: 'cannot run',
+  paused: 'are paused',
+  ok: 'have recovered',
+  idle: 'have not run yet',
+}
+
+export function standingOf(alert: Alert): Standing {
+  if (!alert.enabled) return 'paused'
+  return toneOf(alert.state)
+}
+
+export function counts(alerts: readonly Alert[]): Record<Standing, number> {
+  const out: Record<Standing, number> = { firing: 0, error: 0, paused: 0, ok: 0, idle: 0 }
+  for (const a of alerts) out[standingOf(a)] += 1
+  return out
+}
+
+/** Where the notifications go, and whether the last one arrived.
+ *
+ *  Grouped by host rather than by full URL: a token in a query string is not
+ *  something to print in a rail, and three alerts pointing at one Slack channel
+ *  are one destination to a reader.
+ *
+ *  An alert with no webhook is a destination too — its own history — because
+ *  "this one tells nobody" is the fact somebody most needs to see in a list of
+ *  where things go. */
+export interface Destination {
+  label: string
+  alerts: number
+  /** The last delivery that failed, where one did. Nothing here means either
+   *  every delivery arrived or none has been attempted, and those are told
+   *  apart by `tried`. */
+  failing: string | null
+  tried: boolean
+}
+
+export function destinations(alerts: readonly Alert[]): Destination[] {
+  const by = new Map<string, Destination>()
+  for (const alert of alerts) {
+    const url = alert.webhook.trim()
+    let label = 'history only'
+    if (url) {
+      try {
+        label = new URL(url).host
+      } catch {
+        // Not a URL Flint can parse is still a destination somebody typed, and
+        // showing it verbatim is better than dropping the row.
+        label = url.slice(0, 40)
+      }
+    }
+    const at = by.get(label) ?? { label, alerts: 0, failing: null, tried: false }
+    at.alerts += 1
+    if (url && alert.last_event) {
+      at.tried = true
+      if (!alert.last_delivered) {
+        at.failing = alert.last_delivery_error || 'no reason recorded'
+      }
+    }
+    by.set(label, at)
+  }
+  // Failing destinations first: the point of the list is the one that is not
+  // getting through.
+  return [...by.values()].sort(
+    (l, r) => Number(Boolean(r.failing)) - Number(Boolean(l.failing)) || r.alerts - l.alerts,
+  )
+}
+
 /** What the UI must say about where this alert's notifications went.
  *
  *  The failed case comes first because it is the one that matters: an alerting
@@ -164,4 +258,47 @@ export function problemWith(input: {
     return 'The threshold has to be a number.'
   }
   return null
+}
+
+/** The alerts one space lists, and the count it is leaving to the other.
+ *
+ *  The rule is the one the two spaces are built on: an alert is listed where
+ *  its *subject* lives, not where its author sits. An operator watching
+ *  `system.replicas` and an analyst watching `orders` should each find their own
+ *  without walking through the other's page.
+ *
+ *  An alert nobody can place appears in both, marked. Dropping it from both
+ *  would make an alert that is switched on invisible everywhere, which is worse
+ *  than showing it twice — and showing it twice is the honest shape of not
+ *  knowing. */
+export function inSpace(alerts: Alert[], space: 'data' | 'infra'): Alert[] {
+  return alerts.filter((a) => a.space === space || a.space === 'unplaceable')
+}
+
+/** What this list is not showing, in the words of the space that has them.
+ *
+ *  A list silently holding back half its rows reads as the whole truth, and an
+ *  alert nobody can find is an alert nobody trusts. */
+export function saysElsewhere(alerts: Alert[], space: 'data' | 'infra'): string | null {
+  const other = space === 'data' ? 'infra' : 'data'
+  const n = alerts.filter((a) => a.space === other).length
+  if (!n) return null
+  const where = other === 'infra' ? 'Infrastructure, beside what they watch' : 'Data, beside the tables they watch'
+  return `${n} more ${n === 1 ? 'alert is' : 'alerts are'} listed under ${where}.`
+}
+
+/** The list a page should draw, given what its rail has selected.
+ *
+ *  Beside `counts` deliberately: one of them saying "2 firing" while the other
+ *  shows three is the failure this pairing exists to prevent, and they can only
+ *  be held to each other if they are written against the same rule in the same
+ *  place. An unknown state selects nothing rather than everything — a link to a
+ *  standing that no longer exists should come up empty and say so, not quietly
+ *  hand back the whole list as though it had been honoured. */
+export function selected<T extends { enabled: boolean; state: string }>(
+  list: readonly T[],
+  state: string | null,
+): readonly T[] {
+  if (!state) return list
+  return list.filter((a) => standingOf(a as never) === state)
 }

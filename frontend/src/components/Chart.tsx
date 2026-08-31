@@ -674,6 +674,18 @@ export function buildModel(result: QueryResult, spec: ChartSpec): Model | null {
   if (rows.length === 0) return null
 
   const isTime = spec.x >= 0 && spec.kind === 'line'
+
+  /* A line's x axis is ordered by definition: the segment drawn between two
+     points asserts that one came after the other. A `GROUP BY` hands its rows
+     back in whatever order the engine produced them, so plotting them in row
+     order drew a scribble across the middle of an ordinary time series — a
+     picture of ClickHouse's memory layout rather than of the data.
+     Ordered here rather than by attaching an `ORDER BY` to everybody's query:
+     the requirement belongs to the picture, and a question is allowed to come
+     back unordered. Bars keep row order on purpose — theirs is the query's,
+     and re-sorting one would overrule a `ORDER BY` somebody wrote. */
+  if (isTime) rows.sort((a, b) => parseTime(a[spec.x]) - parseTime(b[spec.x]))
+
   const xs = rows.map((r, i) => {
     if (spec.x < 0) return i
     if (isTime) return parseTime(r[spec.x])

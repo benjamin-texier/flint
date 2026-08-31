@@ -1,25 +1,38 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 
 import { api, type QueryResult } from '../lib/api'
 import {
   COLUMNS,
+  RANGES,
   REFRESH_CHOICES,
   WIDTHS,
+  bindingsFor,
+  declaredVariables,
   emptySpec,
+  followsRange,
+  saysRange,
+  variableIssues,
   moveTile,
   parseSpec,
   patchTile,
+  carriesDates,
   removeTile,
   serialiseSpec,
+  tileZone,
   type DashboardSpec,
   type Tile,
 } from '../lib/dashboard'
+import { downloadNote } from '../lib/export'
+import { declaredParams } from '../lib/publish'
+import { lockSupport, saysLock } from '../lib/wall'
 import { relativeTime } from '../lib/format'
 import { Chart } from '../components/Chart'
+import { Download } from '../components/Download'
 import { ResultsGrid } from '../components/ResultsGrid'
-import { EmptyNote, ErrorNote, Loading } from '../components/Note'
+import { EmptyNote, ErrorNote, Loading, Sentence } from '../components/Note'
+import { keeps } from '../lib/spaces'
 
 /** The list of dashboards, and the way to make one. */
 export function DashboardList() {
@@ -151,10 +164,18 @@ export function DashboardList() {
 export function DashboardView() {
   const { id } = useParams()
   const client = useQueryClient()
-  const dashboards = useQuery({ queryKey: ['dashboards'], queryFn: api.dashboards })
+  const config = useQuery({ queryKey: ['config'], queryFn: api.config })
+  const dashboards = useQuery({
+    queryKey: ['dashboards'],
+    queryFn: api.dashboards,
+    enabled: keeps(config.data),
+  })
   const dashboard = dashboards.data?.find((d) => d.id === id)
+  const server = useQuery({ queryKey: ['server'], queryFn: () => api.server() })
 
   const [draft, setDraft] = useState<DashboardSpec | null>(null)
+  const board = useRef<HTMLElement>(null)
+  const wall = useWall(board)
   const [editing, setEditing] = useState(false)
   // The stored spec is the source of truth until an edit starts.
   const spec = draft ?? (dashboard ? parseSpec(dashboard.spec) : emptySpec())
@@ -162,14 +183,25 @@ export function DashboardView() {
   const save = useMutation({
     mutationFn: (next: DashboardSpec) =>
       api.saveDashboard({ id: id!, name: dashboard!.name, spec: serialiseSpec(next) }),
-    onSuccess: () => {
+    /* The refetch first, and the draft dropped only once it has landed.
+       Dropping it straight away lets `spec` fall back to the *cached* dashboard
+       for as long as the round trip takes — the version without the change just
+       saved — and every tile re-keys to the old bindings and asks again with
+       them. Invisible while the only controls were refresh and width, because
+       neither changes what a tile asks for; a variable does, so the flap showed
+       up as a tile firing twice and answering 400 in between. */
+    onSuccess: async () => {
+      await client.invalidateQueries({ queryKey: ['dashboards'] })
       setDraft(null)
-      client.invalidateQueries({ queryKey: ['dashboards'] })
     },
   })
 
   const edit = (next: DashboardSpec) => setDraft(next)
 
+  /* Where nothing can be stored no dashboard can exist, so an id in the URL is
+     necessarily a link from somewhere else — a bookmark, or another Flint. The
+     list is where the reason lives; it is one page and it says all of it. */
+  if (config.data && !keeps(config.data)) return <Navigate to="/dash" replace />
   if (dashboards.error) return <ErrorNote error={dashboards.error} />
   if (!dashboards.data) return <Loading label="Reading the dashboard" />
   if (!dashboard) {
@@ -183,7 +215,7 @@ export function DashboardView() {
   }
 
   return (
-    <article className="page page--dash">
+    <article className={`page page--dash${wall.on ? ' page--wall' : ''}`} ref={board}>
       <header className="page__head">
         <p className="eyebrow">
           <Link to="/dash" className="link">
@@ -192,6 +224,26 @@ export function DashboardView() {
         </p>
         <div className="page__titlerow">
           <h1 className="page__title page__title--hero">{dashboard.name}</h1>
+          {/* Beside refresh, because they are the same kind of control: both say
+              how the tiles read, and neither is part of what any one tile is. */}
+          <label className="picker">
+            <span>range</span>
+            <select
+              className="picker__select"
+              value={spec.rangeHours}
+              onChange={(e) => {
+                const next = { ...spec, rangeHours: Number(e.target.value) }
+                setDraft(next)
+                save.mutate(next)
+              }}
+            >
+              {RANGES.map((r) => (
+                <option key={r.hours} value={r.hours}>
+                  {r.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <label className="picker">
             <span>refresh</span>
             <select
@@ -213,6 +265,9 @@ export function DashboardView() {
           {/* A dashboard shows now; a report keeps then. Offering the jump
               here is the point at which someone wants both: the arrangement
               they have just made, recorded every week. */}
+          <button className="btn btn--wall" onClick={wall.toggle}>
+            {wall.on ? 'Leave full screen' : 'Full screen'}
+          </button>
           <Link className="btn" to={`/reports?from_dashboard=${encodeURIComponent(id ?? '')}`}>
             Keep this on a schedule
           </Link>
@@ -242,7 +297,22 @@ export function DashboardView() {
           add it here.
         </EmptyNote>
       ) : (
-        <div className="dash" style={{ gridTemplateColumns: `repeat(${COLUMNS}, 1fr)` }}>
+        <>
+        {/* Every fold states its own count, and a range is a fold: a control that
+            changes six of nine tiles and says nothing about the other three is a
+            control nobody can trust. */}
+        {wall.note ? <p className="dashgrid__range">{wall.note}</p> : null}
+        {saysRange(spec) ? <p className="dashgrid__range">{saysRange(spec)}</p> : null}
+
+        <Variables
+          spec={spec}
+          onSet={(name, value) => {
+            const next = { ...spec, variables: { ...spec.variables, [name]: value } }
+            setDraft(next)
+            save.mutate(next)
+          }}
+        />
+        <div className="dashgrid" style={{ gridTemplateColumns: `repeat(${COLUMNS}, 1fr)` }}>
           {spec.tiles.map((tile, index) => (
             <TileCard
               key={tile.id}
@@ -250,16 +320,140 @@ export function DashboardView() {
               index={index}
               count={spec.tiles.length}
               refreshSeconds={spec.refreshSeconds}
+              rangeHours={spec.rangeHours}
+              variables={spec.variables}
+              spec={spec}
               editing={editing}
+              serverZone={server.data?.timezone}
               onMove={(to) => edit(moveTile(spec, tile.id, to))}
               onWidth={(w) => edit(patchTile(spec, tile.id, { w }))}
               onRemove={() => edit(removeTile(spec, tile.id))}
             />
           ))}
         </div>
+        </>
       )}
     </article>
   )
+}
+
+/** A control for every `{name:Type}` the tiles declare.
+ *
+ *  The same binding the range uses, with the names read off the statements
+ *  instead of fixed. A dashboard whose tiles ask for `region` gets a box for
+ *  `region`; one whose tiles ask for nothing shows nothing at all.
+ *
+ *  What is in the way is said *above* the boxes rather than left to appear as a
+ *  broken tile: an unset parameter is not an empty result — ClickHouse answers
+ *  `Substitution 'region' is not set` — and a reader looking at an error where
+ *  they expected data has no way to know a text box three feet up would fix it. */
+function Variables({
+  spec,
+  onSet,
+}: {
+  spec: DashboardSpec
+  onSet: (name: string, value: string) => void
+}) {
+  const declared = declaredVariables(spec)
+  if (declared.length === 0) return null
+  const issues = variableIssues(spec)
+
+  return (
+    <div className="vars">
+      <div className="vars__row">
+        {declared.map((v) => (
+          <label className="vars__one" key={v.name} data-value={spec.variables[v.name] ?? '—'}>
+            <span className="vars__name">
+              {v.name}
+              <span className="vars__type">{v.types.join(' / ')}</span>
+            </span>
+            <input
+              className="vars__input"
+              defaultValue={spec.variables[v.name] ?? ''}
+              placeholder={`used by ${v.usedBy.length} ${v.usedBy.length === 1 ? 'tile' : 'tiles'}`}
+              onBlur={(e) => {
+                if (e.target.value !== (spec.variables[v.name] ?? '')) onSet(v.name, e.target.value)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+              }}
+            />
+          </label>
+        ))}
+      </div>
+      {issues.length ? (
+        <ul className="vars__issues">
+          {issues.map((line) => (
+            <li key={line}>
+              <Sentence text={line} />
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  )
+}
+
+
+/** Full screen, and the screen lock where the browser will give one.
+ *
+ *  The state follows `fullscreenchange` rather than the button, because Escape
+ *  leaves full screen without going near a click handler — and a page that
+ *  thinks it is still on the wall is a page with its chrome missing and no way
+ *  to get it back.
+ *
+ *  The lock is asked for and never promised. Measured: over `http://127.0.0.1`
+ *  it is granted, and over a LAN address in plain HTTP — which is how a wall
+ *  display is actually served — `navigator.wakeLock` is `undefined` and reaching
+ *  for it throws. So the reach is guarded and the reason is offered rather than
+ *  the failure. */
+function useWall(target: React.RefObject<HTMLElement | null>) {
+  const [on, setOn] = useState(false)
+  const held = useRef<{ release: () => Promise<void> } | null>(null)
+  const lock = lockSupport(
+    typeof navigator === 'undefined' ? undefined : navigator,
+    typeof window === 'undefined' ? undefined : window.isSecureContext,
+  )
+
+  useEffect(() => {
+    const follow = () => setOn(Boolean(document.fullscreenElement))
+    document.addEventListener('fullscreenchange', follow)
+    return () => document.removeEventListener('fullscreenchange', follow)
+  }, [])
+
+  useEffect(() => {
+    if (!on) {
+      held.current?.release().catch(() => {})
+      held.current = null
+      return
+    }
+    if (lock !== 'available') return
+    let cancelled = false
+    navigator.wakeLock
+      ?.request('screen')
+      .then((sentinel) => {
+        if (cancelled) sentinel.release().catch(() => {})
+        else held.current = sentinel
+      })
+      // A refusal is not a failure of the dashboard: the browser may decline on
+      // battery, and the wall still shows what it shows.
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [on, lock])
+
+  const toggle = () => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {})
+      return
+    }
+    // Requires a user gesture, which this is, and can still be refused — in
+    // which case `fullscreenchange` never fires and the page stays as it was.
+    target.current?.requestFullscreen?.().catch(() => {})
+  }
+
+  return { on, toggle, note: on ? saysLock(lock) : null }
 }
 
 function TileCard({
@@ -267,15 +461,23 @@ function TileCard({
   index,
   count,
   refreshSeconds,
+  rangeHours,
+  variables,
+  spec,
   editing,
+  serverZone,
   onMove,
   onWidth,
   onRemove,
 }: {
   tile: Tile
+  serverZone: string | undefined
   index: number
   count: number
   refreshSeconds: number
+  rangeHours: number
+  variables: Record<string, string>
+  spec: DashboardSpec
   editing: boolean
   onMove: (to: number) => void
   onWidth: (w: number) => void
@@ -283,13 +485,45 @@ function TileCard({
 }) {
   // Each tile owns its query. Keyed on the SQL, so editing a tile's query
   // refetches only that tile.
+  /* The window is computed per fetch rather than held in the key: a dashboard
+     left open on a wall must keep meaning "the last seven days", and a `from`
+     frozen at the moment the range was chosen would quietly become an absolute
+     one. The key carries the *choice* so changing it refetches; the values come
+     from the clock at the moment of asking. */
+  /* The window is computed per fetch rather than held in the key: a dashboard
+     left open on a wall must keep meaning "the last seven days", and a `from`
+     frozen at the moment the range was chosen would quietly become an absolute
+     one. The key carries the *choices* so changing one refetches; the values
+     come from the clock at the moment of asking. */
+  const asks = followsRange(tile.sql)
+  const mine = declaredParams(tile.sql).filter((p) => variables[p] !== undefined)
   const result = useQuery<QueryResult>({
-    queryKey: ['tile', tile.sql, tile.database],
-    queryFn: () => api.run({ sql: tile.sql, database: tile.database }),
+    queryKey: [
+      'tile',
+      tile.sql,
+      tile.database,
+      asks ? rangeHours : 0,
+      mine.map((p) => `${p}=${variables[p]}`).join('&'),
+    ],
+    queryFn: () => {
+      const params = bindingsFor(tile, spec)
+      return api.run({
+        sql: tile.sql,
+        database: tile.database,
+        ...(Object.keys(params).length ? { params } : {}),
+      })
+    },
     refetchInterval: refreshSeconds > 0 ? refreshSeconds * 1000 : false,
     // Hold the previous render while refetching rather than flashing a skeleton.
     placeholderData: (prev) => prev,
   })
+
+  // Read off what came back, not off the statement: whether this tile has a
+  // date in it is a fact about its answer.
+  const zone =
+    result.data && carriesDates(result.data.columns.map((c) => c.type))
+      ? tileZone(tile.sql, serverZone)
+      : undefined
 
   return (
     <section
@@ -297,7 +531,14 @@ function TileCard({
       style={{ gridColumn: `span ${tile.w}` }}
     >
       <header className="tile__head">
-        <h3 className="tile__title">{tile.title}</h3>
+        {/* The full title on hover, because the line beside it can now be long
+            enough to squeeze this one: a zone like `America/Argentina/Salta`
+            in a four-column tile costs the last word of whatever the author
+            called it. Truncated is acceptable; truncated and unrecoverable is
+            not. */}
+        <h3 className="tile__title" title={tile.title}>
+          {tile.title}
+        </h3>
         <span className="panel__spacer" />
         {editing ? (
           <>
@@ -334,9 +575,41 @@ function TileCard({
             </button>
           </>
         ) : (
-          <span className="tile__meta">{tile.database}</span>
+          <span className="tile__meta">
+            {tile.database}
+            {/* Whose days these are, where the tile has days and Flint can say
+                so without guessing. A reader never sees the statement, so this
+                slot is the only place the answer can appear — and a bar per
+                day read from another country is otherwise a bar per somebody
+                else's day, silently. */}
+            {zone ? <> · days in {zone}</> : null}
+          </span>
         )}
       </header>
+
+      {/* In the header's row rather than under the grid, and that is a
+          constraint rather than a preference: a tile has no bounded footer to
+          sit in. `.tile__body` is `flex: 1; overflow: auto`, but `.tile` itself
+          has no height — `tile.h` is in the spec and never reaches the style —
+          so a tile grows to its content and anything after the grid lands
+          wherever that ends. Measured on a 1,169-row tile: the tile was 29,395
+          pixels tall and the control sat at y=29,557, which is not a control.
+          The header is the only part of a tile guaranteed to be on screen.
+
+          A chart is the one place Flint shows rows without letting you read
+          them one by one, so "give me the numbers behind this" is the question
+          a tile provokes most — and its reader cannot even see the statement to
+          take it elsewhere. */}
+      {result.data && result.data.rows.length > 0 && !editing ? (
+        <div className="tile__take">
+          <Download
+            sql={tile.sql}
+            database={tile.database}
+            stem={tile.title || 'tile'}
+            note={downloadNote(result.data.rows.length, result.data.truncated)}
+          />
+        </div>
+      ) : null}
 
       <div className="tile__body">
         {result.error ? (
@@ -351,6 +624,7 @@ function TileCard({
           <ResultsGrid result={result.data} />
         )}
       </div>
+
     </section>
   )
 }

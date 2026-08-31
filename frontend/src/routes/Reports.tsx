@@ -25,9 +25,11 @@ import {
   type Section,
 } from '../lib/report'
 import { parseSpec } from '../lib/dashboard'
+import { keeps } from '../lib/spaces'
 import { Chart } from '../components/Chart'
 import { ResultsGrid } from '../components/ResultsGrid'
 import { EmptyNote, ErrorNote, Loading } from '../components/Note'
+import { Operations } from '../components/Operations'
 import { CheckPanel } from '../components/CheckPanel'
 import { readHandoff, suggestName, type Handoff } from '../lib/handoff'
 
@@ -40,10 +42,21 @@ import { readHandoff, suggestName, type Handoff } from '../lib/handoff'
 export function ReportsPage() {
   const config = useQuery({ queryKey: ['config'], queryFn: () => api.config() })
   const server = useQuery({ queryKey: ['server'], queryFn: () => api.server() })
-  const reports = useQuery({ queryKey: ['reports'], queryFn: () => api.reports(), retry: false })
+  /* Every read below is a read of Flint's own workspace, so none of them is
+     asked on a Flint that has none: the answer would be a refusal, and an error
+     box under the page's own explanation of why the page is empty says the
+     configuration is broken when it is merely absent. */
+  const stateful = keeps(config.data)
+  const reports = useQuery({
+    queryKey: ['reports'],
+    queryFn: () => api.reports(),
+    enabled: stateful,
+    retry: false,
+  })
   const runs = useQuery({
     queryKey: ['report-runs'],
     queryFn: () => api.reportRuns(undefined, 20),
+    enabled: stateful,
     retry: false,
     refetchInterval: 30_000,
   })
@@ -60,7 +73,7 @@ export function ReportsPage() {
   const dashboards = useQuery({
     queryKey: ['dashboards'],
     queryFn: () => api.dashboards(),
-    enabled: Boolean(fromDashboard),
+    enabled: stateful && Boolean(fromDashboard),
     retry: false,
   })
   const source = fromDashboard
@@ -122,6 +135,12 @@ export function ReportsPage() {
           snapshots. Set `FLINT_WORKSPACE_DATABASE` to a database it may write to.
         </EmptyNote>
       ) : null}
+
+      {/* An edition asked for by hand is a job now — it returns before it is
+          made — so something has to say it is running. Here rather than on the
+          row that started it: a second person opening this page should see it
+          too, and the schedule's own editions are listed with their report. */}
+      {!stateless ? <Operations space="data" /> : null}
 
       {reports.isPending && !stateless ? <Loading label="Reading reports" /> : null}
       {reports.error ? <ErrorNote error={reports.error} retry={() => reports.refetch()} /> : null}
@@ -262,6 +281,7 @@ function ReportRow({
         name: report.name,
         spec: report.spec,
         schedule: report.schedule,
+        timezone: report.timezone,
         webhook: report.webhook,
         enabled: !report.enabled,
       }),
@@ -277,6 +297,11 @@ function ReportRow({
   const runNow = useMutation({
     mutationFn: () => api.runReport(report.id),
     onSuccess: () => {
+      /* The edition is now a job, so this returns before it is made. `jobs` is
+         what shows it running; the report and its editions are invalidated too
+         because they will change when it lands, and the jobs list polls until
+         then. */
+      client.invalidateQueries({ queryKey: ['jobs'] })
       client.invalidateQueries({ queryKey: ['reports'] })
       client.invalidateQueries({ queryKey: ['report-runs'] })
     },
@@ -316,7 +341,7 @@ function ReportRow({
 
       <p className="arow__says">
         {schedule ? (
-          describeSchedule(schedule, timezone)
+          describeSchedule(schedule, report.timezone || timezone)
         ) : (
           <span className="says says--throw">
             This report's schedule cannot be read, so it will never run. Edit it to set one.
@@ -395,9 +420,23 @@ function SnapshotView({ runId, onClose }: { runId: string; onClose: () => void }
               {section.chart ? (
                 <Chart result={asResult(section) as never} spec={section.chart} />
               ) : null}
-              {/* The grid is windowed and expects a bounded parent. Without one
-                  a 500-row section renders six thousand pixels tall and the
-                  windowing buys nothing. */}
+              {/* No download here, and deliberately — this is the one place
+                  rows are shown that has none.
+
+                  A snapshot is a record of what was true at nine on Monday.
+                  Flint's download re-runs a statement, so a button here would
+                  hand over what is true *now* under a heading that says
+                  Monday — the numbers would differ and nothing on the page
+                  would say why. And the obvious alternative, writing a CSV in
+                  the browser from the rows already loaded, would give Flint a
+                  second CSV dialect to keep in step with ClickHouse's, which
+                  `src/export.rs` exists to prevent. Serving the kept rows back
+                  through the server is the shape that would work; it is not
+                  built.
+
+                  The grid below is windowed and expects a bounded parent.
+                  Without one a 500-row section renders six thousand pixels tall
+                  and the windowing buys nothing. */}
               <div className="snap__grid">
                 <ResultsGrid result={asResult(section) as never} />
               </div>
@@ -464,6 +503,13 @@ function ReportForm({
     ),
   )
   const [webhook, setWebhook] = useState(existing?.webhook ?? '')
+  /* Empty means the server's own, and that stays the default: most reports are
+     read where ClickHouse runs, and a picker that arrives pre-set to somewhere
+     would be Flint inventing an intention. */
+  const [zone, setZone] = useState(existing?.timezone ?? '')
+  /* The server's list, because the server is what will read this zone when the
+     schedule comes round. Fetched only while the form is open. */
+  const zones = useQuery({ queryKey: ['timezones'], queryFn: () => api.timezones() })
 
   const minute = minuteOf(time)
   const schedule: Schedule | null =
@@ -484,6 +530,7 @@ function ReportForm({
         name,
         spec: JSON.stringify({ sections: sections.filter((s) => s.sql.trim()) }),
         schedule: serialiseSchedule(schedule!),
+        timezone: kind === 'every' ? '' : zone,
         webhook,
         enabled: existing?.enabled ?? true,
       }),
@@ -630,6 +677,24 @@ function ReportForm({
             />
           </label>
         )}
+
+        {/* Only where there is a time of day to place. An interval is the same
+            six hours everywhere, so offering it a zone would be offering a
+            setting that changes nothing — and the server refuses that pairing
+            rather than store a field it will never read. */}
+        {kind !== 'every' ? (
+          <label className="aform__field">
+            <span className="label">IN</span>
+            <select className="input" value={zone} onChange={(e) => setZone(e.target.value)}>
+              <option value="">{timezone ? `the server's (${timezone})` : "the server's"}</option>
+              {(zones.data ?? []).map((z) => (
+                <option key={z} value={z}>
+                  {z}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
       </div>
 
       <label className="aform__field">
@@ -643,15 +708,36 @@ function ReportForm({
       </label>
 
       <p className="aform__says">
-        {schedule ? describeSchedule(schedule, timezone) : 'That is not a time of day.'}
+        {schedule ? describeSchedule(schedule, zone || timezone) : 'That is not a time of day.'}
       </p>
       <p className="aform__hint">
-        {/* Both caveats up front: the schedule is the server's clock, and the
-            webhook says a report ran rather than carrying it. */}
-        Times are ClickHouse's own timezone{timezone ? ` (${timezone})` : ''}. A webhook is told
-        that the report ran and how it went — the snapshot itself stays here, where it can be
-        read.
+        {/* The caveat that remains once the zone is the report's own: a webhook
+            says a report ran rather than carrying it. The clock is no longer a
+            caveat — the sentence above names the zone the schedule is read in,
+            and it is now a choice rather than wherever the server happens to
+            run. */}
+        {/* `kind` guards this as well as `zone`, and it has to: switching to an
+            interval hides the picker but leaves the chosen zone in state, and
+            without this the note went on claiming the schedule was read in
+            Auckland under a sentence reading "Every 6 hours". Nothing is saved
+            in that case — the save clears it the same way — but a note that
+            describes a setting that no longer applies is the one thing worse
+            than no note. */}
+        {kind !== 'every' && zone && zone !== timezone
+          ? `The schedule is read in ${zone}; everything the report queries still comes back in the server's own${timezone ? ` (${timezone})` : ''}.`
+          : `Times are ClickHouse's own timezone${timezone ? ` (${timezone})` : ''}.`}{' '}
+        A webhook is told that the report ran and how it went — the snapshot itself stays here,
+        where it can be read.
       </p>
+      {/* Said where the choice is made rather than after it fails: the list is
+          the server's, and if it could not be read the picker is short for a
+          reason a person can act on. */}
+      {kind !== 'every' && zones.error ? (
+        <p className="says says--watch">
+          The list of timezones could not be read from ClickHouse, so only the server's own is
+          offered here.
+        </p>
+      ) : null}
       {webhook.trim() && !webhooksAllowed ? (
         <p className="says says--watch">
           Webhook delivery is switched off on this Flint, so this will be recorded but not sent.

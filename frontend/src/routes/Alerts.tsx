@@ -10,9 +10,14 @@ import {
   deliveryNote,
   describeAlert,
   describeInterval,
+  inSpace,
   intervalChoices,
   parseCondition,
   problemWith,
+  STANDING_SAYS,
+  saysElsewhere,
+  selected,
+  type Standing,
   serialiseCondition,
   toneOf,
   type Alert,
@@ -22,6 +27,7 @@ import {
 import { EmptyNote, ErrorNote, Loading } from '../components/Note'
 import { CheckPanel } from '../components/CheckPanel'
 import { readHandoff, suggestName, type Handoff } from '../lib/handoff'
+import { keeps } from '../lib/spaces'
 
 /** Alerts: a question asked on a schedule.
  *
@@ -30,18 +36,47 @@ import { readHandoff, suggestName, type Handoff } from '../lib/handoff'
  *  step where the thing you meant to be watched goes unwatched. */
 export function AlertsPage() {
   const config = useQuery({ queryKey: ['config'], queryFn: () => api.config() })
-  const alerts = useQuery({ queryKey: ['alerts'], queryFn: () => api.alerts(), retry: false })
+  /* Not asked without a workspace: both live in it, and the refusal rendered as
+     an error under the page's own account of why there is nothing here. */
+  const stateful = keeps(config.data)
+  const alerts = useQuery({
+    queryKey: ['alerts'],
+    queryFn: () => api.alerts(),
+    enabled: stateful,
+    retry: false,
+  })
   const events = useQuery({
     queryKey: ['alert-events'],
     queryFn: () => api.alertEvents(undefined, 50),
+    enabled: stateful,
     retry: false,
     refetchInterval: 20_000,
   })
+  /* Listed where its subject lives, not where its author sits: an alert on
+     `system.replicas` belongs beside the replicas even when an analyst wrote
+     it, and one on `orders` belongs here even when an operator did. What cannot
+     be placed appears in both lists rather than in neither. */
+  /* What the rail beside this page has selected. The rail owns the filter and
+     the URL owns the rail, so a link to "the two that are firing" is a link
+     somebody can send — and the counts and the list cannot drift, because both
+     read the same rule. */
+  const [params, setParams] = useSearchParams()
+  const here = inSpace(alerts.data ?? [], 'data')
+  const state = params.get('state')
+  const mine = selected(here, state)
+  /* Clearing from the page rather than only from the rail: a reader who arrived
+     on a link to "the ones that cannot run" has the rail's own row to toggle,
+     but the sentence that told them about the fold should be able to undo it. */
+  const clearFilter = () => {
+    const next = new URLSearchParams(params)
+    next.delete('state')
+    setParams(next, { replace: true })
+  }
+  const elsewhere = saysElsewhere(alerts.data ?? [], 'data')
   const [editing, setEditing] = useState<Alert | null>(null)
   const [adding, setAdding] = useState(false)
   /* A statement handed over by the editor. Consumed once and cleared from the
      URL, so a reload does not reopen a form the reader already dismissed. */
-  const [params, setParams] = useSearchParams()
   const [handoff, setHandoff] = useState<Handoff | null>(() => readHandoff(params))
   useEffect(() => {
     if (readHandoff(params)) {
@@ -100,20 +135,48 @@ export function AlertsPage() {
         />
       ) : null}
 
-      {alerts.data?.length ? (
-        <ul className="alist">
-          {alerts.data.map((alert) => (
-            <AlertRow
-              key={alert.id}
-              alert={alert}
-              webhooksAllowed={config.data?.alert_webhooks ?? true}
-              onEdit={() => {
-                setAdding(false)
-                setEditing(alert)
-              }}
-            />
-          ))}
-        </ul>
+      {mine.length ? (
+        <>
+          {/* The count of what this page is not showing, in the words of the
+              space that has them. A list quietly holding back half its rows
+              reads as the whole truth, and an alert nobody can find is an alert
+              nobody trusts. */}
+          {elsewhere ? <p className="diag__quiet">{elsewhere}</p> : null}
+          {/* And the count of what the rail's filter is holding back. A fold
+              that does not state its own size reads as the whole list. */}
+          {state ? (
+            <p className="diag__quiet">
+              Showing the {mine.length} of {here.length} that{' '}
+              {STANDING_SAYS[state as Standing] ?? 'match'}.{' '}
+              <button className="linkish" onClick={() => clearFilter()}>
+                Show all {here.length}
+              </button>
+            </p>
+          ) : null}
+          <ul className="alist">
+            {mine.map((alert) => (
+              <AlertRow
+                key={alert.id}
+                alert={alert}
+                webhooksAllowed={config.data?.alert_webhooks ?? true}
+                onEdit={() => {
+                  setAdding(false)
+                  setEditing(alert)
+                }}
+              />
+            ))}
+          </ul>
+        </>
+      ) : state && here.length ? (
+        /* Empty because of the fold, not because nothing is watched. Telling a
+           reader who filtered to "firing" that they have written no alerts is
+           the one sentence that is certainly wrong here — and the good news,
+           that none are in that state, is the answer they came for. */
+        <EmptyNote title={`None of your ${here.length} alerts ${STANDING_SAYS[state as Standing] ?? 'match'}`}>
+          <button className="linkish" onClick={clearFilter}>
+            Show all {here.length}
+          </button>
+        </EmptyNote>
       ) : alerts.data && !adding ? (
         <EmptyNote title="Nothing is being watched">
           Write a statement that finds the thing you would want to hear about — errors in the
@@ -170,7 +233,12 @@ export function AlertsPage() {
 
 function Tone({ state }: { state: string }) {
   const tone = toneOf(state)
-  return <span className={`flag flag--${tone}`}>{TONE_LABEL[tone]}</span>
+  /* An alert's `ok` is "Recovered" — a change out of firing, which is news and
+     earns the green. The product's other `ok`, a verdict that is simply fine,
+     shares neither the meaning nor the chip. */
+  return (
+    <span className={`flag flag--${tone === 'ok' ? 'good' : tone}`}>{TONE_LABEL[tone]}</span>
+  )
 }
 
 function AlertRow({
@@ -210,7 +278,7 @@ function AlertRow({
       <div className="arow__head">
         <h3 className="arow__name">{alert.name}</h3>
         <Tone state={alert.state} />
-        {!alert.enabled ? <span className="flag flag--idle">Paused</span> : null}
+        {!alert.enabled ? <span className="flag flag--paused">Paused</span> : null}
         <span className="panel__spacer" />
         <button className="btn" onClick={() => toggle.mutate()} disabled={toggle.isPending}>
           {alert.enabled ? 'Pause' : 'Resume'}
