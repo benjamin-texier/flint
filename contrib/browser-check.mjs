@@ -271,10 +271,12 @@ if (asked.required && !asked.user) {
   try {
     for (const scheme of ['light', 'dark']) {
       console.log(`\n${scheme}`)
-      /* `.signin__card` rather than `main`: the shell is not rendered here, and
+      /* `.signin__form` rather than `main`: the shell is not rendered here, and
          waiting for something the page does not draw would report the screen as
-         never ready. */
-      await visit(only, { path: '/', wait: '.signin__card' }, scheme)
+         never ready. The form, not the stage beside it — the stage renders with
+         no config at all, so it would go green on a page whose form never
+         arrived. */
+      await visit(only, { path: '/', wait: '.signin__form' }, scheme)
     }
   } finally {
     await only.close()
