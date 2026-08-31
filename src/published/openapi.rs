@@ -21,6 +21,7 @@
 use serde_json::{json, Value};
 
 use crate::clickhouse::ColumnMeta;
+use crate::published::contract::Contract;
 
 use super::shape;
 
@@ -40,10 +41,23 @@ pub struct Endpoint<'a> {
     /// Reserved names the statement claimed, which Flint therefore does not
     /// offer as query parameters here.
     pub shadowed: &'a [String],
+    /// When this endpoint stops answering, where it does. Empty for the ones
+    /// that do not — which is most of them.
+    pub expires_at: &'a str,
     /// Where this Flint answers, when the request said. Relative otherwise: a
     /// guessed hostname in a document someone pastes into a client is worse
     /// than no hostname at all.
     pub server: Option<&'a str>,
+    /// The zone this endpoint's dates are cut in. Empty is the server's own.
+    pub timezone: &'a str,
+    /// Which revision this document describes. A caller reading it is reading
+    /// one revision's promises, and the number is how they pin to them.
+    pub revision: u32,
+    /// The prose the publisher wrote for whoever has to call this.
+    pub description: &'a str,
+    /// The promises. An empty contract adds nothing to the document, which is
+    /// what every endpoint published before contracts existed produces.
+    pub contract: &'a Contract,
 }
 
 /// One endpoint, on its own.
@@ -187,10 +201,47 @@ fn camel(slug: &str) -> String {
 }
 
 fn describe(e: &Endpoint) -> String {
-    let mut said = format!(
-        "Up to {} rows per response; `limit` and `offset` page through the rest.",
-        e.max_rows
-    );
+    let mut said = String::new();
+    // The publisher's own sentence first, because it is the only part of this
+    // document written by somebody who knows what the endpoint is *for*.
+    // Everything after it is Flint describing mechanics.
+    if !e.description.is_empty() {
+        said.push_str(e.description.trim());
+        if !said.ends_with('.') {
+            said.push('.');
+        }
+        said.push(' ');
+    }
+    said.push_str(&format!(
+        "Revision {}. Up to {} rows per response; `limit` and `offset` page through the rest.",
+        e.revision, e.max_rows
+    ));
+    if !e.contract.is_empty() {
+        // Named as a promise rather than a limit. The distinction matters to
+        // the person reading it: a limit is something in their way, and a
+        // promise is something they can build on — this document will not
+        // start returning a column it does not list here without the revision
+        // number changing.
+        said.push_str(
+            " This revision's parameters and columns are fixed: pin `v` and what comes back              will not change shape.",
+        );
+        if !e.contract.columns.only.is_empty() || !e.contract.columns.never.is_empty() {
+            said.push_str(
+                " It exposes a subset of the columns its statement selects; asking for one it                  does not expose is refused rather than quietly dropped.",
+            );
+        }
+    }
+    if !e.expires_at.is_empty() {
+        // In the description rather than only in a header, because this is the
+        // document somebody generates a client from — and a client generated
+        // against an endpoint with an end should carry that end in its own
+        // comments.
+        said.push_str(&format!(
+            " This endpoint stops answering at {}, after which it responds exactly as an \
+             address that never existed.",
+            e.expires_at
+        ));
+    }
     if !e.shadowed.is_empty() {
         // Said rather than left out: a reader who knows Flint would otherwise
         // look for `limit` here and conclude the document was incomplete.
@@ -212,6 +263,41 @@ fn describe(e: &Endpoint) -> String {
             )
         });
     }
+    // Only where the answer actually has a date in it. An endpoint returning
+    // three counts has a timezone the way it has a page size — true, and not
+    // what anyone generating a client needs told. Where there *is* a date, the
+    // opposite holds: "sales on the 3rd" is a different figure in Auckland and
+    // in São Paulo, and a document that does not say which is a document that
+    // cannot be reconciled against.
+    // Read off the columns rather than carried as a second field, so it cannot
+    // disagree with them: whether this answer has a date in it is a fact about
+    // what `DESCRIBE` said, and a flag beside it would be a copy that drifts.
+    // Where Flint could not describe the statement, nothing is claimed — the
+    // sentence below already says the columns are unknown, and guessing at the
+    // zone on top of that would be inventing precision.
+    let dates = e.columns.is_some_and(|cols| {
+        cols.iter()
+            .any(|c| c.r#type.contains("Date") || c.r#type.contains("DateTime"))
+    });
+    if dates {
+        // The filter half is not decoration. A caller writing `ts=lt.2024-03-01`
+        // is choosing a midnight whether they know it or not, and it is this
+        // endpoint's midnight — which was found the hard way, by giving a test
+        // endpoint a zone and watching a filter that had matched 500 rows match
+        // none. Both numbers were right, and only one of them was expected.
+        said.push_str(&if e.timezone.is_empty() {
+            " Dates in this answer are cut in the server's own timezone, and a date you \
+             send as a filter is read in it."
+                .to_string()
+        } else {
+            format!(
+                " Dates in this answer are cut in {tz} — days, weeks and months begin \
+                 there, whatever timezone you are calling from — and a date you send as a \
+                 filter is read in {tz} too, so `2024-03-01` means midnight there.",
+                tz = e.timezone
+            )
+        });
+    }
     if e.columns.is_none() {
         said.push_str(
             " Flint could not describe this statement without running it, so the columns it \
@@ -224,18 +310,67 @@ fn describe(e: &Endpoint) -> String {
 fn parameters(e: &Endpoint) -> Vec<Value> {
     let mut out = Vec::new();
 
-    // The question first: what the statement itself asks for.
+    // Which revision is being asked for. First, because it decides what every
+    // other parameter here means.
+    out.push(json!({
+        "name": "v",
+        "in": "query",
+        "required": false,
+        "description": format!(
+            "The contract revision. Omit it to reach whichever revision is live, which may              change under you; send `{}` to keep getting exactly what this document describes.",
+            e.revision
+        ),
+        "schema": { "type": "integer", "minimum": 1, "example": e.revision },
+    }));
+
+    // The question next: what the statement itself asks for, narrowed by
+    // whatever the contract promises about it.
     for (name, ty) in e.parameters {
         let default = e.defaults.iter().find(|(k, _)| k == name).map(|(_, v)| v);
         let mut schema = input_schema(ty);
         if let Some(value) = default {
             schema["default"] = json!(value);
         }
+        let mut described = format!("Declared by the statement as `{{{name}:{ty}}}`.");
+        if let Some(rule) = e.contract.rule(name) {
+            // An enum in the schema rather than only in the prose: this is the
+            // part a generated client can enforce before a call is made, which
+            // is the whole reason to publish a document at all.
+            if !rule.one_of.is_empty() {
+                schema["enum"] = json!(rule.one_of);
+            }
+            if !rule.min.is_empty() {
+                match rule.min.parse::<f64>() {
+                    Ok(n) => schema["minimum"] = json!(n),
+                    // A date floor has no `minimum` in JSON Schema, so it is
+                    // said in the sentence instead — dropped from the schema
+                    // rather than encoded as something a client would enforce
+                    // wrongly.
+                    Err(_) => described.push_str(&format!(" No earlier than {}.", rule.min)),
+                }
+            }
+            if !rule.max.is_empty() {
+                match rule.max.parse::<f64>() {
+                    Ok(n) => schema["maximum"] = json!(n),
+                    Err(_) => described.push_str(&format!(" No later than {}.", rule.max)),
+                }
+            }
+            if let (Some(days), false) = (rule.window_days, rule.window_to.is_empty()) {
+                described.push_str(&format!(
+                    " Together with `{}` this may span at most {days} days.",
+                    rule.window_to
+                ));
+            }
+            if !rule.note.is_empty() {
+                described.push(' ');
+                described.push_str(&rule.note);
+            }
+        }
         out.push(json!({
             "name": name,
             "in": "query",
             "required": default.is_none(),
-            "description": format!("Declared by the statement as `{{{name}:{ty}}}`."),
+            "description": described,
             "schema": schema,
         }));
     }
@@ -308,6 +443,11 @@ fn parameters(e: &Endpoint) -> Vec<Value> {
         if ops.is_empty()
             || e.parameters.iter().any(|(n, _)| *n == column.name)
             || shape::RESERVED.contains(&column.name.as_str())
+            // A column the contract does not expose is not documented as a
+            // filter, because filtering on one is refused — and a document
+            // that offers a parameter the endpoint rejects is worse than one
+            // that stays quiet.
+            || !e.contract.exposes(&column.name)
         {
             continue;
         }
@@ -698,10 +838,30 @@ mod tests {
         }
     }
 
+    #[test]
+    fn an_endpoint_with_an_end_says_so_in_its_own_document() {
+        // The document is what somebody generates a client from, and a client
+        // built against an endpoint that stops answering should carry that in
+        // its own comments — otherwise the first anyone knows of it is a 404
+        // indistinguishable from a wrong address.
+        let mut e = endpoint(None, &[]);
+        assert!(!describe(&e).contains("stops answering"));
+
+        e.expires_at = "2027-06-30 12:00:00";
+        let said = describe(&e);
+        assert!(
+            said.contains("stops answering at 2027-06-30 12:00:00"),
+            "{said}"
+        );
+        assert!(said.contains("never existed"), "{said}");
+    }
+
     fn endpoint<'a>(columns: Option<&'a [ColumnMeta]>, shadowed: &'a [String]) -> Endpoint<'a> {
         Endpoint {
             name: "Events by city",
             slug: "events-by-city",
+            expires_at: "",
+            timezone: "",
             public: false,
             max_rows: 1000,
             parameters: &[],
@@ -709,8 +869,16 @@ mod tests {
             columns,
             shadowed,
             server: None,
+            revision: 1,
+            description: "",
+            contract: &EMPTY_CONTRACT,
         }
     }
+
+    /// A contract that promises nothing, for the fixtures that are not about
+    /// contracts. Borrowed by `Endpoint`, so it has to outlive the fixture.
+    static EMPTY_CONTRACT: std::sync::LazyLock<Contract> =
+        std::sync::LazyLock::new(Contract::default);
 
     #[test]
     fn a_slug_becomes_a_name_a_generator_can_use() {

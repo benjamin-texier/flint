@@ -1,51 +1,73 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 
 import { api } from '../lib/api'
 import {
-  curlExample,
-  declaredParams,
-  endpointPath,
-  parseDefaults,
-  problemWithPublished,
-  requiredParams,
-  serialiseDefaults,
-  slugify,
   allOpenapiPath,
+  byAddress,
+  endpointPath,
+  hiddenNote,
+  hitRate,
+  listedRevisions,
+  unreachedCalls,
+  usageBySlug,
+  usageKey,
+  type Address,
   type Published,
+  type SlugUsage,
 } from '../lib/publish'
 import { EmptyNote, ErrorNote, Loading } from '../components/Note'
-import { CallBuilder } from '../components/CallBuilder'
-import { CheckPanel } from '../components/CheckPanel'
-import { readHandoff, suggestName, type Handoff } from '../lib/handoff'
-import { usageIndex, type ApiUsage } from '../lib/diagnose'
+import { PublishForm } from '../components/PublishForm'
+import { ExposeTables } from '../components/ExposeTables'
+import { Keys } from '../components/Keys'
+import { readHandoff, type Handoff } from '../lib/handoff'
 import { count } from '../lib/format'
-import { relativeTime } from '../lib/format'
+import { keeps } from '../lib/spaces'
 
-/** How far back the usage figures look. */
-const USAGE_DAYS = 7
+/** How far back the figures on this page look. A day, because "Calls 24h" is
+ *  the column somebody scans, and a week's total tells you nothing about
+ *  whether an endpoint is busy *now*. */
+const WINDOW_HOURS = 24
 
-/** No-code APIs: a statement, published at a stable URL.
+/** What is exposed, and to whom.
  *
- *  The page's job is to make the two things that go wrong impossible to miss —
- *  which parameters a caller must supply, and whether the endpoint is open to
- *  anyone who has the address. */
+ *  One row per revision that a caller can still reach, plus every draft —
+ *  because a draft is precisely the thing somebody needs to see in order to do
+ *  something about it. Retired revisions are folded away and counted.
+ *
+ *  The page's job is to make three things impossible to miss: which addresses
+ *  answer without a key, which revisions are on their way out and still being
+ *  called, and which drafts are sitting unreviewed. Everything else is a
+ *  figure, and a figure Flint cannot read is dropped rather than shown as a
+ *  zero. */
 export function PublishPage() {
   const config = useQuery({ queryKey: ['config'], queryFn: () => api.config() })
-  const list = useQuery({ queryKey: ['published'], queryFn: () => api.published(), retry: false })
-  /* Which of these anyone actually calls. Read from the query log, so it is
-     absent rather than zeroed where the log is off. */
+  const stateful = keeps(config.data)
+  const list = useQuery({
+    queryKey: ['published'],
+    queryFn: () => api.published(),
+    enabled: stateful,
+    retry: false,
+  })
   const usage = useQuery({
-    queryKey: ['api-usage', USAGE_DAYS],
-    queryFn: () => api.apiUsage(USAGE_DAYS),
+    queryKey: ['published-usage', WINDOW_HOURS],
+    queryFn: () => api.publishedUsage(WINDOW_HOURS),
+    enabled: stateful,
     staleTime: 30_000,
     retry: false,
   })
-  const used = usageIndex(usage.data)
-  const [editing, setEditing] = useState<Published | null>(null)
-  const [adding, setAdding] = useState(false)
+  const used = usageBySlug(usage.data)
+  /* Absent is not zero. With the call log unreadable there is nothing to say,
+     and "never called" would be a guess dressed as a fact. */
+  const usageKnown = usage.data?.available ?? false
+
   const [params, setParams] = useSearchParams()
+  const [adding, setAdding] = useState(false)
+  /* Addressable for the same reason the key list is: "how do I expose these
+     tables" is a question somebody sends a link for, and a panel folded shut on
+     arrival makes the link useless. */
+  const [exposing, setExposing] = useState(() => params.has('expose'))
   const [handoff, setHandoff] = useState<Handoff | null>(() => readHandoff(params))
   useEffect(() => {
     if (readHandoff(params)) {
@@ -56,36 +78,48 @@ export function PublishPage() {
 
   const stateless = config.data?.workspace === null
   const origin = typeof window === 'undefined' ? '' : window.location.origin
+  const addresses = byAddress(list.data ?? [])
 
   return (
     <div className="page page--publish">
       <header className="page__head">
-        <p className="eyebrow">APIS</p>
+        <p className="eyebrow">DATA · ENDPOINTS</p>
         <div className="page__titlerow">
-          <h1 className="page__title page__title--hero">Queries, served</h1>
+          <h1 className="page__title page__title--hero">What is exposed, and to whom</h1>
           {!stateless ? (
-            <button
-              className="btn btn--spark"
-              onClick={() => {
-                setEditing(null)
-                setAdding(true)
-              }}
-            >
-              New endpoint
-            </button>
+            <>
+              {/* Two doors, because they are two different jobs. A statement is
+                  for a join or an aggregate somebody wrote; tables are for
+                  handing a partner read access to fifteen of them, which used
+                  to be fifteen visits to the other form. */}
+              <button
+                className="btn"
+                onClick={() => {
+                  setExposing((e) => !e)
+                  setAdding(false)
+                }}
+                aria-expanded={exposing}
+              >
+                Expose tables
+              </button>
+              <button
+                className="btn btn--spark"
+                onClick={() => {
+                  setAdding(true)
+                  setExposing(false)
+                }}
+              >
+                Publish a statement
+              </button>
+            </>
           ) : null}
         </div>
         <p className="page__lead">
-          Write the statement once, with ClickHouse's own <code>{'{name:Type}'}</code>{' '}
-          placeholders in it, and Flint serves it at a stable URL that a spreadsheet or a
-          five-line script can fetch. Callers supply values, never SQL — and a published
-          statement always runs read-only.
-        </p>
-        {/* Needs no token, so it is a link rather than a curl line. */}
-        <p className="page__lead">
-          Every endpoint below, in one document:{' '}
+          Base URL <code>{origin}/api/data</code> · every call is logged with its key and its
+          cost. A caller supplies values, never SQL, and a published statement always runs
+          read-only.{' '}
           <a className="pub__doclink" href={allOpenapiPath()}>
-            OpenAPI
+            OpenAPI for all of them
           </a>
         </p>
       </header>
@@ -100,381 +134,287 @@ export function PublishPage() {
       {list.isPending && !stateless ? <Loading label="Reading endpoints" /> : null}
       {list.error ? <ErrorNote error={list.error} retry={() => list.refetch()} /> : null}
 
-      {adding || editing ? (
-        <PublishForm
-          existing={editing}
-          handoff={editing ? null : handoff}
+      {exposing ? (
+        <ExposeTables
           defaultDatabase={config.data?.default_database ?? ''}
+          onDone={() => setExposing(false)}
+        />
+      ) : null}
+
+      {adding ? (
+        <PublishForm
+          existing={null}
+          handoff={handoff}
+          defaultDatabase={config.data?.default_database ?? ''}
+          delegatableRoles={config.data?.delegatable_roles ?? []}
+          timezone={undefined}
           onDone={() => {
             setAdding(false)
-            setEditing(null)
             setHandoff(null)
           }}
         />
       ) : null}
 
-      {list.data?.length ? (
-        <ul className="alist">
-          {list.data.map((endpoint) => (
-            <EndpointRow
-              key={endpoint.id}
-              endpoint={endpoint}
-              origin={origin}
-              usage={used.get(endpoint.slug)}
-              usageKnown={usage.data?.available ?? false}
-              onEdit={() => {
-                setAdding(false)
-                setEditing(endpoint)
-              }}
-            />
-          ))}
-        </ul>
+      {addresses.length ? (
+        <EndpointTable
+          addresses={addresses}
+          used={used}
+          usageKnown={usageKnown}
+          unreached={unreachedCalls(usage.data)}
+        />
       ) : list.data && !adding ? (
         <EmptyNote title="Nothing is published">
           Turn a statement you keep re-running by hand into something another tool can ask for.
         </EmptyNote>
       ) : null}
+
+      {addresses.length ? <Attention addresses={addresses} used={used} /> : null}
+
+      {/* Keys are global — one program calls four addresses — so they live on
+          the page that lists all of them rather than on any one endpoint. */}
+      {!stateless ? <Keys addresses={addresses} defaultOpen={params.has('keys')} /> : null}
     </div>
   )
 }
 
-function EndpointRow({
-  endpoint,
-  origin,
-  usage,
+function EndpointTable({
+  addresses,
+  used,
   usageKnown,
-  onEdit,
+  unreached,
 }: {
-  endpoint: Published
-  origin: string
-  usage: ApiUsage | undefined
-  /** False when the query log cannot be read, where "no calls" would be a
-   *  guess dressed as a fact. */
+  addresses: Address[]
+  used: Map<string, SlugUsage>
   usageKnown: boolean
-  onEdit: () => void
+  /** Calls refused before Flint knew which revision they wanted, so they
+   *  belong to no row above. */
+  unreached: number
 }) {
-  const client = useQueryClient()
-  const [showToken, setShowToken] = useState(false)
-  /* Closed by default: the card's job is to say what the endpoint is, and the
-     builder asks the endpoint to describe itself, which is a query. */
-  const [showCaller, setShowCaller] = useState(false)
-  const defaults = useMemo(() => parseDefaults(endpoint.defaults), [endpoint.defaults])
-  const params = declaredParams(endpoint.sql)
-  const required = requiredParams(endpoint.sql, defaults)
-
-  const remove = useMutation({
-    mutationFn: () => api.deletePublished(endpoint.id),
-    onSuccess: () => client.invalidateQueries({ queryKey: ['published'] }),
-  })
-  const toggle = useMutation({
-    mutationFn: () =>
-      api.savePublished({
-        id: endpoint.id,
-        name: endpoint.name,
-        slug: endpoint.slug,
-        sql: endpoint.sql,
-        database: endpoint.database,
-        defaults: endpoint.defaults,
-        public: endpoint.public,
-        enabled: !endpoint.enabled,
-        max_rows: endpoint.max_rows,
-      }),
-    onSuccess: () => client.invalidateQueries({ queryKey: ['published'] }),
-  })
+  const folded = addresses
+    .map((a) => hiddenNote(a))
+    .filter((n): n is string => n !== null).length
 
   return (
-    <li className={`arow${endpoint.enabled ? '' : ' arow--off'}`}>
-      <div className="arow__head">
-        <h3 className="arow__name">{endpoint.name}</h3>
-        {/* Openness is the fact most worth seeing without looking for it. */}
-        {endpoint.public ? (
-          <span className="flag flag--error">Public</span>
-        ) : (
-          <span className="flag flag--ok">Token required</span>
-        )}
-        {!endpoint.enabled ? <span className="flag flag--idle">Paused</span> : null}
-        <span className="panel__spacer" />
-        <button className="btn" onClick={() => toggle.mutate()} disabled={toggle.isPending}>
-          {endpoint.enabled ? 'Pause' : 'Resume'}
-        </button>
-        <button className="btn" onClick={onEdit}>
-          Edit
-        </button>
-        <button className="btn" onClick={() => remove.mutate()} disabled={remove.isPending}>
-          Delete
-        </button>
-      </div>
-
-      <p className="pub__url">
-        <span className="pub__method">GET</span>
-        <code>{endpointPath(endpoint.slug)}</code>
-      </p>
-
-      <pre className="arow__sql">{endpoint.sql}</pre>
-
-      {params.length ? (
-        <p className="arow__foot">
-          <span className="mono-dim">
-            parameters: {params.map((p) => (required.includes(p) ? p : `${p} (${defaults[p]})`)).join(', ')}
-          </span>
-          {required.length ? (
+    <>
+      <table className="tbl eps">
+        <thead>
+          <tr>
+            <th scope="col">Path</th>
+            <th scope="col">From</th>
+            <th scope="col" className="eps__n">
+              Ver.
+            </th>
+            <th scope="col" className="eps__n">
+              Calls {WINDOW_HOURS}h
+            </th>
+            <th scope="col" className="eps__n">
+              p95
+            </th>
+            <th scope="col" className="eps__n">
+              Cached
+            </th>
+            <th scope="col" className="eps__n">
+              Keys
+            </th>
+            <th scope="col">State</th>
+          </tr>
+        </thead>
+        <tbody>
+          {addresses.map((address) =>
+            listedRevisions(address).map((revision) => (
+              <Row
+                key={revision.id}
+                address={address}
+                revision={revision}
+                /* Per revision, because that is the question the row is
+                   asking. "v3 is retiring and still took two thousand calls
+                   today" is the sentence somebody acts on, and an
+                   address-level total hides it inside the revision that
+                   replaced it. */
+                usage={used.get(usageKey(address.slug, revision.revision))}
+                usageKnown={usageKnown}
+              />
+            )),
+          )}
+        </tbody>
+      </table>
+      {/* Every fold states its own count. */}
+      {folded > 0 || !usageKnown || unreached > 0 ? (
+        <p className="eps__foot">
+          {folded > 0 ? (
+            <span className="mono-dim">
+              {addresses
+                .map((a) => hiddenNote(a))
+                .filter(Boolean)
+                .join(' · ')}
+            </span>
+          ) : null}
+          {unreached > 0 ? (
+            <span className="mono-dim">
+              {count(unreached)} call{unreached === 1 ? '' : 's'} reached no revision — a wrong
+              address, a pin for one that does not exist, or no key
+            </span>
+          ) : null}
+          {!usageKnown ? (
             <span className="says says--watch">
-              a caller must supply {required.map((p) => `\`${p}\``).join(', ')}
+              Traffic unknown — Flint could not read its own call log, so the four figures on the
+              right are absent rather than zero.
             </span>
           ) : null}
         </p>
       ) : null}
-
-      <div className="pub__try">
-        <pre className="pub__curl">{curlExample(endpoint, origin)}</pre>
-        <button
-          className="btn"
-          aria-expanded={showCaller}
-          aria-controls={`caller-${endpoint.id}`}
-          onClick={() => setShowCaller((s) => !s)}
-        >
-          {showCaller ? 'Hide the call' : 'Filter, page, try it'}
-        </button>
-        {!endpoint.public ? (
-          <button className="btn" onClick={() => setShowToken((s) => !s)}>
-            {showToken ? 'Hide token' : 'Show token'}
-          </button>
-        ) : null}
-      </div>
-
-      {showCaller ? (
-        <div id={`caller-${endpoint.id}`}>
-          <CallBuilder endpoint={endpoint} origin={origin} />
-        </div>
-      ) : null}
-      {showToken && !endpoint.public ? (
-        <p className="pub__token">
-          <code>{endpoint.token}</code>
-        </p>
-      ) : null}
-
-      <p className="arow__foot">
-        {endpoint.database ? <span className="mono-dim">{endpoint.database}</span> : null}
-        {/* A page, not a ceiling: `limit` and `offset` walk past it, and the
-            statement's own LIMIT is the only thing that does not move. */}
-        <span className="mono-dim">up to {endpoint.max_rows} rows per page</span>
-        <span className="mono-dim">json · csv · ndjson</span>
-        {/* Absent is not zero: with the query log off there is nothing to say,
-            and saying "never called" would be a guess dressed as a fact. */}
-        {!usageKnown ? (
-          <span className="mono-dim">usage unknown — system.query_log is not readable</span>
-        ) : usage ? (
-          <span className="mono-dim">
-            {count(usage.calls)} call{usage.calls === 1 ? '' : 's'} in {USAGE_DAYS}d ·{' '}
-            {Math.round(usage.avg_ms)} ms · last {relativeTime(usage.last_call)}
-          </span>
-        ) : (
-          <span className="says says--watch">not called in the last {USAGE_DAYS} days</span>
-        )}
-        {usage?.failures ? (
-          <span className="says says--throw">
-            {usage.failures} call{usage.failures === 1 ? '' : 's'} failed
-          </span>
-        ) : null}
-      </p>
-    </li>
+    </>
   )
 }
 
-function PublishForm({
-  existing,
-  handoff,
-  defaultDatabase,
-  onDone,
+function Row({
+  address,
+  revision,
+  usage,
+  usageKnown,
 }: {
-  existing: Published | null
-  /** A statement the editor sent over. Its name seeds the address too. */
-  handoff: Handoff | null
-  defaultDatabase: string
-  onDone: () => void
+  address: Address
+  revision: Published
+  usage: SlugUsage | undefined
+  usageKnown: boolean
 }) {
-  const client = useQueryClient()
-  const handedName = handoff ? suggestName(handoff, '') : ''
-  const [name, setName] = useState(existing?.name ?? handedName)
-  const [slug, setSlug] = useState(existing?.slug ?? slugify(handedName))
-  const [slugTouched, setSlugTouched] = useState(Boolean(existing))
-  const [sql, setSql] = useState(existing?.sql ?? handoff?.sql ?? '')
-  const [database, setDatabase] = useState(
-    existing?.database ?? handoff?.database ?? defaultDatabase,
-  )
-  const [defaults, setDefaults] = useState<Record<string, string>>(() =>
-    parseDefaults(existing?.defaults ?? '{}'),
-  )
-  const [isPublic, setPublic] = useState(existing?.public ?? false)
-  const [maxRows, setMaxRows] = useState(existing?.max_rows ?? 1000)
-
-  const params = declaredParams(sql)
-  /* Testable here only when every placeholder has a value to stand in for the
-     caller's. A made-up value would answer a question nobody asked. */
-  const missingDefaults = requiredParams(sql, defaults)
-  const problem = problemWithPublished({ name, slug, sql })
-
-  const save = useMutation({
-    mutationFn: () =>
-      api.savePublished({
-        id: existing?.id,
-        name,
-        slug: slug.trim(),
-        sql,
-        database,
-        defaults: serialiseDefaults(defaults),
-        public: isPublic,
-        enabled: existing?.enabled ?? true,
-        max_rows: maxRows,
-      }),
-    onSuccess: () => {
-      client.invalidateQueries({ queryKey: ['published'] })
-      onDone()
-    },
-  })
+  const cached = usage ? hitRate(revision.cache_ttl, usage.calls, usage.cached) : null
+  const muted = revision.state !== 'live'
 
   return (
-    <section className="aform">
-      <header className="aform__head">
-        <h2 className="diag__title">{existing ? 'Edit this endpoint' : 'A new endpoint'}</h2>
-      </header>
+    <tr className={muted ? 'is-muted' : undefined}>
+      <th scope="row">
+        <Link className="eps__path" to={`/apis/${encodeURIComponent(address.slug)}`}>
+          {endpointPath(address.slug)}
+        </Link>
+        {!revision.enabled ? <span className="flag flag--idle">Paused</span> : null}
+        {revision.public ? <span className="flag flag--error">Public</span> : null}
+      </th>
+      <td className="eps__from">
+        {/* An absent source is dropped, not dashed: a join has no single table
+            to name, and four em-dashes would say Flint asked the wrong
+            question. */}
+        {revision.source ? <code>{revision.source}</code> : null}
+      </td>
+      <td className="eps__n">v{revision.revision}</td>
+      {/* Zero is a fact where the log is readable: an address absent from the
+          rollup was called zero times, and printing nothing there is
+          indistinguishable from Flint having failed to read it. The three
+          figures beside it stay absent, because a p95 of no calls is not zero
+          — it does not exist. */}
+      <td className="eps__n">{usageKnown ? count(usage?.calls ?? 0) : null}</td>
+      <td className="eps__n">
+        {usageKnown && usage?.p95_ms !== undefined ? `${Math.round(usage.p95_ms)} ms` : null}
+      </td>
+      <td className="eps__n">
+        {/* Nothing where the endpoint has no cache. 0% would read as a cache
+            that is failing rather than one that is switched off. */}
+        {cached !== null ? `${Math.round(cached * 100)}%` : null}
+      </td>
+      <td className="eps__n">
+        {usageKnown && usage?.calls ? (
+          usage.keys > 0 ? (
+            `${usage.keys} key${usage.keys === 1 ? '' : 's'}`
+          ) : (
+            <span className="mono-dim">no key</span>
+          )
+        ) : null}
+      </td>
+      <td>
+        <span className={`flag flag--${flagFor(revision.state)}`}>{revision.state}</span>
+      </td>
+    </tr>
+  )
+}
 
-      <div className="aform__row">
-        <label className="aform__field aform__field--narrow">
-          <span className="label">NAME</span>
-          <input
-            className="input"
-            value={name}
-            onChange={(e) => {
-              setName(e.target.value)
-              // The address follows the name until someone edits it, so
-              // nobody has to learn the rule to get a working URL.
-              if (!slugTouched) setSlug(slugify(e.target.value))
-            }}
-            placeholder="Events by city"
-          />
-        </label>
-        <label className="aform__field aform__field--narrow">
-          <span className="label">ADDRESS</span>
-          <input
-            className="input"
-            value={slug}
-            onChange={(e) => {
-              setSlugTouched(true)
-              setSlug(e.target.value)
-            }}
-            placeholder="events-by-city"
-          />
-        </label>
-      </div>
+/** Which of the shared flag colours a state wears.
+ *
+ *  Retiring is a warning and not an error: nothing is broken, somebody simply
+ *  has a conversation to have before a date. A draft is neither — it is inert,
+ *  and colouring it like a problem would send people to fix something that is
+ *  working as intended. */
+function flagFor(state: Published['state']): string {
+  switch (state) {
+    case 'live':
+      return 'ok'
+    case 'retiring':
+      return 'watch'
+    case 'draft':
+      return 'idle'
+    case 'retired':
+      return 'idle'
+  }
+}
 
-      <p className="aform__hint">
-        Will answer at <code>{endpointPath(slug || 'your-address')}</code>
-      </p>
+/** The two things on this page that are somebody's move.
+ *
+ *  Not a list of every state — the table above is that. These are the rows
+ *  where the state is a *question left open*: a revision on notice that people
+ *  are still calling, and a draft nobody has taken live. Both have a next step
+ *  and a person attached to it, and both are invisible in a table of figures. */
+function Attention({
+  addresses,
+  used,
+}: {
+  addresses: Address[]
+  used: Map<string, SlugUsage>
+}) {
+  const retiring = addresses.flatMap((address) =>
+    address.revisions
+      .filter((r) => r.state === 'retiring')
+      .map((revision) => ({ address, revision })),
+  )
+  const drafts = addresses.flatMap((address) =>
+    address.revisions.filter((r) => r.state === 'draft').map((revision) => ({ address, revision })),
+  )
+  if (retiring.length === 0 && drafts.length === 0) return null
 
-      <label className="aform__field">
-        <span className="label">STATEMENT</span>
-        <textarea
-          className="input input--area"
-          value={sql}
-          onChange={(e) => setSql(e.target.value)}
-          rows={4}
-          spellCheck={false}
-          placeholder="SELECT city, count() AS n FROM events WHERE city = {city:String} GROUP BY city"
-        />
-      </label>
-
-      {params.length ? (
-        <div className="pub__params">
-          <span className="label">PARAMETERS THIS STATEMENT DECLARES</span>
-          {params.map((p) => (
-            <label className="pub__param" key={p}>
-              <code>{p}</code>
-              <input
-                className="input"
-                value={defaults[p] ?? ''}
-                onChange={(e) => setDefaults((d) => ({ ...d, [p]: e.target.value }))}
-                placeholder="no default — a caller must supply it"
-              />
-            </label>
-          ))}
-        </div>
+  return (
+    <div className="eps__cards">
+      {retiring.length ? (
+        <section className="eps__card">
+          <h2 className="eps__cardtitle">Retiring a version</h2>
+          {retiring.slice(0, 3).map(({ address, revision }) => {
+            const usage = used.get(usageKey(address.slug, revision.revision))
+            return (
+              <p className="eps__cardbody" key={revision.id}>
+                <code>{endpointPath(address.slug)}</code> v{revision.revision} is marked retiring
+                {usage?.calls ? <> and still took {count(usage.calls)} calls today</> : null}.
+                Flint will not delete it while it is being called — it tells you who to talk to.{' '}
+                <Link className="pub__doclink" to={`/apis/${encodeURIComponent(address.slug)}`}>
+                  Who is still on it
+                </Link>
+              </p>
+            )
+          })}
+          {retiring.length > 3 ? (
+            <p className="mono-dim">
+              {retiring.length - 3} more revision{retiring.length - 3 === 1 ? '' : 's'} retiring
+            </p>
+          ) : null}
+        </section>
       ) : null}
 
-      <div className="aform__row">
-        <label className="aform__field aform__field--narrow">
-          <span className="label">DATABASE</span>
-          <input
-            className="input"
-            value={database}
-            onChange={(e) => setDatabase(e.target.value)}
-            placeholder="default"
-          />
-        </label>
-        <label className="aform__field aform__field--tiny">
-          <span className="label">MAX ROWS</span>
-          <input
-            className="input"
-            value={maxRows}
-            onChange={(e) => setMaxRows(Math.max(1, Number(e.target.value) || 1))}
-            inputMode="numeric"
-          />
-        </label>
-        <label className="aform__field aform__field--narrow">
-          <span className="label">ACCESS</span>
-          <select
-            className="input"
-            value={isPublic ? 'public' : 'token'}
-            onChange={(e) => setPublic(e.target.value === 'public')}
-          >
-            <option value="token">needs its token</option>
-            <option value="public">anyone with the address</option>
-          </select>
-        </label>
-      </div>
-
-      {/* With the defaults filled in, this is what a caller will get. A
-          statement with a parameter that has no default cannot be run here,
-          and the check says so rather than pretending. */}
-      <CheckPanel
-        sql={sql}
-        database={database}
-        params={params.map((p) => [p, defaults[p] ?? ''] as [string, string])}
-        blocked={
-          missingDefaults.length
-            ? `Give ${missingDefaults.map((p) => `\`${p}\``).join(', ')} a default above to test it here — a caller would supply ${missingDefaults.length === 1 ? 'it' : 'them'}.`
-            : undefined
-        }
-        label="What will a caller get?"
-      />
-
-      {isPublic ? (
-        <p className="says says--watch">
-          Anyone who can reach this Flint and knows the address will get this data. Flint has no
-          login of its own, so "public" means public to the whole network it is on.
-        </p>
-      ) : (
-        <p className="aform__hint">
-          A token is minted for you and stays the same when you edit the endpoint, so callers do
-          not break.
-        </p>
-      )}
-
-      {problem ? <p className="says says--watch">{problem}</p> : null}
-      {save.error ? <ErrorNote error={save.error} /> : null}
-
-      <div className="aform__actions">
-        <button
-          className="btn btn--spark"
-          disabled={!!problem || save.isPending}
-          onClick={() => save.mutate()}
-        >
-          {existing ? 'Save changes' : 'Publish it'}
-        </button>
-        <button className="btn" onClick={onDone}>
-          Cancel
-        </button>
-      </div>
-    </section>
+      {drafts.length ? (
+        <section className="eps__card">
+          <h2 className="eps__cardtitle">Drafts are not reachable</h2>
+          {drafts.slice(0, 3).map(({ address, revision }) => (
+            <p className="eps__cardbody" key={revision.id}>
+              <code>{endpointPath(address.slug)}</code> v{revision.revision} answers nothing at any
+              address. It exists so you can review the parameters and the exposed columns before
+              anything outside can reach it.{' '}
+              <Link className="pub__doclink" to={`/apis/${encodeURIComponent(address.slug)}`}>
+                Review it
+              </Link>
+            </p>
+          ))}
+          {drafts.length > 3 ? (
+            <p className="mono-dim">
+              {drafts.length - 3} more draft{drafts.length - 3 === 1 ? '' : 's'}
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+    </div>
   )
 }
