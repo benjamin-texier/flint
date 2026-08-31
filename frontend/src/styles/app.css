@@ -3200,6 +3200,49 @@ tr:hover .stratum__fill {
   overflow-wrap: anywhere;
 }
 
+/* ── What a streaming table is doing ───────────────────────────────────────
+   Almost all of this tab is the shared table and note vocabulary, because it
+   is a list of readings like every other list of readings here. What it needs
+   of its own is a chain, an identifier long enough to wrap, and a quiet clause
+   for "the same error ten times". */
+.strm__chains {
+  padding: var(--s3) var(--s4);
+}
+
+.strm__chain {
+  margin: 0;
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk-dim);
+  overflow-wrap: anywhere;
+}
+
+.strm__arrow {
+  padding: 0 var(--s2);
+  color: var(--chalk-faint);
+}
+
+/* Said where the answer is that nothing does — which is a finding, not an
+   empty list, so it is a sentence rather than a dash. */
+.strm__none {
+  margin: 0;
+  max-width: 68ch;
+  font-size: var(--size-body);
+  line-height: 1.6;
+  color: var(--chalk-dim);
+}
+
+/* A consumer id is 70 characters of host, table and uuid. It wraps rather than
+   widening the column past everything beside it. */
+.strm__id {
+  font-family: var(--font-data);
+  overflow-wrap: anywhere;
+}
+
+.strm__repeat {
+  color: var(--chalk-faint);
+}
+
 /* Where a view's column came from. One source per line: a single expression can
    draw on three columns of two tables, and a comma-separated run of those is
    not readable at this width. */

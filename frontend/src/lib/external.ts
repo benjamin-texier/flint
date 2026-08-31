@@ -77,6 +77,17 @@ export function isExternalEngine(engine: string): boolean {
   return EXTERNAL.test(engine)
 }
 
+/** Engines with a reader running in the background rather than on demand.
+ *
+ *  The distinction that earns its own tab: everything else external fails in
+ *  front of the person who queried it, and these two fail silently at three in
+ *  the morning. `S3Queue` before `S3`, since one is a prefix of the other. */
+export function backgroundReader(engine: string): 'kafka' | 'queue' | null {
+  if (/^Kafka/.test(engine)) return 'kafka'
+  if (/^S3Queue/.test(engine)) return 'queue'
+  return null
+}
+
 // ---------------------------------------------------------------------------
 // Reading the definition
 // ---------------------------------------------------------------------------

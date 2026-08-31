@@ -16,7 +16,7 @@ use crate::clickhouse::parts::{
     freeze_name, object_statement, part_statement, partition_statement, valid_part_name,
     valid_partition_id, ObjectAction, PartAction, PartitionAction,
 };
-use crate::clickhouse::rbac;
+use crate::clickhouse::{meta, rbac};
 use crate::config::Tier;
 use crate::error::{Error, Result};
 use crate::jobs::{optimize_statement, replica_statement, JobSpec, ReplicaAction, Runner};
@@ -90,7 +90,7 @@ pub async fn optimize(
     // That the object exists, and is something an OPTIMIZE means anything for.
     // `OPTIMIZE` on a view is accepted by ClickHouse and does nothing, which is
     // a worse answer than being told.
-    let engine = engine_of(&ch, &database, &table).await?;
+    let engine = meta::table_engine(&ch, &database, &table).await?;
     if !engine.contains("MergeTree") {
         return Err(Error::BadRequest(format!(
             "`{database}.{table}` is a {engine}, and only a MergeTree table has parts to merge"
@@ -169,36 +169,6 @@ fn name(raw: &str, what: &str) -> Result<String> {
     Ok(trimmed.to_string())
 }
 
-/// The engine of one object, asked of the server.
-async fn engine_of(ch: &crate::clickhouse::Client, database: &str, table: &str) -> Result<String> {
-    #[derive(serde::Deserialize)]
-    struct Row {
-        engine: String,
-    }
-    let row: Option<Row> = ch
-        .row_with(
-            "SELECT engine AS engine FROM system.tables \
-             WHERE database = {db:String} AND name = {tbl:String}",
-            crate::clickhouse::QueryOptions {
-                params: vec![
-                    ("db".into(), database.to_string()),
-                    ("tbl".into(), table.to_string()),
-                ],
-                quote_64bit_integers: false,
-                introspection: true,
-                ..Default::default()
-            },
-        )
-        .await?;
-    row.map(|r| r.engine).ok_or_else(|| {
-        // Or it exists and this user may not see it, which `system.tables`
-        // cannot tell apart — it is filtered by grants.
-        Error::NotFound(format!(
-            "there is no `{database}.{table}` that this user can see"
-        ))
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -247,7 +217,7 @@ pub async fn replica(
     let database = name(&req.database, "database")?;
     let table = name(&req.table, "table")?;
 
-    let engine = engine_of(&ch, &database, &table).await?;
+    let engine = meta::table_engine(&ch, &database, &table).await?;
     if !engine.starts_with("Replicated") {
         return Err(Error::BadRequest(format!(
             "`{database}.{table}` is a {engine}, and only a Replicated engine has a replica to \
@@ -543,7 +513,7 @@ pub async fn object(
     let table = name(&req.table, "table")?;
 
     // What it is, which decides the wording, and that it is there at all.
-    let engine = engine_of(&ch, &database, &table).await?;
+    let engine = meta::table_engine(&ch, &database, &table).await?;
     let kind = match engine.as_str() {
         "MaterializedView" => "materialized view",
         "View" => "view",
@@ -675,7 +645,7 @@ pub async fn backup(
     let exists = if whole {
         database_exists(&ch, &database).await?
     } else {
-        engine_of(&ch, &database, &table).await.is_ok()
+        meta::table_engine(&ch, &database, &table).await.is_ok()
     };
     let what = if whole { "database" } else { "table" };
     match req.action {
@@ -1164,7 +1134,7 @@ pub async fn alter(
     // The engine says whether "done" will mean done everywhere, and the size
     // says what the rewrite costs. Both are read before the change so the label
     // describes the table it acted on rather than the one it left behind.
-    let engine = engine_of(&ch, &database, &table).await?;
+    let engine = meta::table_engine(&ch, &database, &table).await?;
     let replicated = engine.starts_with("Replicated");
     let (parts, rows) = crate::clickhouse::meta::table_extent(&ch, &database, &table).await?;
 

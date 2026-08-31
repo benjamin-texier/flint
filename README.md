@@ -2964,6 +2964,49 @@ nothing at all. Those columns are now dropped. So are the zeroes the diagram dre
 the same tables, which read as an empty table rather than as a table this server has
 never held; a node whose rows are elsewhere counts its columns instead.
 
+### Whether a streaming table is actually moving anything
+
+An `S3` or a `PostgreSQL` table is read when somebody queries it, so one pointing
+at the wrong place fails in front of the person who asked. A `Kafka` or an
+`S3Queue` table is not like that. It runs on its own, in the background, and when
+it stops the only symptom is a target table that quietly stops growing — which is
+the same reason the dictionary page exists, and the reason those two engines get a
+tab of their own.
+
+For a `Kafka` table it reads `system.kafka_consumers`: who is assigned which
+partitions, where each one is, when it last polled and last committed, and the
+server's ring of the last ten exceptions. For an `S3Queue` it reads
+`system.s3queue_log` — every object taken, whether it parsed, how many rows it
+produced — and the settings the queue was created with, `mode` first, because
+that decides whether an object can be taken twice.
+
+The sentences above the table are the point. Three states came out of running one
+against a real broker, and none of them can be told apart from the address alone:
+
+- **Declared and never started.** A `Kafka` table with no materialized view
+  reading it does not consume. The server still creates its consumers, so the
+  table looks configured and the topic never moves. Nothing else in ClickHouse
+  says this; here it is the first line on the tab.
+- **Running.** A consumer id, partitions assigned, offsets moving.
+- **Polling and delivering nothing.** ClickHouse inserts a *block* of messages at
+  a time, so one unparseable message does not cost you that message — it fails
+  the whole block, commits nothing, and the block is read again. On the
+  development fixture the consumer had read 2,911 messages, committed none, and
+  delivered zero rows, from 41 messages of which one is bad. It polls, its
+  counters climb, and every other view of it looks healthy.
+
+Two figures the server reports are not measurements, and both are dropped before
+they reach the browser. A partition assigned and not yet read from reports offset
+`-1001` — librdkafka's "no offset", which rendered as a number is a table saying
+it is a thousand messages behind. And `1970-01-01` in a timestamp means the thing
+never happened, so the column says *never* rather than a date.
+
+Repeats are folded and counted, in both halves. A consumer stuck on one message
+fills its ring with ten copies of one error under two spellings; a queue retrying
+one object writes the same six-line exception once per attempt. Both collapse to
+one line with a count and a span — the attempts are real and stay counted, it is
+the text that stops repeating.
+
 ### How a table got here
 
 The DDL tab shows a table's definition. Underneath it, Flint now shows the record:
@@ -3869,13 +3912,15 @@ Kiali's edge thickness measures requests between services, which is not a thing
 this graph has. Dashboard tiles are reordered with buttons and a width control
 rather than by dragging.
 
-An external table's *address* is read; its **state** is not. `system.kafka_consumers`
-knows a topic's assignments, offsets, last poll and last exception, and
-`system.s3queue_log` knows which objects a queue has already taken — neither is on
-the page, so Flint can say where a `Kafka` table points and not whether anything is
-arriving. Nor does a `PostgreSQL` or `MySQL` *database* list the tables on the far
-end: ClickHouse resolves those on demand, and a database that cannot be reached
-reads as an empty one.
+A `PostgreSQL` or `MySQL` *database* does not list the tables on the far end:
+ClickHouse resolves those on demand, and a database that cannot be reached reads
+as an empty one. The consuming tab covers `Kafka` and `S3Queue` and no other
+background reader. `RabbitMQ` and `NATS` have no `system` table at all to read;
+`AzureQueue` publishes its settings and a metadata cache but no log of what it
+took, which is the half that would have made a page. For those three Flint has
+the address and nothing else. And it reports; it does not act. There is no button here to
+skip a poison message or to reset a consumer group, both of which lose data on
+purpose and are the wrong shape for a click.
 
 Replication is read-only, and two of its verdicts have been exercised against a
 live server while three have not. A healthy replica and one with its Keeper

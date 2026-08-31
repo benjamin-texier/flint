@@ -32,6 +32,7 @@ pub mod relations;
 pub mod review;
 pub mod settings;
 pub mod storage;
+pub mod streams;
 pub mod sysops;
 pub mod timeline;
 pub mod trace;
