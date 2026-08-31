@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { saysAttempt, saysElapsed, verdictOf, type Attempt } from './connect'
+import { saysAttempt, saysElapsed, saysShort, verdictOf, type Attempt } from './connect'
 
 /* Every fixture below is a response the endpoint actually returned, against a
    dead DNS name, a real AWS bucket this account may not read, and a File table
@@ -74,5 +74,37 @@ describe('saysAttempt', () => {
     expect(saysAttempt(attempt({ ok: false, refused: 'Reading this table takes from the queue.' }))).toBe(
       'Reading this table takes from the queue.',
     )
+  })
+})
+
+describe('saysShort', () => {
+  const long = attempt({
+    ok: false,
+    found: false,
+    elapsed_ms: 63,
+    error:
+      "Received error from remote server https://example.org/data.jsonl. HTTP status code: 404 'Not Found', body length: 559 bytes, body: '<!doctype html><html lang=\"en\"><head><title>Example Domain</title>",
+  })
+
+  it('leaves a message that already fits alone', () => {
+    const short = attempt({ found: false, elapsed_ms: 3 })
+    expect(saysShort(short, 200)).toBe(saysAttempt(short))
+  })
+
+  it('cuts a remote server’s 404 page down to a line', () => {
+    const said = saysShort(long)
+    expect(said.length).toBeLessThanOrEqual(131)
+    expect(said.endsWith('…')).toBe(true)
+    // The half that identifies the failure survives the cut.
+    expect(said).toMatch(/No answer after 63 ms/)
+  })
+
+  it('cuts at a word, since half a hostname is a different hostname', () => {
+    const full = saysAttempt(long)
+    const kept = saysShort(long).slice(0, -1)
+    expect(full.startsWith(kept)).toBe(true)
+    // The character the cut landed on is a space in the original, so no token
+    // is left half-written.
+    expect(full[kept.length]).toBe(' ')
   })
 })

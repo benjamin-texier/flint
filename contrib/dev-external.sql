@@ -31,6 +31,12 @@ CREATE TABLE IF NOT EXISTS elsewhere.bucket_events (a UInt64, b String)
 CREATE TABLE IF NOT EXISTS elsewhere.public_bucket (ts DateTime, value Float64)
   ENGINE = S3('https://datasets.s3.eu-west-2.amazonaws.com/y={2020..2024}/*.csv.gz', NOSIGN, 'CSVWithNames', 'gzip');
 
+-- A second table on the *same* bucket, which is the point of the server page's
+-- inventory: a bucket read by two tables breaks for both at once, and one
+-- table per far end would make that grouping invisible in the fixture.
+CREATE TABLE IF NOT EXISTS elsewhere.bucket_clicks (ts DateTime, path String)
+  ENGINE = S3('http://s3:9000/flint/clicks/*.parquet', 'flintkey', 'flintsecret', 'Parquet');
+
 -- An HTTP endpoint, which names its own host and so has no endpoint of its own
 -- to print beside it.
 CREATE TABLE IF NOT EXISTS elsewhere.feed (id UInt64, payload String)
@@ -45,6 +51,11 @@ CREATE TABLE IF NOT EXISTS elsewhere.dropbox (line String)
 -- which is the one that moves if a parse closes the gap where the password was.
 CREATE TABLE IF NOT EXISTS elsewhere.pg_orders (id Int32, total Decimal(12, 2))
   ENGINE = PostgreSQL('pg.internal:5432', 'shop', 'orders', 'pguser', 'pgpass', 'public');
+
+-- And a second table on the same PostgreSQL, for the same reason: what a
+-- rotated password takes down is a host, not a table.
+CREATE TABLE IF NOT EXISTS elsewhere.pg_customers (id Int32, email String)
+  ENGINE = PostgreSQL('pg.internal:5432', 'shop', 'customers', 'pguser', 'pgpass', 'public');
 
 CREATE TABLE IF NOT EXISTS elsewhere.my_customers (id Int32, name String)
   ENGINE = MySQL('mysql.internal:3306', 'shop', 'customers', 'root', 'rootpass');

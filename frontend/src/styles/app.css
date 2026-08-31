@@ -3287,6 +3287,83 @@ tr:hover .stratum__fill {
   color: var(--chalk-faint);
 }
 
+/* -- Where this server reads from ----------------------------------------
+   Grouped by the far end, so the heading is an address and the rows under it
+   are the tables that share it. Deliberately not a card per group: twelve
+   cards is a wall, and what the eye is doing here is scanning a list of
+   addresses. */
+.out__bar {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  margin-bottom: var(--s3);
+}
+
+.out__says {
+  margin: 0;
+  font-size: var(--size-body);
+  color: var(--chalk-dim);
+}
+
+.out__none {
+  margin: 0;
+  max-width: 74ch;
+  font-size: var(--size-body);
+  line-height: 1.6;
+  color: var(--chalk-faint);
+}
+
+.out__group {
+  margin-top: var(--s4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--slab);
+  overflow: hidden;
+}
+
+.out__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  padding: var(--s2) var(--s4);
+  border-bottom: 1px solid var(--divider);
+  background: var(--slab-raised);
+}
+
+/* An address is an identifier: it is the thing somebody copies into a terminal
+   to find out whether the host is really gone. */
+.out__where {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+  overflow-wrap: anywhere;
+}
+
+.out__what,
+.out__count {
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.out__target {
+  width: 40%;
+  overflow-wrap: anywhere;
+}
+
+/* The same three readings the object page uses, so a verdict means the same
+   thing in both places. */
+.out__verdict--failed {
+  color: var(--alarm-text);
+}
+
+.out__verdict--reached {
+  color: var(--success-text);
+}
+
+.out__verdict--refused {
+  color: var(--chalk-faint);
+}
+
 /* Where a view's column came from. One source per line: a single expression can
    draw on three columns of two tables, and a comma-separated run of those is
    not readable at this width. */

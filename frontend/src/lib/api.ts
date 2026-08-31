@@ -714,6 +714,10 @@ export const api = {
     request<import('./stream').StreamReport>(
       `/databases/${enc(db)}/tables/${enc(table)}/stream`,
     ),
+  /** Every table on this server whose rows are not on it. One read, so the
+   *  question "what does this server talk to" has an answer that is not thirty
+   *  page loads. */
+  outside: () => request<import('./outside').OutsideReport>('/outside'),
   schema: () => request<SchemaEntry[]>('/schema'),
   graph: (db: string) => request<import('./graph').SchemaGraph>(`/databases/${enc(db)}/graph`),
   /** The same database on a time axis: tables against partitions. Its own call
