@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 
 import { api, type SchemaGraph, type TableSummary } from '../lib/api'
 import { trafficIndex, trafficMax, type TableTraffic } from '../lib/diagnose'
@@ -10,12 +10,22 @@ import {
   focusSubgraph,
   lineageSubgraph,
   nodeId,
+  type GraphNode,
 } from '../lib/graph'
 import { rememberDatabase } from '../lib/database'
+import { type PipelineReport } from '../lib/pipeline'
+import { GRAINS, type Grain } from '../lib/timeline'
+import { isWindow, type Window as AffinityWindow } from '../lib/affinity'
 import { internalName } from '../lib/explain'
 import { bytes, count, exact, ratio } from '../lib/format'
 import { MetricLine } from '../components/MetricLine'
+import { AffinityMatrix } from '../components/AffinityMatrix'
+import { MassMap } from '../components/MassMap'
+import { PartitionGrid } from '../components/PartitionGrid'
 import { SchemaCanvas } from '../components/SchemaCanvas'
+import { DatabaseProjections } from '../components/DatabaseProjections'
+import { DatabaseReview } from '../components/DatabaseReview'
+import { TablePeek } from '../components/TablePeek'
 import { ShareBar } from '../components/StratumBar'
 import { KindGlyph } from '../components/TypeBadge'
 import { Dash } from '../components/Dash'
@@ -25,11 +35,162 @@ import { EmptyNote, ErrorNote, Loading } from '../components/Note'
  *  that a weekly report still counts as read and short enough to be current. */
 const TRAFFIC_DAYS = 7
 
+/** And the window the diagram's flow reading asks for. The same week, so the
+ *  two overlays on one diagram answer over one period: "read a lot, carried
+ *  nothing" is a sentence about a table, and it is only a sentence if both
+ *  halves cover the same days. */
+const FLOW_DAYS = 7
+
+/** The three readings of one database, each answering something the others
+ *  structurally cannot.
+ *
+ *  `Flow` is the diagram: who feeds whom — permanent, and with no time in it.
+ *  `Time` is the partition grid: the same tables against the partitions they
+ *  hold, which is where a TTL's cut-off, a backfill and a failed ingest live.
+ *  `Mass` is the treemap: where the disk actually is, down to the column, which
+ *  neither of the others can say — the diagram draws a three-terabyte table and
+ *  a four-row lookup as the same rectangle. `Together` is the co-access matrix:
+ *  which tables turn up in the same statement, which is the coupling nobody
+ *  declared and the only one of the four that comes from what people did rather
+ *  than from what the database is.
+ *
+ *  Modes of one section rather than three screens, because the value is in
+ *  changing point of view on the database you are already looking at — the same
+ *  argument the diagram already makes for inspecting an object in a panel
+ *  instead of navigating away. */
+type Reading = 'flow' | 'time' | 'mass' | 'together' | 'review' | 'keys'
+
+const READINGS: Reading[] = ['flow', 'time', 'mass', 'together', 'review', 'keys']
+
+/** What the reading is called in the URL and on the control. Kept as one list so
+ *  a mode cannot be added to the buttons and forgotten in the address bar. */
+const READING_LABEL: Record<Reading, string> = {
+  flow: 'Flow',
+  time: 'Time',
+  mass: 'Mass',
+  together: 'Together',
+  review: 'Review',
+  keys: 'Keys',
+}
+
+/** The sentence under the heading: what this reading shows, in the terms of the
+ *  database in front of you. A chain of ternaries in the markup was four
+ *  sentences nobody could read as a set — and they are a set, since each one has
+ *  to say how it differs from the other three. */
+function subtitle(reading: Reading, pipelines: number): string {
+  if (reading === 'review') {
+    return 'The same tables by what their column types cost: one decision per column, however many tables share it.'
+  }
+  if (reading === 'keys') {
+    return 'The same tables by what is asked of them: which ones the workload reads whole, and whether a projection would help.'
+  }
+  if (reading === 'time') {
+    return 'The same tables on a time axis: every partition each one holds, weighed.'
+  }
+  if (reading === 'mass') {
+    return 'The same tables by weight: where this database\u2019s disk actually is, column by column.'
+  }
+  if (reading === 'together') {
+    return 'The same tables by what people do with them: which of them get read in one statement.'
+  }
+  return pipelines > 0
+    ? 'Arrows follow the data: each one points from a source to whatever reads it.'
+    : 'Nothing in this database reads from anything else yet.'
+}
+
+const READING_MEANING: Record<Reading, string> = {
+  flow: 'How data moves: sources, the views that read them, the tables those write into',
+  time: 'Every table against the partitions it holds — where a TTL stops, where a backfill landed, where an ingest failed',
+  mass: 'Where the disk is, drawn in proportion and divided to the column',
+  together:
+    'Which tables are read in the same statement — the coupling the schema never declared',
+  review:
+    'Every column type worth changing across these tables, grouped into the ALTERs it comes to',
+  keys:
+    'Which of these tables the workload reads end to end, and whether their sorting keys are what it asks for',
+}
+
 /** The database, opened on its schema. The diagram is the point: you should be
  *  able to see how the data moves before reading a single row. */
 export function DatabasePage({ database }: { database: string }) {
+  /* The reading lives in the URL, so a particular view of a database is a link
+     you can send to somebody — the same rule the object page's tabs follow. The
+     diagram is the default and stays unwritten, so the plain address means what
+     it has always meant. */
+  const [params, setParams] = useSearchParams()
+  const raw = params.get('view')
+  const reading: Reading = READINGS.includes(raw as Reading) ? (raw as Reading) : 'flow'
+  const setReading = (next: Reading) => {
+    const updated = new URLSearchParams(params)
+    if (next === 'flow') updated.delete('view')
+    else updated.set('view', next)
+    setParams(updated, { replace: true })
+  }
+  /* The pattern the review is aimed at, in the URL for the same reason the
+     reading is: "the review of default, raw_% only" is a link somebody sends.
+     Empty stays unwritten, so a plain address means the whole database. */
+  const pattern = params.get('like') ?? ''
+  const setPattern = (next: string) => {
+    const updated = new URLSearchParams(params)
+    if (next === '') updated.delete('like')
+    else updated.set('like', next)
+    setParams(updated, { replace: true })
+  }
   const tables = useQuery({ queryKey: ['tables', database], queryFn: () => api.tables(database) })
   const graph = useQuery({ queryKey: ['graph', database], queryFn: () => api.graph(database) })
+  /* The time axis is fetched only once somebody asks for it: it is a
+     `GROUP BY table, partition` over `system.parts`, which is cheap but not
+     free, and nobody should pay for it on a page they opened for the diagram. */
+  /* The scale is part of the question, so it is part of the key: switching to
+     months is a different query, not a different rendering of the same one. And
+     part of the URL, for the same reason `view` is — "the partition grid of this
+     database, by month" is a picture somebody sends, and the server's own grain
+     stays unwritten so the plain link keeps its plain meaning. */
+  const rawGrain = params.get('grain')
+  const grain: Grain = GRAINS.includes(rawGrain as Grain) ? (rawGrain as Grain) : 'partition'
+  const setGrain = (next: Grain) => {
+    const updated = new URLSearchParams(params)
+    if (next === 'partition') updated.delete('grain')
+    else updated.set('grain', next)
+    setParams(updated, { replace: true })
+  }
+  const timeline = useQuery({
+    queryKey: ['timeline', database, grain],
+    queryFn: () => api.timeline(database, grain),
+    enabled: reading === 'time',
+    staleTime: 30_000,
+    /* Changing the scale is a new query, and a new query with no placeholder
+       unmounts the grid and puts a spinner where it was — which costs the reader
+       the picture they were reading in order to show them a slightly different
+       one. The previous answer stays on screen until the new one lands; it is
+       marked stale by `isFetching`, and the control that caused it is the
+       feedback that something is happening. */
+    placeholderData: (previous) => previous,
+  })
+  const mass = useQuery({
+    queryKey: ['mass', database],
+    queryFn: () => api.mass(database),
+    enabled: reading === 'mass',
+    staleTime: 30_000,
+  })
+  /* How far back the log is read. In the URL like the grain, so "what these
+     tables were doing yesterday" is a link; a week stays unwritten, since it is
+     what the plain address has always meant. */
+  const rawDays = Number(params.get('days'))
+  const days: AffinityWindow = isWindow(rawDays) ? rawDays : 7
+  const setDays = (next: AffinityWindow) => {
+    const updated = new URLSearchParams(params)
+    if (next === 7) updated.delete('days')
+    else updated.set('days', String(next))
+    setParams(updated, { replace: true })
+  }
+  const affinity = useQuery({
+    queryKey: ['affinity', database, days],
+    queryFn: () => api.affinity(database, days),
+    enabled: reading === 'together',
+    staleTime: 60_000,
+    placeholderData: (previous) => previous,
+  })
   /* Read counts for the overlay. Its own query, so a role without
      `system.query_log` loses the overlay and keeps the diagram. */
   const traffic = useQuery({
@@ -37,6 +198,21 @@ export function DatabasePage({ database }: { database: string }) {
     queryFn: () => api.diagnoseTraffic(TRAFFIC_DAYS),
     staleTime: 60_000,
   })
+  /* What each materialized view actually moved, which is what makes the dots on
+     the diagram a measurement rather than an ornament. Server-wide and shared
+     with the Pipelines page through the same key, since it is the same report;
+     its own query for the same reason traffic is — a role that cannot read
+     `system.query_views_log` loses the reading and keeps the diagram. */
+  const pipeline = useQuery({
+    queryKey: ['pipelines', FLOW_DAYS],
+    queryFn: () => api.pipelines(FLOW_DAYS),
+    staleTime: 60_000,
+  })
+
+  /** The object selected in the diagram, whose rows are shown below it. Held
+   *  here rather than in the canvas because the canvas is not the only thing
+   *  that answers to it — see the swap at the foot of this page. */
+  const [peek, setPeek] = useState<GraphNode | null>(null)
 
   // Coming back later should land you where you left off.
   useEffect(() => rememberDatabase(database), [database])
@@ -72,25 +248,88 @@ export function DatabasePage({ database }: { database: string }) {
           { value: exact(objects), label: 'objects' },
           { value: count(totalRows), label: 'rows' },
           { value: bytes(totalBytes), label: 'on disk' },
-          { value: pipelines ? exact(pipelines) : <Dash />, label: 'dependencies', accent: true },
+          { value: pipelines ? exact(pipelines) : <Dash />, label: 'dependencies' },
         ]}
       />
 
       <section className="schema">
         <div className="schema__head">
           <h2 className="schema__title">Schema</h2>
-          <p className="schema__sub">
-            {pipelines > 0
-              ? 'Arrows follow the data: each one points from a source to whatever reads it.'
-              : 'Nothing in this database reads from anything else yet.'}
-          </p>
+          <p className="schema__sub">{subtitle(reading, pipelines)}</p>
+          <span className="panel__spacer" />
+          <div className="segmented" role="group" aria-label="How to read this database">
+            {READINGS.map((r) => (
+              <button
+                key={r}
+                className={`segmented__item${reading === r ? ' is-on' : ''}`}
+                aria-pressed={reading === r}
+                title={READING_MEANING[r]}
+                onClick={() => setReading(r)}
+              >
+                {READING_LABEL[r]}
+              </button>
+            ))}
+          </div>
         </div>
-        {graph.error ? (
+        {reading === 'keys' ? (
+          <DatabaseProjections database={database} days={days} key={database} />
+        ) : reading === 'review' ? (
+          <DatabaseReview
+            database={database}
+            tables={list}
+            graph={graph.data}
+            pattern={pattern}
+            onPattern={setPattern}
+            key={database}
+          />
+        ) : reading === 'together' ? (
+          affinity.error ? (
+            <ErrorNote error={affinity.error} retry={() => affinity.refetch()} />
+          ) : affinity.data ? (
+            <AffinityMatrix
+              report={affinity.data}
+              graph={graph.data}
+              database={database}
+              onWindow={setDays}
+              key={database}
+            />
+          ) : (
+            <div className="canvas canvas--loading">
+              <Loading label="Reading the query log" />
+            </div>
+          )
+        ) : reading === 'mass' ? (
+          mass.error ? (
+            <ErrorNote error={mass.error} retry={() => mass.refetch()} />
+          ) : mass.data ? (
+            <MassMap report={mass.data} database={database} key={database} />
+          ) : (
+            <div className="canvas canvas--loading">
+              <Loading label="Measuring columns" />
+            </div>
+          )
+        ) : reading === 'time' ? (
+          timeline.error ? (
+            <ErrorNote error={timeline.error} retry={() => timeline.refetch()} />
+          ) : timeline.data ? (
+            <PartitionGrid
+              report={timeline.data}
+              database={database}
+              onGrain={setGrain}
+              key={database}
+            />
+          ) : (
+            <div className="canvas canvas--loading">
+              <Loading label="Reading partitions" />
+            </div>
+          )
+        ) : graph.error ? (
           <ErrorNote error={graph.error} retry={() => graph.refetch()} />
         ) : graph.data ? (
           <SchemaView
             graph={graph.data}
             database={database}
+            onSelect={setPeek}
             traffic={
               traffic.data?.available ? trafficIndex(traffic.data.traffic) : undefined
             }
@@ -98,6 +337,16 @@ export function DatabasePage({ database }: { database: string }) {
               traffic.data && !traffic.data.available
                 ? `${traffic.data.reason}, so there are no read counts to show`
                 : undefined
+            }
+            report={pipeline.data}
+            flowReason={
+              pipeline.error
+                ? `The view log could not be read (${String(
+                    (pipeline.error as Error).message ?? pipeline.error,
+                  )}), so nothing on the diagram can be said to have moved`
+                : pipeline.isPending
+                  ? 'Reading what the views moved…'
+                  : undefined
             }
           />
         ) : (
@@ -107,7 +356,16 @@ export function DatabasePage({ database }: { database: string }) {
         )}
       </section>
 
-      <ObjectTable database={database} list={list} />
+      {/* Selecting an object in the diagram swaps the inventory for its rows:
+          the next question after "what is this joined to" is nearly always
+          "and what is in it". Only under the diagram — the other readings have
+          their own idea of what a click means, and the selection does not
+          survive leaving `flow` anyway. */}
+      {reading === 'flow' && peek ? (
+        <TablePeek node={peek} database={database} onClose={() => setPeek(null)} />
+      ) : reading === 'review' || reading === 'keys' ? null : (
+        <ObjectTable database={database} list={list} />
+      )}
     </article>
   )
 }
@@ -120,11 +378,21 @@ function SchemaView({
   database,
   traffic,
   trafficReason,
+  report,
+  flowReason,
+  onSelect,
 }: {
   graph: SchemaGraph
   database: string
   traffic?: Map<string, TableTraffic>
   trafficReason?: string
+  /** The pipelines report, passed down whole: the canvas takes the reading
+   *  itself, over the slice of the schema it is actually drawing. */
+  report?: PipelineReport
+  flowReason?: string
+  /** Passed straight through to the canvas: the page below the diagram shows
+   *  what is inside whatever is selected. */
+  onSelect?: (node: GraphNode | null) => void
 }) {
   /* Fixed to the whole diagram, not the slice drawn: a scale that moves when
      you focus or filter makes a quiet object look busy. */
@@ -236,13 +504,19 @@ function SchemaView({
   return (
     <SchemaCanvas
       graph={shown}
+      // Whose path this is, when it is a path. The bar names it; on a diagram
+      // of eleven boxes the name is not enough to find it in.
+      here={lineage ?? undefined}
       onCentre={large && !showAll && !lineage ? setRoot : undefined}
       onLineage={setLineage}
+      onSelect={onSelect}
       bar={bar}
       traffic={traffic}
       trafficMax={readMax}
       trafficDays={TRAFFIC_DAYS}
       trafficReason={trafficReason}
+      report={report}
+      flowReason={flowReason}
       key={`${database}:${showAll}:${lineage ?? ''}`}
     />
   )

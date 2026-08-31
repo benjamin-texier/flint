@@ -88,6 +88,76 @@ export function explainEngine(engine: string): string | null {
   return null
 }
 
+/** What an engine does with the rows it is given — the one thing about an
+ *  engine that changes how you read a diagram of it.
+ *
+ *  Three answers, because three is what the picture can carry. `keeps` is a
+ *  table that holds every row it was sent: MergeTree, and everything without a
+ *  reason to be anything else. `folds` is the family that turns several rows
+ *  into one as parts merge — Replacing, Summing, Aggregating, Collapsing — where
+ *  "there are 8m rows in here" and "8m rows were inserted" are different
+ *  sentences, and where a duplicate you can see today may be gone tomorrow.
+ *  `passes` stores nothing locally at all: a Distributed table, a Kafka queue,
+ *  a view.
+ *
+ *  It is deliberately not a colour. Colour on this diagram means *kind* — table,
+ *  view, materialized view, dictionary — and a second palette over the top of it
+ *  would make every node argue with itself. */
+export type EngineBehaviour = 'keeps' | 'folds' | 'passes'
+
+/** The MergeTree variants that collapse rows. `Replicated` and `Shared` are
+ *  prefixes on all of them and say nothing about folding, so they are stripped
+ *  rather than enumerated. */
+const FOLDS =
+  /^(Replicated|Shared)?(Replacing|Summing|Aggregating|Collapsing|VersionedCollapsing|Graphite)MergeTree/
+
+/** Engines whose rows are somewhere else. A `Buffer` is here on purpose: its
+ *  rows are in RAM on their way to the real table, which is exactly the thing a
+ *  reader should not count twice. */
+const PASSES = [
+  /^Distributed/,
+  /^Merge$/,
+  /^Null$/,
+  /^Buffer/,
+  /^Set$/,
+  /^Join$/,
+  /^MaterializedView$/,
+  /^(Live|Window)?View$/,
+  /^Dictionary$/,
+  /^(Kafka|RabbitMQ|NATS)/,
+  /^(S3|URL|HDFS|Azure)/,
+  /^File$/,
+  /^(MySQL|PostgreSQL|SQLite|MongoDB|ODBC|JDBC|Redis)/,
+]
+
+export function engineBehaviour(engine: string): EngineBehaviour {
+  if (FOLDS.test(engine)) return 'folds'
+  // Before the list below, so a plain `MergeTree` is never read as a `Merge`.
+  if (/MergeTree/.test(engine)) return 'keeps'
+  if (PASSES.some((pattern) => pattern.test(engine))) return 'passes'
+  // Log, Memory, TinyLog, and whatever ClickHouse ships next: an engine we do
+  // not recognise is assumed to keep what it is given, which is the modest
+  // claim of the three.
+  return 'keeps'
+}
+
+/** The engine name split into the part that makes it what it is and the family
+ *  it belongs to: `ReplacingMergeTree` is `Replacing` over `MergeTree`.
+ *
+ *  Every table in a ClickHouse database ends in the same nine letters, so on a
+ *  diagram of twenty of them those nine letters are the only thing the eye
+ *  reads and the difference between two engines is the part it skips. Setting
+ *  the family quieter than its qualifier puts the difference first without
+ *  hiding the name — an expert still reads `ReplacingMergeTree`, just in two
+ *  weights. */
+export function splitEngine(engine: string): [string, string] {
+  const family = 'MergeTree'
+  if (engine.endsWith(family) && engine.length > family.length) {
+    return [engine.slice(0, -family.length), family]
+  }
+  return ['', engine]
+}
+
 /** True for the tables ClickHouse names and owns itself.
  *
  *  A materialized view's rows live in a table called `.inner_id.<uuid>` (or

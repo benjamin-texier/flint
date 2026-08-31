@@ -13,30 +13,35 @@
  *  single biggest performance difference available in ClickHouse and it is
  *  invisible unless somebody says so. */
 
-import { conditionSql, quoteIdent, type Condition, type ColumnInfo } from './query'
+import {
+  conditionSql,
+  quoteIdent,
+  type Condition,
+  type ColumnInfo,
+} from "./query";
 
-export type Order = 'natural' | 'latest' | 'oldest' | 'random'
+export type Order = "natural" | "latest" | "oldest" | "random";
 
 export interface ExploreSpec {
-  database: string
-  table: string
+  database: string;
+  table: string;
   /** Empty means every column. */
-  columns: string[]
-  filters: Condition[]
-  order: Order
+  columns: string[];
+  filters: Condition[];
+  order: Order;
   /** The column `latest` and `oldest` sort by. */
-  timeColumn: string
-  limit: number
+  timeColumn: string;
+  limit: number;
 }
 
-export const LIMITS = [50, 200, 1000] as const
+export const LIMITS = [50, 200, 1000] as const;
 
-const TIME = /^(Nullable\()?(LowCardinality\()?Date/i
+const TIME = /^(Nullable\()?(LowCardinality\()?Date/i;
 
 /** Columns worth ordering by. A `Date` or `DateTime`, at any nesting ClickHouse
  *  wraps them in. */
 export function timeColumns(columns: ColumnInfo[]): string[] {
-  return columns.filter((c) => TIME.test(c.type)).map((c) => c.name)
+  return columns.filter((c) => TIME.test(c.type)).map((c) => c.name);
 }
 
 /** The first thing to show somebody, which is the newest rows when the table
@@ -47,9 +52,9 @@ export function startingSpec(
   columns: ColumnInfo[],
   sortingKey: string,
 ): ExploreSpec {
-  const times = timeColumns(columns)
-  const leading = times.find((t) => leads(sortingKey, t))
-  const timeColumn = leading ?? times[0] ?? ''
+  const times = timeColumns(columns);
+  const leading = times.find((t) => leads(sortingKey, t));
+  const timeColumn = leading ?? times[0] ?? "";
   return {
     database,
     table,
@@ -59,109 +64,135 @@ export function startingSpec(
     // pays a full scan to answer it, and opening a page by spending that on
     // somebody's behalf is not a courtesy — the button is right there, and the
     // cost is written beside it.
-    order: leading ? 'latest' : 'natural',
+    order: leading ? "latest" : "natural",
     timeColumn,
     limit: 200,
-  }
+  };
 }
 
 /** Whether `column` is the first thing the table is sorted by. Only the leading
  *  position makes a range read cheap; second place does not help. */
 export function leads(sortingKey: string, column: string): boolean {
-  const first = sortingKey.split(',')[0]?.trim() ?? ''
-  if (!first) return false
-  const bare = first.replace(/^\(|\)$/g, '').trim()
-  return bare === column || bare === `\`${column}\``
+  const first = sortingKey.split(",")[0]?.trim() ?? "";
+  if (!first) return false;
+  const bare = first.replace(/^\(|\)$/g, "").trim();
+  return bare === column || bare === `\`${column}\``;
+}
+
+/** The same question without the row limit, for a download.
+ *
+ *  A preview is limited because it is a preview; a file is not, because "give
+ *  me this table" that hands back two hundred rows is the truncation this whole
+ *  feature exists to avoid. Everything else the reader chose — which columns,
+ *  which filters, which order — is kept, because those *are* the question.
+ *
+ *  Built from the same function rather than beside it: two statement builders
+ *  for one screen is how the preview and the file start disagreeing about what
+ *  a filter means. */
+export function exportSql(spec: ExploreSpec, columns: ColumnInfo[]): string {
+  return build(spec, columns, null);
 }
 
 export function exploreSql(spec: ExploreSpec, columns: ColumnInfo[]): string {
-  const known = new Map(columns.map((c) => [c.name, c.type]))
-  const chosen = spec.columns.filter((c) => known.has(c))
-  const select = chosen.length > 0 ? chosen.map(quoteIdent).join(', ') : '*'
+  return build(spec, columns, Math.max(1, Math.floor(spec.limit)));
+}
+
+function build(
+  spec: ExploreSpec,
+  columns: ColumnInfo[],
+  limit: number | null,
+): string {
+  const known = new Map(columns.map((c) => [c.name, c.type]));
+  const chosen = spec.columns.filter((c) => known.has(c));
+  const select = chosen.length > 0 ? chosen.map(quoteIdent).join(", ") : "*";
 
   const where = spec.filters
     .filter((f) => known.has(f.column))
     .map((f) => conditionSql(f, known.get(f.column)!))
-    .filter((s): s is string => s !== null)
+    .filter((s): s is string => s !== null);
 
   const lines = [
     `SELECT ${select}`,
     `FROM ${quoteIdent(spec.database)}.${quoteIdent(spec.table)}`,
-  ]
-  if (where.length > 0) lines.push(`WHERE ${where.join(' AND ')}`)
+  ];
+  if (where.length > 0) lines.push(`WHERE ${where.join(" AND ")}`);
 
-  const order = orderBy(spec, known)
-  if (order) lines.push(`ORDER BY ${order}`)
-  lines.push(`LIMIT ${Math.max(1, Math.floor(spec.limit))}`)
-  return lines.join('\n')
+  const order = orderBy(spec, known);
+  if (order) lines.push(`ORDER BY ${order}`);
+  if (limit !== null) lines.push(`LIMIT ${limit}`);
+  return lines.join("\n");
 }
 
 function orderBy(spec: ExploreSpec, known: Map<string, string>): string | null {
   switch (spec.order) {
-    case 'natural':
-      return null
-    case 'random':
-      return 'rand()'
-    case 'latest':
-    case 'oldest': {
-      if (!spec.timeColumn || !known.has(spec.timeColumn)) return null
-      return `${quoteIdent(spec.timeColumn)} ${spec.order === 'latest' ? 'DESC' : 'ASC'}`
+    case "natural":
+      return null;
+    case "random":
+      return "rand()";
+    case "latest":
+    case "oldest": {
+      if (!spec.timeColumn || !known.has(spec.timeColumn)) return null;
+      return `${quoteIdent(spec.timeColumn)} ${spec.order === "latest" ? "DESC" : "ASC"}`;
     }
   }
 }
 
 export interface Cost {
   /** `cheap` reads a range or a few columns; `scan` reads the table. */
-  level: 'cheap' | 'scan'
-  says: string
+  level: "cheap" | "scan";
+  says: string;
 }
 
 /** What this will cost, and why — the part a first-time ClickHouse reader has no
  *  way to guess and an expert checks by habit. */
-export function costOf(spec: ExploreSpec, columns: ColumnInfo[], sortingKey: string): Cost {
-  const chosen = spec.columns.length
-  const total = columns.length
+export function costOf(
+  spec: ExploreSpec,
+  columns: ColumnInfo[],
+  sortingKey: string,
+): Cost {
+  const chosen = spec.columns.length;
+  const total = columns.length;
   const narrowing =
     chosen > 0 && chosen < total
       ? ` Reading ${chosen} of ${total} columns, which on a column store is most of the saving available.`
-      : ''
+      : "";
 
-  if (spec.order === 'random') {
+  if (spec.order === "random") {
     return {
-      level: 'scan',
+      level: "scan",
       says: `A random sample has to look at every row before it can pick any, so this reads the whole table.${narrowing}`,
-    }
+    };
   }
-  if ((spec.order === 'latest' || spec.order === 'oldest') && spec.timeColumn) {
+  if ((spec.order === "latest" || spec.order === "oldest") && spec.timeColumn) {
     if (leads(sortingKey, spec.timeColumn)) {
       return {
-        level: 'cheap',
+        level: "cheap",
         says: `The table is sorted by ${spec.timeColumn} first, so this reads one end of it and stops.${narrowing}`,
-      }
+      };
     }
     return {
-      level: 'scan',
-      says: `The table is sorted by ${sortingKey || 'nothing in particular'}, not by ${spec.timeColumn} — so ordering by it reads the whole table and then sorts.${narrowing}`,
-    }
+      level: "scan",
+      says: `The table is sorted by ${sortingKey || "nothing in particular"}, not by ${spec.timeColumn} — so ordering by it reads the whole table and then sorts.${narrowing}`,
+    };
   }
   return {
-    level: 'cheap',
+    level: "cheap",
     says: `In stored order, so this reads the first rows it finds and stops.${narrowing}`,
-  }
+  };
 }
 
 /** A filter the reader can start from, given a column: the operator that is
  *  most often wanted for its type. */
 export function startingFilter(column: ColumnInfo, id: string): Condition {
-  const numeric = /Int|Float|Decimal/i.test(column.type)
-  const time = TIME.test(column.type)
+  const numeric = /Int|Float|Decimal/i.test(column.type);
+  const time = TIME.test(column.type);
   return {
     id,
     column: column.name,
     // The operator most often wanted for the type: a range on a number or a
     // time, a contains on anything textual.
-    op: numeric || time ? '>=' : 'like',
-    value: '',
-    value2: '',
-  }
+    op: numeric || time ? ">=" : "like",
+    value: "",
+    value2: "",
+  };
 }

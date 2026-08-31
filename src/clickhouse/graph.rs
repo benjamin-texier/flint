@@ -484,6 +484,237 @@ fn strip_noise(sql: &str) -> String {
     out
 }
 
+/// One thing a drop would break.
+#[derive(Debug, Clone, Serialize)]
+pub struct Dependent {
+    pub qualified: String,
+    /// `materialized_view`, `view`, `dictionary` — what it is, so the reader can
+    /// judge how much it matters.
+    pub kind: String,
+    /// How Flint knows. Two very different claims, and conflating them would be
+    /// the worst thing this endpoint could do:
+    ///
+    /// - `declared` — ClickHouse's own `dependencies_table`. The server will
+    ///   itself refuse or break; this is not an opinion.
+    /// - `inferred` — the object's definition names the table. Read by the same
+    ///   deliberately-not-a-parser that draws the schema diagram, so it can miss
+    ///   a reference built by string concatenation, and it can catch one inside a
+    ///   comment.
+    pub how: &'static str,
+}
+
+/// What a drop would take with it.
+#[derive(Debug, Clone, Serialize)]
+pub struct Impact {
+    pub available: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    pub qualified: String,
+    /// What is in the table itself. The figure a confirmation has to carry: an
+    /// object list without it says what breaks and not what is lost.
+    pub rows: u64,
+    pub bytes: u64,
+    /// Everything that reads it, directly or through another view. Ordered
+    /// declared-first, because that is the half nobody can argue with.
+    pub dependents: Vec<Dependent>,
+    /// True where the dependent list is complete as far as ClickHouse is
+    /// concerned. False when a grant stopped Flint from reading definitions, in
+    /// which case an empty list means "unknown" rather than "nothing".
+    pub complete: bool,
+}
+
+/// Everything that would break if `database.table` went away.
+///
+/// Two passes, kept apart. ClickHouse's `dependencies_table` is authoritative and
+/// covers materialized views — the server registers those. It does *not* cover an
+/// ordinary view, whose reference is resolved when the view is queried, so those
+/// are found by reading definitions the way the diagram does.
+///
+/// Transitive, and it has to be: a view over a view over the table breaks too,
+/// and a confirmation that showed only the first hop would understate the damage
+/// on exactly the schemas where it matters most.
+pub async fn impact(ch: &Client, database: &str, table: &str) -> Result<Impact> {
+    let target = id(database, table);
+
+    if let super::Reach::Denied = ch.reach("tables").await? {
+        return Ok(Impact {
+            available: false,
+            reason: Some(
+                "this user cannot read system.tables, so Flint cannot say what depends on it"
+                    .into(),
+            ),
+            qualified: target,
+            rows: 0,
+            bytes: 0,
+            dependents: Vec::new(),
+            complete: false,
+        });
+    }
+
+    // Every definition the user can see, once. The traversal needs all of them:
+    // a view in another database can read this table, and a confirmation that
+    // looked only in one database would miss it — which is the case where being
+    // wrong costs the most.
+    //
+    // The same filter the diagram uses: ClickHouse's own databases are skipped
+    // unless the table is in one, because `system` alone holds well over a
+    // hundred objects and nothing there reads a user's table.
+    let uuid = ch.col_or("tables", "uuid", "''").await?;
+    let rows: Vec<DefinitionRow> = ch
+        .rows_with(
+            &format!(
+                "SELECT database              AS database, \
+                        name                   AS name, \
+                        engine                 AS engine, \
+                        toString({uuid})       AS uuid, \
+                        create_table_query     AS create_query, \
+                        dependencies_database  AS dependencies_database, \
+                        dependencies_table     AS dependencies_table \
+                 FROM system.tables \
+                 WHERE database = {{db:String}} \
+                    OR database NOT IN ('system', 'INFORMATION_SCHEMA', 'information_schema')"
+            ),
+            QueryOptions {
+                params: vec![("db".into(), database.to_string())],
+                ..QueryOptions::internal()
+            },
+        )
+        .await?;
+
+    let existing: HashSet<String> = rows.iter().map(|r| id(&r.database, &r.name)).collect();
+    let mut by_name: HashMap<&str, Vec<&DefinitionRow>> = HashMap::new();
+    for row in &rows {
+        by_name.entry(row.name.as_str()).or_default().push(row);
+    }
+
+    // Who reads whom, and how Flint knows.
+    //
+    // A map per source rather than a list, because a reader can be found twice —
+    // once because ClickHouse declared it and once because its definition names
+    // the table — and the label must not depend on which arrived first. It did:
+    // whichever the server happened to return earlier won, so of three declared
+    // materialized views one came out `declared` and two `inferred`, on the same
+    // data, for no reason a reader could ever have guessed. `declared` always
+    // wins now.
+    let mut reads: HashMap<String, HashMap<String, &'static str>> = HashMap::new();
+    let mut note = |source: String, reader: String, how: &'static str| {
+        let entry = reads.entry(source).or_default();
+        match entry.get(&reader) {
+            Some(&"declared") => {}
+            _ => {
+                entry.insert(reader, how);
+            }
+        }
+    };
+    for row in &rows {
+        let me = id(&row.database, &row.name);
+        for (db, name) in row
+            .dependencies_database
+            .iter()
+            .zip(row.dependencies_table.iter())
+        {
+            // `dependencies_table` on X lists the things that depend on X — so
+            // the key is X and the value is the dependent, not the other way
+            // round. Getting this backwards still produced the right *set*,
+            // because the inferred pass found the same objects; it only
+            // mislabelled how Flint knew, which is the one thing this endpoint
+            // must not get wrong.
+            note(me.clone(), id(db, name), "declared");
+        }
+        if !row.create_query.is_empty() {
+            for source in references(&row.create_query, &row.database, &by_name, &existing) {
+                if source != me {
+                    note(source, me.clone(), "inferred");
+                }
+            }
+        }
+    }
+
+    // Breadth-first from the table outwards, so a view over a view is included
+    // and a cycle cannot spin.
+    let kinds: HashMap<&str, &str> = rows
+        .iter()
+        .map(|r| (r.name.as_str(), r.engine.as_str()))
+        .collect();
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut queue = vec![target.clone()];
+    let mut dependents: Vec<Dependent> = Vec::new();
+
+    while let Some(current) = queue.pop() {
+        let Some(readers) = reads.get(&current) else {
+            continue;
+        };
+        // Cloned because the walk pushes onto its own queue while reading this.
+        let readers: Vec<(String, &'static str)> =
+            readers.iter().map(|(r, h)| (r.clone(), *h)).collect();
+        for (reader, how) in readers {
+            if reader == target || !seen.insert(reader.clone()) {
+                continue;
+            }
+            let short = reader.rsplit('.').next().unwrap_or(&reader);
+            dependents.push(Dependent {
+                qualified: reader.clone(),
+                kind: kind_of(kinds.get(short).copied().unwrap_or("")),
+                how,
+            });
+            queue.push(reader);
+        }
+    }
+
+    // Declared first: it is the half nobody can argue with, and a reader
+    // skimming the list should meet the certain damage before the inferred.
+    dependents.sort_by(|a, b| {
+        (a.how != "declared", a.qualified.clone()).cmp(&(b.how != "declared", b.qualified.clone()))
+    });
+
+    let (rows_count, bytes) = table_size(ch, database, table).await?;
+    Ok(Impact {
+        available: true,
+        reason: None,
+        qualified: target,
+        rows: rows_count,
+        bytes,
+        dependents,
+        complete: true,
+    })
+}
+
+/// What the object is, in Flint's vocabulary rather than the engine's.
+fn kind_of(engine: &str) -> String {
+    match engine {
+        "MaterializedView" => "materialized view".into(),
+        "View" => "view".into(),
+        "Dictionary" => "dictionary".into(),
+        "" => "object".into(),
+        other => other.to_string(),
+    }
+}
+
+/// What is in the table now. Zero for a view, which stores nothing — and that is
+/// a real answer, not a missing one.
+async fn table_size(ch: &Client, database: &str, table: &str) -> Result<(u64, u64)> {
+    #[derive(Deserialize)]
+    struct Row {
+        rows: u64,
+        bytes: u64,
+    }
+    let row: Option<Row> = ch
+        .row_with(
+            "SELECT toUInt64(sum(rows)) AS rows, toUInt64(sum(bytes_on_disk)) AS bytes \
+             FROM system.parts \
+             WHERE active AND database = {db:String} AND table = {tbl:String}",
+            QueryOptions {
+                params: vec![
+                    ("db".into(), database.to_string()),
+                    ("tbl".into(), table.to_string()),
+                ],
+                ..QueryOptions::internal()
+            },
+        )
+        .await?;
+    Ok(row.map(|r| (r.rows, r.bytes)).unwrap_or((0, 0)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

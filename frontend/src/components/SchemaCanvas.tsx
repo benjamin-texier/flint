@@ -6,13 +6,23 @@ import {
   neighbourhood,
   nodeId,
   type Direction,
+  type GraphNode,
   type SchemaGraph,
 } from '../lib/graph'
 import { NodePanel } from './NodePanel'
 import { NodeMenu } from './NodeMenu'
 import { bytes, count } from '../lib/format'
+import { flowCounts, flowLegend, readFlow } from '../lib/flow'
+import { type PipelineReport } from '../lib/pipeline'
 import { type TableTraffic } from '../lib/diagnose'
-import { KIND_MEANING, KIND_PLURAL, KIND_LABEL, explainEngine } from '../lib/explain'
+import {
+  KIND_MEANING,
+  KIND_PLURAL,
+  KIND_LABEL,
+  engineBehaviour,
+  explainEngine,
+  splitEngine,
+} from '../lib/explain'
 
 const MIN_ZOOM = 0.35
 const MAX_ZOOM = 2.2
@@ -35,15 +45,26 @@ type Orientation = 'auto' | Direction
 
 export function SchemaCanvas({
   graph,
+  here,
   onCentre,
   onLineage,
+  onSelect,
   bar,
+  report,
+  flowReason,
   traffic,
   trafficMax,
   trafficDays,
   trafficReason,
 }: {
   graph: SchemaGraph
+  /** The object the reader came from, marked on the diagram.
+   *
+   *  For a path drawn from an object's own page: the caption says whose path it
+   *  is, and on eleven boxes that is not enough to find yourself in. Marked
+   *  rather than centred or highlighted-and-dimmed — the rest of the path is
+   *  the answer, and dimming it to point at one node would hide it. */
+  here?: string
   /** Re-root a focused view. Absent when the whole schema is on screen, where
    *  there is nothing to re-centre. */
   onCentre?: (id: string) => void
@@ -51,10 +72,25 @@ export function SchemaCanvas({
    *  narrow — a schema already drawn whole still has paths worth isolating, so
    *  this is not tied to whether the view is focused. */
   onLineage?: (id: string) => void
+  /** Which object is selected, as it changes — including `null` when the
+   *  selection is dropped. The panel over the diagram is the canvas's own
+   *  business; this is for the page underneath, which shows what is in the
+   *  thing you clicked. */
+  onSelect?: (node: GraphNode | null) => void
   /** Caption and controls belonging to the diagram — which slice is drawn, how
    *  far it reaches. Rendered as the frame's top row so it goes full screen
    *  with the diagram instead of being left behind on the page. */
   bar?: ReactNode
+  /** What each materialized view moved over the window, which is what turns the
+   *  dots from an ornament into a measurement. The report rather than the
+   *  reading, because the reading has to be taken against the slice of the
+   *  schema actually drawn. Absent while it is being read, and on a role that
+   *  cannot read it — in which case nothing on the diagram moves, which is the
+   *  honest answer rather than a lesser one. */
+  report?: PipelineReport
+  /** Why there is no flow to read, when there is none. Said on the toggle, the
+   *  same way the traffic overlay says it. */
+  flowReason?: string
   /** Reads and writes keyed by qualified `database.table`. The diagram draws
    *  dependencies, which are permanent; this is the layer that says which of
    *  them anyone actually uses. */
@@ -79,7 +115,10 @@ export function SchemaCanvas({
   const [showTraffic, setShowTraffic] = useState(false)
   /** The right-click menu: which node, and where the cursor was. */
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null)
-  const [animate, setAnimate] = useState(true)
+  /** Whether the diagram is drawn as a measurement of what moved, or as the
+   *  plain structure. On by default: the measurement is the more useful of the
+   *  two and it costs nothing to read. */
+  const [showFlow, setShowFlow] = useState(true)
 
   // Filtering narrows what is drawn rather than dimming it: a schema you have
   // asked to see part of should lay that part out properly, not leave it
@@ -102,6 +141,12 @@ export function SchemaCanvas({
       edges: graph.edges.filter((e) => keep.has(e.from) && keep.has(e.to)),
     }
   }, [graph, filter, kinds])
+
+  /* The reading is taken over the whole diagram rather than over what a filter
+     has left of it, for the reason the traffic bars are scaled the same way: a
+     cadence that changed when you narrowed the view would make a quiet pipe
+     look busy. The legend counts the filtered set — see `flowCounts`. */
+  const flow = useMemo(() => (report ? readFlow(graph, report) : undefined), [graph, report])
 
   // Both orientations, so the better fit can be chosen rather than guessed.
   // Cheap: this is pure arithmetic over at most a few hundred nodes.
@@ -132,6 +177,18 @@ export function SchemaCanvas({
   // reads as emptiness rather than as room to breathe — but never less than the
   // details panel needs, or the row opens a hole beside it.
   const bodyH = Math.max(selectedNode ? 460 : 260, Math.min(620, layout.height + 96))
+
+  /* Told, rather than asked: the page underneath cannot poll for a selection,
+     and lifting the state out of here would make every hover in the diagram a
+     render of the page. Kept in a ref so a parent that passes a fresh function
+     each render — the ordinary way to write one — does not re-fire this. */
+  const announce = useRef(onSelect)
+  useEffect(() => {
+    announce.current = onSelect
+  })
+  useEffect(() => {
+    announce.current?.(selectedNode ?? null)
+  }, [selectedNode])
 
   const fit = useCallback(() => {
     const rect = viewport.current?.getBoundingClientRect()
@@ -182,31 +239,50 @@ export function SchemaCanvas({
     else void frame.current?.requestFullscreen?.()
   }
 
-  // Wheel pans, ctrl/⌘+wheel zooms about the cursor — the convention every
-  // canvas tool shares.
+  /* The wheel zooms about the cursor; shift holds it to a pan.
+   *
+   *  It used to be the other way round — wheel pans, ⌘wheel zooms — which is
+   *  what a document does, and this is not a document: there is nothing above
+   *  or below the diagram to scroll to, so a wheel that panned mostly threw the
+   *  drawing off the edge of a viewport it had just been fitted to. The
+   *  modifier is on the rarer gesture now. `deltaMode` is honoured because
+   *  Firefox reports a mouse wheel in *lines* — a deltaY of 3 where Chrome
+   *  sends 100 — and a zoom that only moved on one browser would read as a
+   *  broken control rather than a slow one. */
   useEffect(() => {
     const el = viewport.current
     if (!el) return
     const onWheel = (event: WheelEvent) => {
       event.preventDefault()
-      if (event.ctrlKey || event.metaKey) {
-        const rect = el.getBoundingClientRect()
-        const px = event.clientX - rect.left
-        const py = event.clientY - rect.top
-        setView((v) => {
-          const k = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, v.k * Math.exp(-event.deltaY / 320)))
-          // Keep the point under the cursor pinned while scaling.
-          return { k, x: px - ((px - v.x) / v.k) * k, y: py - ((py - v.y) / v.k) * k }
-        })
-      } else {
-        setView((v) => ({ ...v, x: v.x - event.deltaX, y: v.y - event.deltaY }))
+      // DOM_DELTA_LINE, then DOM_DELTA_PAGE. Roughly a line of text and a
+      // screen: the numbers only have to put the three modes on one scale.
+      const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? el.clientHeight : 1
+      const dx = event.deltaX * unit
+      const dy = event.deltaY * unit
+      // Shift is the escape hatch, and a purely horizontal wheel — a tilt
+      // wheel, a trackpad swiped sideways — was never asking to zoom.
+      if (event.shiftKey || (dy === 0 && dx !== 0)) {
+        setView((v) => ({ ...v, x: v.x - dx, y: v.y - dy }))
+        return
       }
+      const rect = el.getBoundingClientRect()
+      const px = event.clientX - rect.left
+      const py = event.clientY - rect.top
+      setView((v) => {
+        const k = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, v.k * Math.exp(-dy / 420)))
+        // Keep the point under the cursor pinned while scaling.
+        return { k, x: px - ((px - v.x) / v.k) * k, y: py - ((py - v.y) / v.k) * k }
+      })
     }
     el.addEventListener('wheel', onWheel, { passive: false })
     return () => el.removeEventListener('wheel', onWheel)
   }, [])
 
   const drag = useRef<{ id: number; x: number; y: number } | null>(null)
+  /** Where a press on the background started, and whether it has moved far
+   *  enough to be a pan. A press that never moves is a click on nothing, which
+   *  is how a selection is dropped. */
+  const press = useRef<{ x: number; y: number; moved: boolean } | null>(null)
   const onPointerDown = (event: React.PointerEvent) => {
     if (event.button !== 0) return
     // A node is a click, not a drag — and so is anything in the HUD. Capturing
@@ -215,14 +291,24 @@ export function SchemaCanvas({
     // the moment the canvas decides a press on them is the start of a pan.
     if ((event.target as HTMLElement).closest('.gnode, .canvas__hud')) return
     drag.current = { id: event.pointerId, x: event.clientX - view.x, y: event.clientY - view.y }
+    press.current = { x: event.clientX, y: event.clientY, moved: false }
     ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
   }
   const onPointerMove = (event: React.PointerEvent) => {
     const d = drag.current
     if (!d || d.id !== event.pointerId) return
+    const p = press.current
+    // A few pixels of slack: a mouse moves while a finger clicks, and a
+    // selection dropped by a hand that only meant to hold still is a selection
+    // the reader has to make twice.
+    if (p && (Math.abs(event.clientX - p.x) > 4 || Math.abs(event.clientY - p.y) > 4)) {
+      p.moved = true
+    }
     setView((v) => ({ ...v, x: event.clientX - d.x, y: event.clientY - d.y }))
   }
   const onPointerUp = () => {
+    if (press.current && !press.current.moved) setSelected(null)
+    press.current = null
     drag.current = null
   }
 
@@ -277,6 +363,17 @@ export function SchemaCanvas({
 
   const empty = layout.nodes.length === 0 && (filter.trim() !== '' || kinds.size > 0)
   const busiest = trafficMax ?? 0
+  /* An encoding nobody explains is decoration, so the broken rail is named at
+     the foot of the diagram — and only on a schema that has one, since a legend
+     entry for something not drawn is a question with no answer on screen. */
+  const folding = layout.nodes.filter((n) => engineBehaviour(n.engine) === 'folds').length
+  /* The flow reading covers the whole graph; the legend counts what is drawn.
+     `pipes` is what the toggle is for — a schema of plain views has nothing to
+     measure, and a control that does nothing should say why rather than sit
+     there. */
+  const counts = flow ? flowCounts(flow, layout.nodes) : null
+  const pipes = !!counts && counts.total > 0
+  const legend = showFlow && flow && counts ? flowLegend(flow, counts) : null
 
   return (
     <div className={`frame${full ? ' is-full' : ''}`} ref={frame}>
@@ -325,11 +422,20 @@ export function SchemaCanvas({
           ))}
         </div>
 
+        {/* A reading, not an ornament: it says which pipelines carried rows and
+            which cannot run, and switching it off leaves the plain structure —
+            who feeds whom, with no claim about what happened. */}
         <button
-          className={`btn${animate ? ' is-on' : ''}`}
-          onClick={() => setAnimate((a) => !a)}
-          aria-pressed={animate}
-          title="Dots travelling the edges show which way data moves"
+          className={`btn${showFlow ? ' is-on' : ''}`}
+          onClick={() => setShowFlow((f) => !f)}
+          aria-pressed={showFlow}
+          disabled={!pipes}
+          title={
+            flowReason ??
+            (flow && pipes
+              ? `Which materialized views actually carried rows in the last ${flow.windowDays} days`
+              : 'Nothing in this database writes through a materialized view, so there is no flow to measure')
+          }
         >
           Flow
         </button>
@@ -356,7 +462,7 @@ export function SchemaCanvas({
 
     <div className="frame__body" style={{ ['--body-h' as string]: `${bodyH}px` }}>
     <div
-      className={`canvas${hovered ? ' is-focusing' : ''}${animate ? '' : ' is-still'}`}
+      className={`canvas${hovered ? ' is-focusing' : ''}`}
       ref={viewport}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -383,15 +489,30 @@ export function SchemaCanvas({
         >
           {layout.edges.map((edge) => {
             const lit = !near || (near.has(edge.from) && near.has(edge.to))
+            /* What this edge carried, when the reading is on. Motion is only
+               ever drawn for `carrying`: the dots are the rows, so an edge with
+               no rows behind it does not get any — that is the whole reading. */
+            const moving = showFlow ? flow?.edges.get(edge.id) : undefined
             return (
               <g
                 key={edge.id}
-                className={`gedge gedge--${edge.kind}${lit ? '' : ' is-dim'}${
-                  near && lit ? ' is-lit' : ''
-                }`}
+                className={`gedge gedge--${edge.kind}${moving ? ` gedge--${moving.state}` : ''}${
+                  moving?.past ? ' is-past' : ''
+                }${lit ? '' : ' is-dim'}${near && lit ? ' is-lit' : ''}`}
+                style={
+                  moving?.state === 'carrying'
+                    ? { ['--gap' as string]: moving.gap }
+                    : undefined
+                }
               >
+                {/* A native tooltip on the edge itself, which is where a reader
+                    asks the question: the node panel can say what a view is,
+                    but only the edge can say what went through it. */}
+                {moving ? <title>{moving.says}</title> : null}
                 <path className="gedge__line" d={edge.path} />
-                <path className="gedge__flow" d={edge.path} />
+                {moving?.state === 'carrying' ? (
+                  <path className="gedge__flow" d={edge.path} />
+                ) : null}
                 <path className="gedge__head" d={arrowhead(edge.path)} />
               </g>
             )
@@ -419,15 +540,21 @@ export function SchemaCanvas({
         {layout.nodes.map((node, i) => {
           const lit = !near || near.has(node.id)
           const read = showTraffic ? traffic?.get(`${node.database}.${node.name}`) : undefined
+          // What the engine does with its rows, drawn on the rail rather than
+          // written out: two tables of the same kind can behave differently
+          // enough that reading one as the other is a mistake — see
+          // `engineBehaviour`.
+          const behaviour = engineBehaviour(node.engine)
+          const [qualifier, family] = splitEngine(node.engine)
           return (
             <button
               key={node.id}
               type="button"
-              className={`gnode gnode--${node.kind}${lit ? '' : ' is-dim'}${
+              className={`gnode gnode--${node.kind} gnode--${behaviour}${lit ? '' : ' is-dim'}${
                 hovered === node.id ? ' is-focused' : ''
               }${selected === node.id ? ' is-selected' : ''}${
-                node.external ? ' gnode--external' : ''
-              }`}
+                here === node.id ? ' is-here' : ''
+              }${node.external ? ' gnode--external' : ''}`}
               style={{
                 left: node.x,
                 top: node.y,
@@ -460,10 +587,16 @@ export function SchemaCanvas({
                 .join('\n\n')}
             >
               <span className="gnode__top">
+                {/* Marked in the accessible name too. A ring nobody can hear is
+                    a distinction only sighted readers get. */}
+                {here === node.id ? <span className="sr-only">you are here: </span> : null}
                 <span className="gnode__name">{node.name}</span>
                 {node.external ? <span className="gnode__db">{node.database}</span> : null}
               </span>
-              <span className="gnode__engine">{node.engine}</span>
+              <span className="gnode__engine">
+                {qualifier ? <span className="gnode__enginekey">{qualifier}</span> : null}
+                <span className="gnode__enginefam">{family}</span>
+              </span>
               <span className="gnode__facts">
                 {/* Sizes are only gathered for the database in view, so an
                     object from elsewhere says where it lives rather than
@@ -543,6 +676,38 @@ export function SchemaCanvas({
               </button>
             )
           })}
+          {/* What the moving dots are, and — the half that used to be missing —
+              what the still edges are. Both counted over what is drawn. */}
+          {legend ? (
+            <span className="lgd lgd--flow" title={legend.title}>
+              <i className="glyph glyph--flow" aria-hidden="true" />
+              {legend.label}
+            </span>
+          ) : null}
+          {legend && counts && counts.broken > 0 ? (
+            <span
+              className="lgd lgd--severed"
+              title={
+                'A materialized view that cannot run: its target table is gone, its runs are failing, or its refresh is in error.\n\n' +
+                'Its edges are drawn severed, including the one from its source — a dropped target fails the insert before the view is reached. Hover an edge for what is wrong with it; Infrastructure › Pipelines has the detail and the way to fix it.'
+              }
+            >
+              <i className="glyph glyph--severed" aria-hidden="true" />
+              {counts.broken} not running
+            </span>
+          ) : null}
+          {folding > 0 ? (
+            <span
+              className="lgd lgd--folds"
+              title={
+                'Replacing, Summing, Aggregating and Collapsing engines turn several rows into one as parts merge.\n\n' +
+                'Their rail is drawn broken: a row count on one of them is what is stored today, not what was inserted.'
+              }
+            >
+              <i className="glyph glyph--folds" aria-hidden="true" />
+              {folding} fold{folding === 1 ? 's' : ''} rows on merge
+            </span>
+          ) : null}
         </div>
         <div className="canvas__zoom">
           <button className="iconbtn" onClick={() => zoom(1 / 1.25)} aria-label="Zoom out">
@@ -568,8 +733,8 @@ export function SchemaCanvas({
         </p>
       ) : (
         <p className="canvas__hint">
-          Hover to trace lineage · click for details · right-click for actions · drag to
-          pan · ⌘scroll to zoom
+          Hover to trace lineage · click for details · right-click for actions · scroll
+          to zoom · drag or ⇧scroll to pan
         </p>
       )}
 

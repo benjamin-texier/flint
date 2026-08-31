@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { explainEngine, internalName, storesParts, KIND_MEANING } from './explain'
+import {
+  engineBehaviour,
+  explainEngine,
+  internalName,
+  splitEngine,
+  storesParts,
+  KIND_MEANING,
+} from './explain'
 
 describe('explainEngine', () => {
   it.each([
@@ -57,5 +64,51 @@ describe('internalName', () => {
   it('leaves objects somebody wrote alone', () => {
     expect(internalName('events')).toBe(false)
     expect(internalName('inner_join_results')).toBe(false)
+  })
+})
+
+describe('engineBehaviour', () => {
+  it('separates a plain MergeTree from the family that collapses rows', () => {
+    expect(engineBehaviour('MergeTree')).toBe('keeps')
+    expect(engineBehaviour('ReplacingMergeTree')).toBe('folds')
+    expect(engineBehaviour('SummingMergeTree')).toBe('folds')
+    expect(engineBehaviour('VersionedCollapsingMergeTree')).toBe('folds')
+  })
+
+  it('reads through the Replicated and Shared prefixes', () => {
+    expect(engineBehaviour('ReplicatedMergeTree')).toBe('keeps')
+    expect(engineBehaviour('ReplicatedReplacingMergeTree')).toBe('folds')
+    expect(engineBehaviour('SharedAggregatingMergeTree')).toBe('folds')
+  })
+
+  it('knows the engines that hold no rows of their own', () => {
+    expect(engineBehaviour('Distributed')).toBe('passes')
+    expect(engineBehaviour('Kafka')).toBe('passes')
+    expect(engineBehaviour('MaterializedView')).toBe('passes')
+    expect(engineBehaviour('Buffer')).toBe('passes')
+  })
+
+  /* `Merge` and `MergeTree` differ by four letters and mean opposite things
+     here — one reads other tables, the other is the table. */
+  it('does not read a MergeTree as a Merge', () => {
+    expect(engineBehaviour('Merge')).toBe('passes')
+    expect(engineBehaviour('MergeTree')).toBe('keeps')
+  })
+
+  it('assumes an engine it has never heard of keeps what it is given', () => {
+    expect(engineBehaviour('Memory')).toBe('keeps')
+    expect(engineBehaviour('SomeFutureEngine')).toBe('keeps')
+  })
+})
+
+describe('splitEngine', () => {
+  it('puts the qualifier first and the family second', () => {
+    expect(splitEngine('ReplacingMergeTree')).toEqual(['Replacing', 'MergeTree'])
+    expect(splitEngine('ReplicatedSummingMergeTree')).toEqual(['ReplicatedSumming', 'MergeTree'])
+  })
+
+  it('leaves a name with nothing to split whole', () => {
+    expect(splitEngine('MergeTree')).toEqual(['', 'MergeTree'])
+    expect(splitEngine('Distributed')).toEqual(['', 'Distributed'])
   })
 })

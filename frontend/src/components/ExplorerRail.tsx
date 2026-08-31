@@ -6,8 +6,11 @@ import { api, type ObjectKind } from '../lib/api'
 import { rememberDatabase, rememberedDatabase, resolveDatabase } from '../lib/database'
 import { KIND_MEANING, internalName } from '../lib/explain'
 import { count, splitTail } from '../lib/format'
+import { useTabs } from '../editor/tabs'
+import { familyColor, shortType } from '../lib/chType'
 import { ErrorNote, Loading } from './Note'
 import { DatabaseSwitcher } from './DatabaseSwitcher'
+import { TypeIcon } from './TypeIcon'
 
 /** Tables first — they are what people came for — then the things derived
  *  from them. */
@@ -37,10 +40,19 @@ export function ExplorerRail() {
   const atTable = useMatch('/db/:database/:table')
   const atDatabase = useMatch('/db/:database')
   const routeDb = atTable?.params.database ?? atDatabase?.params.database
+  /* On the Query page the rail is not a navigator, it is a keyboard: a click
+     writes the name into the statement being typed instead of leaving the page.
+     Read off the route rather than off a prop, because the rail is mounted above
+     the router's outlet and has no other way to know which it is. */
+  const writing = Boolean(useMatch('/query'))
+  const tabs = useTabs()
 
   const [filter, setFilter] = useState('')
   const [kind, setKind] = useState<ObjectKind | null>(null)
   const [plumbing, setPlumbing] = useState(false)
+  /* One table's columns at a time. Two open at once and the rail stops being a
+     list of tables, which is what somebody scrolling it came for. */
+  const [opened, setOpened] = useState<string | null>(null)
 
   const databases = useQuery({ queryKey: ['databases'], queryFn: api.databases })
 
@@ -169,21 +181,36 @@ export function ExplorerRail() {
           </p>
         ) : null}
 
-        {visible.slice(0, RENDER_CAP).map((t) => (
-          <NavLink
-            key={t.name}
-            to={`/db/${encodeURIComponent(current!)}/${encodeURIComponent(t.name)}`}
-            className={({ isActive }) => `objnode${isActive ? ' is-active' : ''}`}
-            title={t.comment || t.engine}
-            onClick={() => rememberDatabase(current!)}
-          >
-            <i className={`glyph glyph--${t.kind}`} aria-hidden="true" />
-            <ObjectName name={t.name} />
-            <span className="objnode__rows">
-              {t.kind === 'table' ? count(t.total_rows ?? t.parts_rows) : ''}
-            </span>
-          </NavLink>
-        ))}
+        {visible.slice(0, RENDER_CAP).map((t) =>
+          writing && t.kind !== 'dictionary' ? (
+            <WritingNode
+              key={t.name}
+              database={current!}
+              table={t}
+              open={opened === t.name}
+              onToggle={() => setOpened((name) => (name === t.name ? null : t.name))}
+              /* The same click, whichever face the active tab wears: written
+                 at the caret in SQL, or asked for in the form. The rail does not
+                 branch on it — `pickTable` does, where the tab model lives. */
+              onPick={() => tabs.pickTable(current!, t.name)}
+              onPickColumn={(column) => tabs.pickColumn(column)}
+            />
+          ) : (
+            <NavLink
+              key={t.name}
+              to={`/db/${encodeURIComponent(current!)}/${encodeURIComponent(t.name)}`}
+              className={({ isActive }) => `objnode${isActive ? ' is-active' : ''}`}
+              title={t.comment || t.engine}
+              onClick={() => rememberDatabase(current!)}
+            >
+              <i className={`glyph glyph--${t.kind}`} aria-hidden="true" />
+              <ObjectName name={t.name} />
+              <span className="objnode__rows">
+                {t.kind === 'table' ? count(t.total_rows ?? t.parts_rows) : ''}
+              </span>
+            </NavLink>
+          ),
+        )}
 
         {visible.length > RENDER_CAP ? (
           <p className="rail__none">
@@ -200,6 +227,102 @@ export function ExplorerRail() {
         </span>
       </NavLink>
     </aside>
+  )
+}
+
+/** A row of the rail while a query is being written.
+ *
+ *  Three separate gestures, because they are three separate intentions and one
+ *  row that guesses between them is a row that guesses wrong: the name writes
+ *  the table into the statement, the caret opens the column list so the columns
+ *  can be written in too, and the arrow still goes to the table's own page for
+ *  when the question is "what *is* this".
+ *
+ *  Nothing here overwrites what is in the editor. An insertion lands at the
+ *  caret; the only exception is a statement that is empty, where a bare table
+ *  name would be no use and a whole `SELECT` is what was meant. */
+function WritingNode({
+  database,
+  table,
+  open,
+  onToggle,
+  onPick,
+  onPickColumn,
+}: {
+  database: string
+  table: { name: string; kind: ObjectKind; comment: string; engine: string; total_rows: number | null; parts_rows: number }
+  open: boolean
+  onToggle: () => void
+  onPick: () => void
+  onPickColumn: (column: string) => void
+}) {
+  // Asked for only when the row is opened: the rail lists 155 objects and
+  // reading every column list would be 155 queries nobody wanted.
+  const detail = useQuery({
+    queryKey: ['table', database, table.name],
+    queryFn: () => api.table(database, table.name),
+    enabled: open,
+    staleTime: 5 * 60_000,
+  })
+
+  return (
+    <div className={`objnode objnode--writing${open ? ' is-open' : ''}`}>
+      <div className="objnode__line">
+        <button
+          className="objnode__twist"
+          onClick={onToggle}
+          aria-expanded={open}
+          aria-label={`${open ? 'Hide' : 'Show'} the columns of ${table.name}`}
+          type="button"
+        >
+          <svg viewBox="0 0 10 10" aria-hidden="true">
+            <path d="M3.5 2 7 5l-3.5 3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+        <button
+          className="objnode__write"
+          onClick={onPick}
+          title={`Write ${table.name} into the statement`}
+          type="button"
+        >
+          <i className={`glyph glyph--${table.kind}`} aria-hidden="true" />
+          <ObjectName name={table.name} />
+        </button>
+        <span className="objnode__rows">
+          {table.kind === 'table' ? count(table.total_rows ?? table.parts_rows) : ''}
+        </span>
+        <NavLink
+          className="objnode__open"
+          to={`/db/${encodeURIComponent(database)}/${encodeURIComponent(table.name)}`}
+          title={`Open ${table.name}`}
+          aria-label={`Open ${table.name}`}
+        >
+          →
+        </NavLink>
+      </div>
+
+      {open ? (
+        <div className="objcols" role="group" aria-label={`Columns of ${table.name}`}>
+          {detail.isPending ? <Loading label="Reading columns" /> : null}
+          {detail.error ? <ErrorNote error={detail.error} /> : null}
+          {detail.data?.columns.map((column) => (
+            <button
+              className="objcol"
+              key={column.name}
+              onClick={() => onPickColumn(column.name)}
+              title={`${column.name} · ${column.type} — write it at the caret`}
+              type="button"
+            >
+              <TypeIcon type={column.type} />
+              <span className="objcol__name">{column.name}</span>
+              <span className="objcol__type" style={{ color: familyColor(column.type) }}>
+                {shortType(column.type)}
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
   )
 }
 
