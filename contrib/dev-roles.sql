@@ -3,7 +3,7 @@
 --   docker compose -f docker-compose.dev.yml exec -T clickhouse \
 --     clickhouse-client --password flint --multiquery < contrib/dev-roles.sql
 --
--- Why this is not in `demo-schema.sql`: that file is applied by the image on
+-- Why this is not in `play-schema.sql`: that file is applied by the image on
 -- first boot, before `users.d` has given anybody `ACCESS MANAGEMENT`, so a
 -- `CREATE ROLE` in it fails. This is run by hand, once, and is idempotent.
 --
@@ -29,9 +29,13 @@
 CREATE ROLE IF NOT EXISTS flint_wide;
 CREATE ROLE IF NOT EXISTS flint_narrow;
 
--- Wide enough to run Flint: the whole demo database, and the workspace it
--- keeps its own bookkeeping in.
-GRANT SELECT ON analytics.* TO flint_wide;
+-- Wide enough to run Flint: the four databases `contrib/play-schema.sql`
+-- fills, and the workspace it keeps its own bookkeeping in. Named one by one
+-- rather than as `*.*` for the reason given below.
+GRANT SELECT ON default.* TO flint_wide;
+GRANT SELECT ON blogs.* TO flint_wide;
+GRANT SELECT ON git_clickhouse.* TO flint_wide;
+GRANT SELECT ON mgbench.* TO flint_wide;
 GRANT SELECT, INSERT, CREATE, ALTER ON flint.* TO flint_wide;
 GRANT CREATE DATABASE ON *.* TO flint_wide;
 -- The system tables the explorer and the diagnostics read. Not `*.*`: an
@@ -40,7 +44,10 @@ GRANT CREATE DATABASE ON *.* TO flint_wide;
 GRANT SELECT ON system.* TO flint_wide;
 
 -- One table, and nothing else. This is what an endpoint gets delegated to.
-GRANT SELECT ON analytics.events TO flint_narrow;
+-- `mgbench.logs1` because it is small, wide enough to be worth reading, and in
+-- a database of its own — so a delegation that leaks is visible as rows from
+-- somewhere it should not have reached.
+GRANT SELECT ON mgbench.logs1 TO flint_narrow;
 
 -- The account Flint runs as. It holds **no direct grants at all** — every
 -- privilege it has arrives through a role, which is the precondition the whole

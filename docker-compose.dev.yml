@@ -1,5 +1,5 @@
 # Development: hot reload on both sides, against a throwaway ClickHouse seeded
-# with the demo schema in contrib/.
+# with ClickHouse's own example schemas from contrib/play-schema.sql.
 #
 #   docker compose -f docker-compose.dev.yml up --build
 #
@@ -27,7 +27,18 @@ services:
       CLICKHOUSE_PASSWORD: flint
     volumes:
       # The official image applies everything in this directory on first boot.
-      - ./contrib/demo-schema.sql:/docker-entrypoint-initdb.d/10-demo-schema.sql:ro
+      #
+      # ClickHouse's own example schemas — 85 tables and 5 views taken from
+      # play.clickhouse.com, with an extract of the data behind each. A fixture
+      # written here would only ever show Flint the shapes Flint expects; these
+      # were built by people who have never heard of it, which is the point.
+      # Regenerate with `node contrib/pull-play.mjs > contrib/play-schema.sql`.
+      #
+      # It needs the network on first boot: the DDL is in the file, the rows are
+      # not — about 150 MiB of them, fetched by the server itself over the
+      # playground's native port. A first `up` with no route to it comes up with
+      # the schema and no data, which the pages will say rather than hide.
+      - ./contrib/play-schema.sql:/docker-entrypoint-initdb.d/10-play-schema.sql:ro
       # A second user, granted almost nothing. Flint has a lot of behaviour that
       # only appears when it is refused — `Reach` telling a missing table from a
       # missing grant, every diagnostic naming the grant it needs — and none of
