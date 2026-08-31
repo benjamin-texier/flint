@@ -10,6 +10,7 @@ import { PartitionGrid } from '../components/PartitionGrid'
 import type { Grain } from '../lib/timeline'
 import { ShareBar } from '../components/StratumBar'
 import { MyGrants } from '../components/MyGrants'
+import { Outside } from '../components/Outside'
 import { EmptyNote, ErrorNote, Loading } from '../components/Note'
 
 /** Every database on the server. Reached deliberately — Flint opens on a
@@ -124,6 +125,22 @@ export function ServerPage() {
             </div>
           </div>
         )}
+      </section>
+
+      {/* Between the two readings of what is *here* and before the grants: the
+          list above is where the disk is, and this is where the disk is not.
+          Data rather than Infrastructure, deliberately - it is read-only, and
+          where the data comes from is the analyst's question as much as the
+          operator's. Under `/infra` it would vanish from every deployment that
+          runs with that space switched off. */}
+      <section className="section">
+        <h2 className="section__title">Reads from outside</h2>
+        <p className="section__sub">
+          The tables on this server whose rows are somewhere else, grouped by where. A bucket read
+          by six tables breaks for all six at once, which is a fact no page that shows one table at
+          a time can put in front of you.
+        </p>
+        <Outside />
       </section>
 
       <section className="section">

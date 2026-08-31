@@ -4,8 +4,8 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::clickhouse::{
-    affinity, compare, connect, distribution, drift, graph, mass, meta, probe, profile, projection,
-    relations, review, streams, timeline, QueryOptions, TableResult,
+    affinity, compare, connect, distribution, drift, graph, mass, meta, outside, probe, profile,
+    projection, relations, review, streams, timeline, QueryOptions, TableResult,
 };
 use crate::error::{Error, Result};
 
@@ -252,6 +252,16 @@ pub async fn table_stream(
     Ok(Json(
         streams::stream(&ch, &database, &table, &engine).await?,
     ))
+}
+
+/// Every table on this server whose rows are not on it.
+///
+/// Data rather than Infrastructure, deliberately. It is read-only and it
+/// answers a question about where the data comes from, which is the analyst's
+/// as much as the operator's — and putting it under `/infra` would take it away
+/// from every deployment that runs with the space switched off.
+pub async fn outside_tables(Caller(ch): Caller) -> Result<Json<outside::Outside>> {
+    Ok(Json(outside::outside(&ch).await?))
 }
 
 /// Whether the address an external table points at actually answers.

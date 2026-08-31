@@ -22,6 +22,7 @@ pub mod mass;
 pub mod meta;
 pub mod news;
 pub mod now;
+pub mod outside;
 pub mod parts;
 pub mod pipelines;
 pub mod probe;

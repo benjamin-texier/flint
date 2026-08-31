@@ -3044,6 +3044,35 @@ message naming the setting that would allow it, which is a poor thing to put in
 front of somebody as the explanation of an empty tab; and on a server where that
 setting is on, clicking a node would silently eat a message.
 
+### Everywhere this server reads from
+
+The three readings above answer one table at a time, which is the right shape for
+"what is this table" and the wrong one for the question somebody actually arrives
+with. Credentials rotate on a bucket and thirty tables stop working at once; a
+host is decommissioned and nobody knows which tables pointed at it. Neither is
+answerable from a page you have to open thirty times.
+
+So the server page has an inventory: every table whose rows are not on this
+server, **grouped by the far end rather than by the engine**. Two `PostgreSQL`
+tables on two different servers have nothing to do with each other, and an `S3`
+table and an `IcebergS3` table on the same bucket have everything to do with each
+other — the grouping key is the address, because the address is what breaks
+together. It reads the same `engine_full` the object page does, through the same
+parser, so a bucket cannot be split in two by two spellings of one rule. Two
+protocols that happen to share a hostname stay apart.
+
+The header gives both figures — how many tables, and how many places — because
+either alone misleads: six tables on one bucket and one table each on six buckets
+are the same "six tables" and completely different exposures.
+
+And one button checks every address, one at a time and in order. Not all at once:
+each is a connection to somebody else's infrastructure, and firing forty in
+parallel is something a monitoring system does deliberately and a page should not
+do because a button was pressed. The verdicts are **per table, never per group**,
+however much a green tick on a bucket would please — two tables on one bucket can
+carry different credentials, so "this bucket is fine" would be a claim about a
+table nobody asked.
+
 ### How a table got here
 
 The DDL tab shows a table's definition. Underneath it, Flint now shows the record:

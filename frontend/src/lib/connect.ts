@@ -51,6 +51,22 @@ export function saysElapsed(ms: number): string {
  *  the bucket, the host or the status code, and every rewording of it Flint
  *  could attempt would be a worse version of what somebody is about to paste
  *  into a search box. */
+/** The same outcome where there is one line for it rather than a paragraph.
+ *
+ *  A failing `URL` table hands back the remote server's *response body*: five
+ *  hundred characters of somebody's 404 page, inside the exception, which in a
+ *  list of twenty addresses buries the nineteen either side of it. The full
+ *  message is still worth having and is kept on the element's title, and the
+ *  object page — which has the room — shows it whole. */
+export function saysShort(attempt: Attempt, max = 130): string {
+  const said = saysAttempt(attempt)
+  if (said.length <= max) return said
+  // Cut at a word rather than mid-token: a truncated hostname reads as a
+  // different hostname.
+  const cut = said.lastIndexOf(' ', max)
+  return `${said.slice(0, cut > max / 2 ? cut : max).trimEnd()}…`
+}
+
 export function saysAttempt(attempt: Attempt): string {
   switch (verdictOf(attempt)) {
     case 'refused':

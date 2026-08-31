@@ -339,6 +339,7 @@ pub fn router(state: AppState) -> Router {
         // so it sits with the reader rather than under `/infra` with the
         // statements that change structure.
         .route("/rows", post(rows::insert))
+        .route("/outside", get(explorer::outside_tables))
         .route("/schema", get(explorer::schema))
         .route("/history", get(explorer::history))
         .route("/diagnostics/news", get(diagnostics::what_changed))
