@@ -6,6 +6,8 @@
  *  number rather than a remembered default, because a threshold guessed wrong
  *  turns a healthy table into a false alarm. */
 
+import { PROJECTION_ROW_FLOOR } from './projection'
+
 export interface Summary {
   queries: number
   failures: number
@@ -95,6 +97,11 @@ export interface TableStorage {
 
 export interface PartitionLoad {
   qualified: string
+  database: string
+  table: string
+  /** The opaque id an action takes. `partition` is the human expression and
+   *  cannot go into a statement without knowing the key's type. */
+  partition_id: string
   partition: string
   parts: number
   row_count: number
@@ -355,14 +362,69 @@ export function timeSpent(patterns: Pattern[]): number {
  *  pattern touched — a query written against `analytics` should not open
  *  pointed at `default` — and is left out when the pattern names none, where the
  *  editor's own default is the better guess. */
+/** Which database a logged statement was written against, as far as the tables
+ *  it touched can say. Unqualified names in the SQL resolve against this, so
+ *  anything that re-runs or explains the statement needs the same answer the
+ *  editor link gives — hence one function rather than two. */
+export function databaseOf(pattern: Pattern): string | undefined {
+  const qualified = pattern.tables.find((name) => name.includes('.'))
+  return qualified ? qualified.slice(0, qualified.indexOf('.')) : undefined
+}
+
+/** The two halves of a `database.table` as the query log writes it, or null.
+ *
+ *  Split on the *first* dot, which is where the log's own convention puts it:
+ *  `system.query_log.tables` holds unquoted `db.table`, so a name that needed
+ *  quoting could not be told apart here anyway. Null rather than a guess for
+ *  anything that is not two parts — a table function, an empty entry — because
+ *  the callers turn this into a link, and a link to the wrong table is worse
+ *  than no link. */
+export function splitQualified(qualified: string): { database: string; table: string } | null {
+  const at = qualified.indexOf('.')
+  if (at <= 0 || at === qualified.length - 1) return null
+  return { database: qualified.slice(0, at), table: qualified.slice(at + 1) }
+}
+
+/** Where a qualified name goes, and where its projections argument is.
+ *
+ *  The scan share on this page is already the sentence a projection answers —
+ *  "each read walks the whole table, the sorting key is not narrowing these
+ *  queries" — and it had nowhere to lead. This is the lead. It is a *question*
+ *  and not a recommendation: whether a projection is worth its disk depends on
+ *  the shapes behind those reads, which is the tab's job to read and not this
+ *  page's to assume. */
+export function tableLink(qualified: string): string | null {
+  const parts = splitQualified(qualified)
+  if (!parts) return null
+  return `/db/${encodeURIComponent(parts.database)}/${encodeURIComponent(parts.table)}`
+}
+
+export function projectionsLink(qualified: string): string | null {
+  const at = tableLink(qualified)
+  return at && `${at}?tab=projections`
+}
+
+/* The floor lives in `lib/projection`, which is where the rest of the reasoning
+   about granules does. Two copies of the same number in two files is how they
+   come to disagree. */
+
+/** Whether the scan share on this row is worth carrying a question about.
+ *
+ *  Two conditions, and the second is the one that had to be added after
+ *  looking: the reads have to be covering most of the table *and* the table has
+ *  to be big enough for that to cost anything. */
+export function worthAskingAboutProjections(share: number | null, rows: number): boolean {
+  return share !== null && share >= 0.5 && rows >= PROJECTION_ROW_FLOOR
+}
+
 export function editorLink(pattern: Pattern): string {
   // Runs of spaces are collapsed but the lines are kept: a statement Flint sent
   // itself arrives padded out by its own line continuations, and thirty spaces
   // mid-line reads as a broken paste. Anything past that is the editor's own
   // Format button, which asks ClickHouse.
   const params = new URLSearchParams({ sql: pattern.sample.replace(/[ \t]+/g, ' ').trim() })
-  const qualified = pattern.tables.find((name) => name.includes('.'))
-  if (qualified) params.set('database', qualified.slice(0, qualified.indexOf('.')))
+  const database = databaseOf(pattern)
+  if (database) params.set('database', database)
   return `/query?${params}`
 }
 

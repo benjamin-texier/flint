@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 
@@ -5,7 +6,10 @@ import { api } from '../lib/api'
 import { isInternal, orderDatabases } from '../lib/database'
 import { bytes, count, exact, uptime } from '../lib/format'
 import { MetricLine } from '../components/MetricLine'
+import { PartitionGrid } from '../components/PartitionGrid'
+import type { Grain } from '../lib/timeline'
 import { ShareBar } from '../components/StratumBar'
+import { MyGrants } from '../components/MyGrants'
 import { EmptyNote, ErrorNote, Loading } from '../components/Note'
 
 /** Every database on the server. Reached deliberately — Flint opens on a
@@ -13,6 +17,17 @@ import { EmptyNote, ErrorNote, Loading } from '../components/Note'
 export function ServerPage() {
   const server = useQuery({ queryKey: ['server'], queryFn: api.server })
   const databases = useQuery({ queryKey: ['databases'], queryFn: api.databases })
+  /* The list above answers "where is the disk" — it is sorted and it carries a
+     share bar. What no view on this server could be asked until now is which of
+     these is *growing*, which is a question about time, so the same grid the
+     database pages use is drawn here with a database where a table was. */
+  const [grain, setGrain] = useState<Grain>('month')
+  const timeline = useQuery({
+    queryKey: ['server', 'timeline', grain],
+    queryFn: () => api.serverTimeline(grain),
+    staleTime: 60_000,
+    placeholderData: (previous) => previous,
+  })
 
   if (server.error) return <ErrorNote error={server.error} retry={() => server.refetch()} />
   if (databases.error)
@@ -53,7 +68,7 @@ export function ServerPage() {
           { value: exact(list.length), label: 'databases' },
           { value: exact(totalObjects), label: 'objects' },
           { value: count(totalRows), label: 'rows' },
-          { value: bytes(totalBytes), label: 'on disk', accent: true },
+          { value: bytes(totalBytes), label: 'on disk' },
         ]}
       />
 
@@ -110,6 +125,30 @@ export function ServerPage() {
           </div>
         )}
       </section>
+
+      <section className="section">
+        <h2 className="section__title">Over time</h2>
+        <p className="section__sub">
+          Every database against the partitions it holds. The list above says which is biggest;
+          this says which is growing, and where each one stops.
+        </p>
+        {timeline.error ? (
+          <ErrorNote error={timeline.error} retry={() => timeline.refetch()} />
+        ) : timeline.data ? (
+          <PartitionGrid report={timeline.data} database="" onGrain={setGrain} />
+        ) : (
+          <Loading label="Reading partitions" />
+        )}
+      </section>
+
+      {/* Under the list of databases because that list is its subject, and the
+          list is why the question gets asked at all: ClickHouse *filters* the
+          system tables rather than refusing them, so a user with no grants gets
+          a perfectly successful, perfectly empty inventory. Measured — a user
+          holding nothing still gets 200 from every endpoint on this page. There
+          is no error to explain the absence, which is exactly why the absence
+          needs explaining. */}
+      <MyGrants />
     </article>
   )
 }
