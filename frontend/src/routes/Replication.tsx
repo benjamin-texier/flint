@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '../lib/api'
 import { count, relativeTime } from '../lib/format'
@@ -12,21 +12,7 @@ import {
   type Replica,
 } from '../lib/replication'
 import { EmptyNote, ErrorNote, Loading } from '../components/Note'
-
-/** Infrastructure — Replication. */
-export function ReplicationPage() {
-  return (
-    <div className="page page--diagnose">
-      <header className="page__head">
-        <p className="eyebrow">INFRASTRUCTURE</p>
-        <div className="page__titlerow">
-          <h1 className="page__title page__title--hero">Whether the replicas are keeping up</h1>
-        </div>
-      </header>
-      <ReplicationView />
-    </div>
-  )
-}
+import { allows } from '../lib/spaces'
 
 /** Are the replicas keeping up?
  *
@@ -35,6 +21,12 @@ export function ReplicationPage() {
  *  usually a failed insert somewhere else entirely — which is exactly the kind of
  *  thing a page like this exists to say out loud. */
 export function ReplicationView() {
+  /* What this deployment permits. `admin`, not `ddl`: these do not touch a row or
+     a column, they operate the server — and `RESTART REPLICA` on a busy table is
+     something somebody should have decided to allow before the button existed.
+     The route checks the same tier; hiding the control is a courtesy. */
+  const config = useQuery({ queryKey: ['config'], queryFn: () => api.config() })
+  const mayOperate = allows(config.data?.tier, 'admin')
   const report = useQuery({
     queryKey: ['replication'],
     queryFn: () => api.replication(),
@@ -79,13 +71,77 @@ export function ReplicationView() {
       ) : null}
 
       {worstFirst(replicas).map((replica) => (
-        <ReplicaRow key={`${replica.database}.${replica.table}`} replica={replica} />
+        <ReplicaRow
+          key={`${replica.database}.${replica.table}`}
+          replica={replica}
+          mayOperate={mayOperate}
+        />
       ))}
     </section>
   )
 }
 
-function ReplicaRow({ replica }: { replica: Replica }) {
+/** What can be asked of this replica.
+ *
+ *  On the row that says it is behind, because that is the diagnosis these repair
+ *  — an action a screen away from the number that justifies it gets used without
+ *  the number.
+ *
+ *  Each one becomes a job, so the answer is a row in Operations rather than a
+ *  spinner here: `SYSTEM SYNC REPLICA` waits for the whole backlog, and a button
+ *  that holds the page for that is a button people stop trusting. The two fetch
+ *  controls are instant and are jobs anyway — the row is the record of who asked.
+ *
+ *  `Restart` is separated and named for what it is. The other three are routine;
+ *  re-initialising a replica from Keeper is the one you do when something is
+ *  already wrong. */
+function ReplicaActions({ replica }: { replica: Replica }) {
+  const queryClient = useQueryClient()
+  const ask = useMutation({
+    mutationFn: (action: string) =>
+      api.replicaAction(replica.database, replica.table, action),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['jobs'] })
+      queryClient.invalidateQueries({ queryKey: ['replication'] })
+      queryClient.invalidateQueries({ queryKey: ['cluster', 'replication-queue'] })
+    },
+  })
+
+  return (
+    <div className="racts">
+      <button className="btn" onClick={() => ask.mutate('sync')} disabled={ask.isPending}>
+        Sync
+      </button>
+      <button
+        className="btn"
+        onClick={() => ask.mutate('stop-fetches')}
+        disabled={ask.isPending}
+        title="Stop pulling parts from the other replicas — what you do before taking this node out."
+      >
+        Stop fetches
+      </button>
+      <button className="btn" onClick={() => ask.mutate('start-fetches')} disabled={ask.isPending}>
+        Start fetches
+      </button>
+      <span className="racts__gap" />
+      <button
+        className="btn"
+        onClick={() => ask.mutate('restart')}
+        disabled={ask.isPending}
+        title="Re-read this replica's state from Keeper. The repair for a replica that lost its session and went read-only."
+      >
+        Restart replica
+      </button>
+      {ask.error ? (
+        <span className="racts__error">
+          {ask.error instanceof Error ? ask.error.message : 'it was refused'}
+        </span>
+      ) : null}
+    </div>
+  )
+}
+
+function ReplicaRow({ replica, mayOperate }: { replica: Replica; mayOperate: boolean }) {
   const verdict = verdictOf(replica)
   const queued = replica.oldest_queued && !replica.oldest_queued.startsWith('1970')
   /* Both of these are answers Keeper gives. Without a session the server still
@@ -142,6 +198,8 @@ function ReplicaRow({ replica }: { replica: Replica }) {
       {replica.zookeeper_exception && replica.zookeeper_exception !== replica.queue_exception ? (
         <p className="says says--throw">Keeper: {replica.zookeeper_exception}</p>
       ) : null}
+
+      {mayOperate ? <ReplicaActions replica={replica} /> : null}
     </article>
   )
 }

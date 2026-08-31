@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '../lib/api'
 import { bytes, count, duration, exact, relativeTime } from '../lib/format'
@@ -13,11 +13,23 @@ import {
   usableFree,
   type ActivityReport,
   type Disk as DiskInfo,
-  type ErrorCount as ErrorCounter,
+  type PartitionLoad,
   type Running as RunningQuery,
   type StorageReport,
 } from '../lib/diagnose'
-import { Flag, Says, Section, type Q } from '../components/Diag'
+import { Flag, Says, Section, SectionIndex, type Q } from '../components/Diag'
+import { allows } from '../lib/spaces'
+import { MetricLine } from '../components/MetricLine'
+import { Operations } from '../components/Operations'
+import { OverTime } from '../components/OverTime'
+import { Dictionaries } from '../components/Dictionaries'
+import { Pressure } from '../components/Pressure'
+import { Trace } from '../components/Trace'
+import { WatchedHere } from '../components/WatchedHere'
+import { Errors } from '../components/Errors'
+import { Merges } from '../components/Merges'
+import { DetachedParts } from '../components/DetachedParts'
+import { ServerLog } from '../components/ServerLog'
 import { EmptyNote } from '../components/Note'
 import { ShareBar, StratumBar } from '../components/StratumBar'
 
@@ -56,22 +68,60 @@ export function HealthPage() {
   const shutOut = loaded.length === reports.length && loaded.every((r) => r && !r.available)
   const obstacles = [...new Set(loaded.map((r) => r?.reason).filter(Boolean))] as string[]
 
+  /* What this deployment permits. Read here and passed down, so a control that
+     the tier forbids is never drawn — rather than drawn and then refused, which
+     teaches people to distrust the buttons. The backend checks the same tier
+     again: hiding it is a courtesy, not the enforcement. */
+  const config = useQuery({ queryKey: ['config'], queryFn: () => api.config() })
+  const mayOptimize = allows(config.data?.tier, 'ddl')
+  /* Dropping a partition deletes rows with nothing to undo it, so it needs the
+     tier that operates the server rather than the one that reshapes a schema. */
+  const mayDrop = allows(config.data?.tier, 'admin')
+
   return (
     <div className="page page--diagnose">
       <header className="page__head">
-        <p className="eyebrow">INFRASTRUCTURE</p>
+        <p className="eyebrow">Infrastructure · Health</p>
         <div className="page__titlerow">
           <h1 className="page__title page__title--hero">What the server is doing</h1>
         </div>
       </header>
+
+      <Standing activity={activity.data} />
+
+      {/* After the figures, before the sections: the headline numbers are the
+          answer somebody came for, and the index is the way to the rest. */}
+      <SectionIndex />
+
+      <Operations space="infra" />
+
+      {/* Outside the shut-out branch, for the reason Diagnose's own watching
+          panel is: alerts come from Flint's workspace rather than from
+          `system.*`, so a role denied the system tables has not lost them.
+          Vanishing with everything else would tell somebody their alerts were
+          unreadable when they were fine. */}
+      <WatchedHere />
 
       {shutOut ? (
         <ShutOut obstacles={obstacles} />
       ) : (
         <>
           <RightNow activity={activity} />
+          {/* What is running, then how much room is left to run it in, then over
+              time, then what the server said about it: the questions in the
+              order somebody asks them. */}
+          <Pressure />
+          <Dictionaries />
+          <OverTime />
+          {/* After the history, because it answers the question the history
+              raises: the graph says the processor was busy, this says on what. */}
+          <Trace />
+          <Merges />
+          <Errors />
+          <ServerLog />
           <Storage report={storage} />
-          <Partitions report={storage} />
+          <DetachedParts />
+          <Partitions report={storage} mayOptimize={mayOptimize} mayDrop={mayDrop} />
         </>
       )}
     </div>
@@ -199,7 +249,6 @@ function RightNow({ activity }: { activity: Q<ActivityReport> }) {
           </tbody>
         </table>
       ) : null}
-      {data?.errors.length ? <Errors errors={data.errors} /> : null}
     </Section>
   )
 }
@@ -292,17 +341,62 @@ function Running({ running }: { running: RunningQuery[] }) {
 }
 
 /** Free space: the incident nobody sees coming. */
+/** The figures a reader wants before reading anything: what is running, and how
+ *  close the disks are to full.
+ *
+ *  Only what this page already fetched — a headline that needed its own request
+ *  would be a headline that can be wrong while the page below it is right. The
+ *  fullest disk is the one figure that takes a colour, because it is the only
+ *  one here that can become an incident. */
+function Standing({ activity }: { activity?: ActivityReport }) {
+  if (!activity?.available) return null
+  const disks = activity.disks ?? []
+  const fullest = disks.reduce<DiskInfo | null>(
+    (worst, d) =>
+      !worst || usableFree(d) / Math.max(1, d.total) < usableFree(worst) / Math.max(1, worst.total)
+        ? d
+        : worst,
+    null,
+  )
+  const used = fullest
+    ? Math.round(((fullest.total - usableFree(fullest)) / Math.max(1, fullest.total)) * 100)
+    : null
+  const level = fullest ? diskVerdict(fullest).level : 'ok'
+
+  return (
+    <MetricLine
+      metrics={[
+        { value: exact(activity.running?.length ?? 0), label: 'queries running' },
+        { value: exact(activity.merges?.length ?? 0), label: 'merges' },
+        { value: exact(activity.mutations?.length ?? 0), label: 'mutations' },
+        ...(used !== null
+          ? [
+              {
+                value: String(used),
+                unit: '%',
+                label: 'fullest disk',
+                level,
+              },
+            ]
+          : []),
+        { value: exact(disks.length), label: disks.length === 1 ? 'disk' : 'disks' },
+      ]}
+    />
+  )
+}
+
 function Disks({ disks }: { disks: DiskInfo[] }) {
   return (
     <>
       <h3 className="diag__sub2">Disks</h3>
-      <table className="tbl">
+      <table className="tbl tbl--disks">
         <thead>
           <tr>
             <th>Disk</th>
+            <th className="tbl__bar">Used</th>
+            <th className="tbl--n">Share</th>
             <th className="tbl--n">Free</th>
             <th className="tbl--n">Of</th>
-            <th className="tbl__bar">Used</th>
             <th />
           </tr>
         </thead>
@@ -310,17 +404,26 @@ function Disks({ disks }: { disks: DiskInfo[] }) {
           {disks.map((disk) => {
             const verdict = diskVerdict(disk)
             const free = usableFree(disk)
+            const share = Math.round(((disk.total - free) / Math.max(1, disk.total)) * 100)
             return (
               <tr key={disk.name}>
                 <td className="tbl__key">
                   {disk.name}
                   <span className="says">{disk.path}</span>
                 </td>
+                <td className="tbl__bar">
+                  <ShareBar
+                    value={Math.max(0, disk.total - free)}
+                    max={Math.max(1, disk.total)}
+                    level={verdict.level}
+                  />
+                </td>
+                {/* The bar shows the proportion and the figure lets somebody
+                    quote it. A bar alone is a shape nobody can put in a
+                    message. */}
+                <td className={`tbl--n mono${verdict.level === 'ok' ? '-dim' : ''}`}>{share}%</td>
                 <td className="tbl--n mono-dim">{bytes(free)}</td>
                 <td className="tbl--n mono-dim">{bytes(disk.total)}</td>
-                <td className="tbl__bar">
-                  <ShareBar value={Math.max(0, disk.total - free)} max={Math.max(1, disk.total)} />
-                </td>
                 <td>
                   <Says verdict={verdict} />
                   {verdict.level === 'ok' ? <span className="mono-dim">{verdict.says}</span> : null}
@@ -337,40 +440,6 @@ function Disks({ disks }: { disks: DiskInfo[] }) {
 /** Server-lifetime error counters. Some of these never reach `query_log`
  *  because nothing failed a query — they are the noise a server makes, and a
  *  rising one is a lead. */
-function Errors({ errors }: { errors: ErrorCounter[] }) {
-  return (
-    <>
-      <h3 className="diag__sub2">Errors the server has counted</h3>
-      <p className="diag__sub">
-        Counted since the server started, and not only from queries, so some of these
-        appear nowhere else.
-      </p>
-      <table className="tbl">
-        <thead>
-          <tr>
-            <th>Error</th>
-            <th className="tbl--n">Times</th>
-            <th>Last</th>
-            <th>Message</th>
-          </tr>
-        </thead>
-        <tbody>
-          {errors.map((e) => (
-            <tr key={`${e.code}-${e.name}`}>
-              <td className="tbl__key">{e.name}</td>
-              <td className="tbl--n">{count(e.count)}</td>
-              <td className="mono-dim">{relativeTime(e.last_seen)}</td>
-              <td>
-                <span className="diag__msg">{e.message.split('\n')[0]}</span>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </>
-  )
-}
-
 
 // ── Storage ────────────────────────────────────────────────────────────────
 
@@ -436,7 +505,148 @@ function Storage({ report }: { report: Q<StorageReport> }) {
 
 // ── Partitions ─────────────────────────────────────────────────────────────
 
-function Partitions({ report }: { report: Q<StorageReport> }) {
+/** Everything that can be done to one partition, one strip at a time.
+ *
+ *  `Merge` answers the part count the row is already showing. The rest —
+ *  freeze, detach, drop — are lifecycle operations somebody arrives intending to
+ *  perform. Both belong on this row, because this is the only place partitions
+ *  are listed and an action a screen away from the figures that justify it gets
+ *  used without them.
+ *
+ *  One mode at a time, and not for tidiness: two independent control groups in a
+ *  254px table cell wrapped it to three lines and knocked the whole row out of
+ *  alignment — measured at 33px folded and 113px with a confirmation open. They
+ *  are alternatives at any given moment, so the strip shows one of them.
+ *
+ *  `Drop` is two steps behind a fold, so that deleting a partition is never one
+ *  careless click from a page people open to read.
+ */
+function RowActions({ row, mayDrop }: { row: PartitionLoad; mayDrop: boolean }) {
+  const [mode, setMode] = useState<'idle' | 'merge' | 'partition' | 'drop'>('idle')
+  const queryClient = useQueryClient()
+
+  const settle = () => {
+    setMode('idle')
+    queryClient.invalidateQueries({ queryKey: ['jobs'] })
+    queryClient.invalidateQueries({ queryKey: ['diag', 'storage'] })
+    queryClient.invalidateQueries({ queryKey: ['parts', 'detached'] })
+  }
+
+  const merge = useMutation({
+    mutationFn: (finalPass: boolean) => api.optimize(row.database, row.table, finalPass),
+    onSuccess: settle,
+  })
+  const act = useMutation({
+    mutationFn: (action: string) =>
+      api.partitionAction(row.database, row.table, row.partition_id, action),
+    onSuccess: settle,
+  })
+  const busy = merge.isPending || act.isPending
+  const failure = merge.error ?? act.error
+
+  if (mode === 'idle') {
+    return (
+      <div className="pacts">
+        <button className="btn" onClick={() => setMode('merge')} disabled={busy}>
+          {busy ? 'Working…' : 'Merge'}
+        </button>
+        <button className="btn" onClick={() => setMode('partition')} disabled={busy}>
+          Partition…
+        </button>
+        {failure ? <Refused error={failure} /> : null}
+      </div>
+    )
+  }
+
+  if (mode === 'merge') {
+    return (
+      <div className="pacts">
+        <span className="pacts__cost pacts__cost--plain">rewrites {bytes(row.bytes)}</span>
+        <button className="btn" onClick={() => merge.mutate(false)} disabled={busy}>
+          Merge parts
+        </button>
+        <button
+          className="btn btn--spark"
+          onClick={() => merge.mutate(true)}
+          disabled={busy}
+          title="FINAL merges every part in the partition into one. The thorough version, and the expensive one."
+        >
+          …to one part
+        </button>
+        <button className="btn" onClick={() => setMode('idle')}>
+          Cancel
+        </button>
+      </div>
+    )
+  }
+
+  if (mode === 'drop') {
+    return (
+      <div className="pacts">
+        {/* Short enough to sit on one line beside the buttons — the strip
+            wrapped at the longer wording, and a confirmation that reflows the
+            table row it lives in reads as a glitch rather than a question. */}
+        <span className="pacts__cost">
+          {count(row.row_count)} rows, {bytes(row.bytes)} — for good
+        </span>
+        <button className="btn" onClick={() => act.mutate('drop')} disabled={busy}>
+          Drop it
+        </button>
+        <button className="btn" onClick={() => setMode('partition')}>
+          Keep it
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="pacts">
+      <button
+        className="btn"
+        onClick={() => act.mutate('freeze')}
+        disabled={busy}
+        title="Hard-link a copy into shadow/. Costs no space until these parts are merged away — but SYSTEM UNFREEZE is disabled on most servers, so removing the copy means deleting the directory on the machine."
+      >
+        Freeze
+      </button>
+      <button
+        className="btn"
+        onClick={() => act.mutate('detach')}
+        disabled={busy}
+        title="Take it out of the table. The data stays in detached/, and the Detached parts section can put it back."
+      >
+        Detach
+      </button>
+      {mayDrop ? (
+        <button className="btn" onClick={() => setMode('drop')} disabled={busy}>
+          Drop
+        </button>
+      ) : null}
+      <button className="btn" onClick={() => setMode('idle')}>
+        Cancel
+      </button>
+    </div>
+  )
+}
+
+/** Why it did not happen, next to the button that tried. */
+function Refused({ error }: { error: unknown }) {
+  return (
+    <span className="pacts__error">
+      {error instanceof Error ? error.message : 'it was refused'}
+    </span>
+  )
+}
+
+function Partitions({
+  report,
+  mayOptimize,
+  mayDrop,
+}: {
+  report: Q<StorageReport>
+  mayOptimize: boolean
+  mayDrop: boolean
+}) {
   const rows = report.data?.partitions ?? []
   const t = report.data?.thresholds
   const worst = rows[0]?.parts ?? 0
@@ -467,6 +677,7 @@ function Partitions({ report }: { report: Q<StorageReport> }) {
               <th className="tbl--n">Rows</th>
               <th className="tbl--n">Avg part</th>
               <th className="tbl__bar">Against the limit</th>
+              {mayOptimize ? <th /> : null}
             </tr>
           </thead>
           <tbody>
@@ -491,6 +702,11 @@ function Partitions({ report }: { report: Q<StorageReport> }) {
                   <td className="tbl__bar">
                     <ShareBar value={p.parts} max={Math.max(worst, t.delay_insert)} />
                   </td>
+                  {mayOptimize ? (
+                    <td className="tbl--n">
+                      <RowActions row={p} mayDrop={mayDrop} />
+                    </td>
+                  ) : null}
                 </tr>
               )
             })}
