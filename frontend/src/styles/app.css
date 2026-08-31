@@ -13849,3 +13849,32 @@ button.acol__val:hover {
 .tbl tr.is-picked > td:first-child {
   box-shadow: inset 2px 0 0 var(--accent);
 }
+
+/* -- Gathering a table's changes into one statement ---------------------
+   The tick beside a card's DDL. Aligned with the Copy button rather than with
+   the top of the statement, because the two are one row of choices about that
+   statement: take this one now, or put it with the others. */
+.rfind__gather {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 2px;
+  white-space: nowrap;
+  font-size: var(--size-label);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.rfind__gather:hover {
+  color: var(--text-primary);
+}
+.rfind__gather input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.rfind__gather input:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}

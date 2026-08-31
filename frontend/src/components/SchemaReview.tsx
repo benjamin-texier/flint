@@ -12,6 +12,10 @@ import {
   times,
   type Finding,
 } from '../lib/review'
+// `reach` aliased: this file already has one, about how far back the query
+// log goes, and two words spelled the same in one file is a bug waiting for a
+// careless edit.
+import { group, reach as spanOf, reconcile, script, statements, type Intent } from '../lib/sweep'
 import { KindFilter, useHiddenKinds } from './KindFilter'
 import { bytes, count, exact } from '../lib/format'
 import { Link } from 'react-router-dom'
@@ -33,6 +37,35 @@ export function SchemaReview({ database, table }: { database: string; table: str
   /** Verification is a full scan. It happens when somebody asks for it, and the
    *  question is asked with the cost attached. */
   const [verify, setVerify] = useState(false)
+
+  /** The findings the reader wants in one statement, in the order they ticked
+   *  them.
+   *
+   *  Gathering is not a convenience here, it is the difference between one
+   *  mutation and seven. ClickHouse rewrites every part of a column per
+   *  `ALTER`, and measured against 26.7 an `ALTER` carrying three
+   *  `MODIFY COLUMN` produces one `MutatePart` where three separate statements
+   *  produce three — so seven cards copied one at a time is seven passes over a
+   *  163-million-row table, for changes that could have cost one. The sweep
+   *  across a database has said this since it was written; the page somebody
+   *  actually lands on from a table had no way to do it.
+   *
+   *  Keyed by column *and* proposal rather than by column alone, because two
+   *  rules can land on one column — a `Nullable(String)` with no nulls draws
+   *  both "drop the Nullable" and "make it a dictionary". Both may be ticked;
+   *  the SQL takes one and says which it left, rather than a second tick
+   *  quietly unticking the first. */
+  const [ticks, setTicks] = useState<Map<string, Intent>>(new Map())
+  const [copiedAll, setCopiedAll] = useState(false)
+  const tick = (intent: Intent, on: boolean) =>
+    setTicks((was) => {
+      const next = new Map(was)
+      const key = `${intent.column}|${intent.proposal}`
+      if (on) next.set(key, intent)
+      else next.delete(key)
+      setCopiedAll(false)
+      return next
+    })
 
   /** Which subjects the reader has put away. Remembered across tables and
    *  across surfaces, because "codecs are not my problem" is a standing
@@ -68,6 +101,27 @@ export function SchemaReview({ database, table }: { database: string; table: str
   const data = review.data
   const proposals = shown.filter((f) => f.proposal !== null)
   const away = list.length - shown.length
+
+  /* The ticks resolved against the findings as they stand now, which is not the
+     same list they were made against: verifying re-reads every row, and a
+     `UInt16` proposed from a sample of 200,000 becomes a `UInt32` the moment
+     the one large value turns up. The same machinery the database-wide sweep
+     uses, called with a single review — this page has no business having a
+     second opinion about how a column's changes are gathered into a statement,
+     and two spellings of that rule is how they come to differ. */
+  const groups = group([data])
+  const settled = reconcile([...ticks.values()], groups)
+  const chosen = settled.chosen
+  const sql = script(database, chosen)
+  const conflicts = statements(database, chosen).conflicts
+  const carried = spanOf(chosen)
+  /* Ticked, then filtered out of sight by kind. It stays in the SQL — a filter
+     is about what the reader wants to look at, not about what they asked for —
+     and saying so is the difference between that and a statement carrying a
+     change they cannot see. */
+  const outOfSight = [...ticks.values()].filter((i) =>
+    list.some((f) => f.column === i.column && f.proposal === i.proposal && hidden.has(f.kind)),
+  ).length
 
   return (
     <section className="review">
@@ -181,9 +235,88 @@ export function SchemaReview({ database, table }: { database: string; table: str
                 finding={finding}
                 database={database}
                 table={table}
+                ticked={ticks.has(`${finding.column}|${finding.proposal}`)}
+                onTick={(on) =>
+                  tick({ table, column: finding.column, proposal: finding.proposal! }, on)
+                }
               />
             ))}
           </ul>
+
+          {chosen.length > 0 ? (
+            <section className="sweep__out">
+              <header className="sweep__outhead">
+                <h4 className="sweep__outtitle">
+                  {count(carried.columns)} {carried.columns === 1 ? 'change' : 'changes'} in one
+                  statement
+                </h4>
+                <p className="sweep__outfacts">
+                  {carried.bytes > 0 ? `${bytes(carried.bytes)} of columns` : null}
+                  {carried.unknown > 0
+                    ? `${carried.bytes > 0 ? ' · ' : ''}${carried.unknown} whose size is not measurable here`
+                    : null}
+                  {carried.unverified > 0
+                    ? `${carried.bytes > 0 || carried.unknown > 0 ? ' · ' : ''}${carried.unverified} resting on a sample rather than every row`
+                    : null}
+                  {outOfSight > 0
+                    ? `${carried.bytes > 0 || carried.unknown > 0 || carried.unverified > 0 ? ' · ' : ''}${outOfSight} ticked in a kind you have since hidden, still in the SQL`
+                    : null}
+                </p>
+                <span className="panel__spacer" />
+                <button className="btn" onClick={() => setTicks(new Map())} type="button">
+                  Clear
+                </button>
+                <button
+                  className="btn"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(sql).then(
+                      () => setCopiedAll(true),
+                      () => setCopiedAll(false),
+                    )
+                  }}
+                  type="button"
+                >
+                  {copiedAll ? 'Copied' : 'Copy the SQL'}
+                </button>
+              </header>
+
+              {/* What verifying moved, above the SQL rather than beside it: a
+                  reader who ticked a UInt16 and is about to copy a UInt32 has to
+                  be told before they read the block, not after they ran it. */}
+              {settled.changed.length > 0 ? (
+                <p className="sweep__moved">
+                  <strong>
+                    {settled.changed.length}{' '}
+                    {settled.changed.length === 1 ? 'change has' : 'changes have'} moved
+                  </strong>{' '}
+                  since you ticked {settled.changed.length === 1 ? 'it' : 'them'} — reading every
+                  row found values the sample had not:{' '}
+                  {settled.changed.map((c) => `${c.column} ${c.was} → ${c.now}`).join(', ')}. The
+                  SQL below follows the newer figure.
+                </p>
+              ) : null}
+              {settled.dropped.length > 0 ? (
+                <p className="sweep__moved">
+                  <strong>
+                    {settled.dropped.length}{' '}
+                    {settled.dropped.length === 1 ? 'tick is' : 'ticks are'} no longer advised
+                  </strong>{' '}
+                  and {settled.dropped.length === 1 ? 'is' : 'are'} not in the SQL below:{' '}
+                  {settled.dropped.map((d) => d.column).join(', ')}.
+                </p>
+              ) : null}
+              {conflicts.length > 0 ? (
+                <p className="bhint">
+                  {conflicts.length} {conflicts.length === 1 ? 'tick was' : 'ticks were'} a second
+                  proposal for a column already spoken for, and{' '}
+                  {conflicts.length === 1 ? 'it is' : 'they are'} not in the SQL below:{' '}
+                  {conflicts.map((c) => `${c.column} (${c.dropped})`).join(', ')}.
+                </p>
+              ) : null}
+
+              <pre className="sweep__sql">{sql}</pre>
+            </section>
+          ) : null}
         </>
       )}
     </section>
@@ -202,10 +335,17 @@ function FindingCard({
   finding,
   database,
   table,
+  ticked,
+  onTick,
 }: {
   finding: Finding
   database: string
   table: string
+  /** Whether this finding is in the gathered statement at the foot of the
+   *  page. Only ever true for a finding that has a proposal — a codec
+   *  suggestion and an observation have no `MODIFY COLUMN` to gather. */
+  ticked: boolean
+  onTick: (on: boolean) => void
 }) {
   const [copied, setCopied] = useState(false)
   const [readers, setReaders] = useState(false)
@@ -259,6 +399,18 @@ function FindingCard({
       {finding.ddl ? (
         <div className="rfind__ddl">
           <pre className="code code--wrap">{finding.ddl}</pre>
+          {/* Beside the statement rather than up in the header, because what it
+              adds to the block below is this statement and not the card. Only
+              where there is a type to change: the codec advice below writes its
+              own `MODIFY COLUMN … CODEC(…)`, which is a different decision to
+              take on a different day, and gathering the two would put a
+              compression experiment inside a retyping mutation. */}
+          {finding.proposal ? (
+            <label className="rfind__gather">
+              <input type="checkbox" checked={ticked} onChange={(e) => onTick(e.target.checked)} />
+              Add to one ALTER
+            </label>
+          ) : null}
           <button
             className="btn"
             onClick={() => {

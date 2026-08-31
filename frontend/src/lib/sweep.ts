@@ -752,13 +752,18 @@ export function script(database: string, chosen: Member[]): string {
   if (sql.length === 0) return ''
   const r = reach(chosen)
   const applied = r.columns - conflicts.length
+  /* The statements that actually rewrite parts, as opposed to the REMOVE
+     DEFAULT ones that do not. Held in a name because both lines below have to
+     agree with it about the verb: "1 statement rewrite" is the sort of sentence
+     a reader stops trusting the rest of the block for. */
+  const heavy = sql.length - cleanups
   const head = [
     `-- Flint / ${database}: ${plural(applied, 'column')} over ${plural(r.tables, 'table')}, ${plural(sql.length, 'statement')}.`,
     r.unverified > 0
       ? `-- ${r.unverified.toLocaleString('en-GB')} of them rest on a sample of the table rather than on every row of it.`
       : '-- Every one was measured over every row of its table.',
     cleanups > 0
-      ? `-- ${plural(sql.length - cleanups, 'statement')} rewrite every part of their columns, once for the whole statement.`
+      ? `-- ${plural(heavy, 'statement')} ${heavy === 1 ? 'rewrites every part of its columns' : 'rewrite every part of their columns'}, once for the whole statement.`
       : '-- Each statement rewrites every part of its columns, once for the whole statement.',
   ]
   // Said here and not only on the card, because this block is the part of the
@@ -768,9 +773,19 @@ export function script(database: string, chosen: Member[]): string {
   // terminal is that these statements will quietly absorb a null Flint did not
   // see, not fail on it.
   if (cleanups > 0) {
+    // Broken across lines by hand, and the reason is the block it lands in:
+    // `.sweep__sql` sets `white-space: pre`, because wrapping SQL at whatever
+    // width the panel happens to be is how a statement becomes unreadable. So a
+    // comment past that width does not wrap either — it runs off the right edge
+    // and reads as a sentence that stops halfway. These two are the longest
+    // lines the header carries and the ones it can least afford to have
+    // truncated, so they are written to fit.
     head.push(
-      `-- ${plural(cleanups, 'REMOVE DEFAULT statement')} rewrite nothing: dropping a Nullable needs a DEFAULT to be accepted, and that clause puts the column back to a plain type.`,
-      '-- Read those DEFAULTs before running this. A null becomes the zero value silently rather than failing the ALTER, and nothing brings it back.',
+      `-- ${plural(cleanups, 'REMOVE DEFAULT statement')} ${cleanups === 1 ? 'rewrites' : 'rewrite'} nothing: dropping a Nullable`,
+      '--   needs a DEFAULT to be accepted, and that clause puts the column back to a',
+      '--   plain type.',
+      "-- Read those DEFAULTs first. A null becomes the type's zero value silently",
+      '--   rather than failing the ALTER, and nothing brings it back.',
     )
   }
   return `${head.join('\n')}\n\n${sql.join(';\n\n')};\n`

@@ -669,9 +669,30 @@ describe('the statements come out one per table', () => {
     ])
 
     expect(out).toContain('1 column over 1 table, 2 statements')
-    expect(out).toContain('1 statement rewrite')
-    expect(out).toContain('1 REMOVE DEFAULT statement rewrite')
-    expect(out).toContain('becomes the zero value silently rather than failing the ALTER')
+    expect(out).toContain('1 statement rewrites every part of its columns')
+    expect(out).toContain('1 REMOVE DEFAULT statement rewrites nothing')
+    expect(out).toContain("A null becomes the type's zero value silently")
+    // The comments only, and not the SQL under them: the block is rendered
+    // `white-space: pre` because wrapping a statement at whatever width the
+    // panel happens to be is how it becomes unreadable — a long type is
+    // supposed to scroll. A *caveat* that scrolls off the right edge is a
+    // sentence that stops halfway on the one screen it has to be read on.
+    for (const line of out.split('\n').filter((l) => l.startsWith('--'))) {
+      expect(line.length).toBeLessThanOrEqual(90)
+    }
+  })
+
+  // The counts here are the reader's evidence that the block is what it says it
+  // is, and a header that cannot conjugate is a header they start discounting.
+  it('agrees with itself about the verb when there are several of each', () => {
+    const out = script('default', [
+      member({ table: 'a', column: 'x', from: 'Nullable(Bool)', proposal: 'Bool' }),
+      member({ table: 'b', column: 'y', from: 'Nullable(Bool)', proposal: 'Bool' }),
+      member({ table: 'c', column: 'z' }),
+    ])
+
+    expect(out).toContain('3 statements rewrite every part of their columns')
+    expect(out).toContain('2 REMOVE DEFAULT statements rewrite nothing')
   })
 
   it('says what is being carried, in the text that gets copied', () => {
