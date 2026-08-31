@@ -746,6 +746,18 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(endpoint ? { user, password, endpoint } : { user, password }),
     }),
+  /** What these credentials would be able to do, without signing in with them.
+   *
+   *  A POST because it opens a connection to a server the browser named, and
+   *  because the credentials are in the body rather than in a URL that would be
+   *  written to every proxy log between here and there. It creates no session:
+   *  see `session::preflight` for why it is nonetheless an open route, and
+   *  `lib/preflight` for what is done with the answer. */
+  preflight: (user: string, password: string, endpoint?: string) =>
+    request<import('./preflight').Preflight>('/preflight', {
+      method: 'POST',
+      body: JSON.stringify(endpoint ? { user, password, endpoint } : { user, password }),
+    }),
   logout: () => request<{ user: null }>('/logout', { method: 'POST' }),
   server: () => request<ServerInfo>('/server'),
   databases: () => request<DatabaseSummary[]>('/databases'),

@@ -90,29 +90,29 @@ The three that are more than a value — grants, signing in, and running without
 server in the manifest — are explained in
 [docs/configuration.md](docs/configuration.md).
 
-| Variable | Default | What it does |
-| --- | --- | --- |
-| `FLINT_HOST` | `0.0.0.0` | Bind address |
-| `FLINT_PORT` | `8080` | Bind port |
-| `FLINT_CLICKHOUSE_URL` | — | ClickHouse HTTP endpoint. Unset = unpinned: the browser names the server at sign-in |
-| `FLINT_TARGETS` | *any* | Servers a browser may point an unpinned Flint at. Ignored when the URL is set |
-| `FLINT_CLICKHOUSE_USER` | `default` | ClickHouse user |
-| `FLINT_CLICKHOUSE_PASSWORD` | *empty* | ClickHouse password |
-| `FLINT_CLICKHOUSE_DATABASE` | `default` | Database the editor starts in |
-| `FLINT_READONLY` | `false` | Send `readonly=2`: writes are refused |
-| `FLINT_TIER` | follows `FLINT_READONLY` | What this deployment may do: `read`, `data`, `ddl`, `admin` |
-| `FLINT_AUTH` | `false` | Require everyone to sign in with their own ClickHouse credentials |
-| `FLINT_SESSION_IDLE_HOURS` | `12` | How long an unused session survives |
-| `FLINT_INFRASTRUCTURE` | `true` | Whether the Infrastructure space exists in the UI |
-| `FLINT_MAX_RESULT_ROWS` | `10000` | Row cap per query |
-| `FLINT_QUERY_TIMEOUT_SECS` | `120` | Server-side query timeout |
-| `FLINT_WORKSPACE_DATABASE` | — | Where Flint may keep its own metadata. Unset = stateless |
-| `FLINT_WORKSPACE_URL` | — | A server of Flint's own to keep that metadata on. Unset = the explored one |
-| `FLINT_WORKSPACE_USER` | `default` | Account on the workspace server. Not inherited from the explored one |
-| `FLINT_WORKSPACE_PASSWORD` | — | Password for the above |
-| `FLINT_CLICKHOUSE_CA_CERT` | — | PEM bundle for a private CA |
-| `FLINT_CORS_ORIGIN` | — | Extra allowed origin (dev only) |
-| `FLINT_LOG` | `flint=info` | `tracing` filter |
+| Variable                    | Default                  | What it does                                                                        |
+| --------------------------- | ------------------------ | ----------------------------------------------------------------------------------- |
+| `FLINT_AUTH`                | `false`                  | Require everyone to sign in with their own ClickHouse credentials                   |
+| `FLINT_CLICKHOUSE_CA_CERT`  | —                        | PEM bundle for a private CA                                                         |
+| `FLINT_CLICKHOUSE_DATABASE` | `default`                | Database the editor starts in                                                       |
+| `FLINT_CLICKHOUSE_PASSWORD` | *empty*                  | ClickHouse password                                                                 |
+| `FLINT_CLICKHOUSE_URL`      | —                        | ClickHouse HTTP endpoint. Unset = unpinned: the browser names the server at sign-in |
+| `FLINT_CLICKHOUSE_USER`     | `default`                | ClickHouse user                                                                     |
+| `FLINT_CORS_ORIGIN`         | —                        | Extra allowed origin (dev only)                                                     |
+| `FLINT_HOST`                | `0.0.0.0`                | Bind address                                                                        |
+| `FLINT_INFRASTRUCTURE`      | `true`                   | Whether the Infrastructure space exists in the UI                                   |
+| `FLINT_LOG`                 | `flint=info`             | `tracing` filter                                                                    |
+| `FLINT_MAX_RESULT_ROWS`     | `10000`                  | Row cap per query                                                                   |
+| `FLINT_PORT`                | `8080`                   | Bind port                                                                           |
+| `FLINT_QUERY_TIMEOUT_SECS`  | `120`                    | Server-side query timeout                                                           |
+| `FLINT_READONLY`            | `false`                  | Send `readonly=2`: writes are refused                                               |
+| `FLINT_SESSION_IDLE_HOURS`  | `12`                     | How long an unused session survives                                                 |
+| `FLINT_TARGETS`             | *any*                    | Servers a browser may point an unpinned Flint at. Ignored when the URL is set       |
+| `FLINT_TIER`                | follows `FLINT_READONLY` | What this deployment may do: `read`, `data`, `ddl`, `admin`                         |
+| `FLINT_WORKSPACE_DATABASE`  | —                        | Where Flint may keep its own metadata. Unset = stateless                            |
+| `FLINT_WORKSPACE_PASSWORD`  | —                        | Password for the above                                                              |
+| `FLINT_WORKSPACE_URL`       | —                        | A server of Flint's own to keep that metadata on. Unset = the explored one          |
+| `FLINT_WORKSPACE_USER`      | `default`                | Account on the workspace server. Not inherited from the explored one                |
 
 ### Statefulness, in one paragraph
 
@@ -148,15 +148,15 @@ including the seed schema and the check scripts, are in
 
 ## Documentation
 
-| Document | What is in it |
-| --- | --- |
-| [docs/features.md](docs/features.md) | Every feature, in the order somebody meets it |
-| [docs/configuration.md](docs/configuration.md) | Grants Flint needs, signing in, running unpinned |
-| [docs/design.md](docs/design.md) | The two spaces, the tiers, the visual language, and the design decisions behind the code |
-| [docs/development.md](docs/development.md) | The dev stack, the seed schema, the check scripts |
-| [docs/limitations.md](docs/limitations.md) | What is missing inside the features that exist |
-| [CLAUDE.md](CLAUDE.md) | Conventions for working in this repository |
-| [ROADMAP.md](ROADMAP.md) | Where this is going |
+| Document                                       | What is in it                                                                            |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| [docs/features.md](docs/features.md)           | Every feature, in the order somebody meets it                                            |
+| [docs/configuration.md](docs/configuration.md) | Grants Flint needs, signing in, running unpinned                                         |
+| [docs/design.md](docs/design.md)               | The two spaces, the tiers, the visual language, and the design decisions behind the code |
+| [docs/development.md](docs/development.md)     | The dev stack, the seed schema, the check scripts                                        |
+| [docs/limitations.md](docs/limitations.md)     | What is missing inside the features that exist                                           |
+| [CLAUDE.md](CLAUDE.md)                         | Conventions for working in this repository                                               |
+| [ROADMAP.md](ROADMAP.md)                       | Where this is going                                                                      |
 
 ## Status
 

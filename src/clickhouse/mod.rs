@@ -27,6 +27,7 @@ pub mod now;
 pub mod outside;
 pub mod parts;
 pub mod pipelines;
+pub mod preflight;
 pub mod probe;
 pub mod profile;
 pub mod projection;

@@ -8116,67 +8116,23 @@ tr:hover .stratum__fill {
  * session, so a card floating over a blurred dashboard would be showing
  * something Flint cannot actually serve.
  *
- * Two halves, not a card in the middle. The stage says what Flint is, in the
- * product's own ink; the panel takes the form. The split is asymmetric and
- * capped, so a 2560px monitor gets a wider drawing rather than a wider form —
- * a 90-character-long input is harder to read, not more generous. */
+ * A bar and a body. The bar is not the app's chrome — that needs a session to
+ * fill — it is the brand and the one fact this screen can state without one. */
 .signin {
   display: grid;
-  grid-template-columns: 1fr clamp(400px, 38%, 520px);
+  grid-template-rows: var(--chrome-h) minmax(0, 1fr);
   min-height: 100%;
-  background: var(--slab);
+  background: var(--ground);
 }
 
-/* ── The stage ─────────────────────────────────────────────────────────── */
-
-/* Graph paper, at the same pitch as the schema canvas's own grid, because this
- * is a picture of that canvas. */
-/* A grid of one capped column rather than a centred flex column. Both centre
-   the content in a half that grows — but `align-items: center` centres each
-   child *individually*, so the blurb, which caps itself at 42ch for
-   readability, was centred inside the column and sat indented from the
-   headline above it. The column is the thing that centres; what is in it lines
-   up on its left edge. */
-.signin__stage {
-  position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 640px);
-  align-content: center;
-  justify-content: center;
+.signin__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: var(--s4);
-  padding: var(--s8) var(--s7);
-  overflow: hidden;
-  background-color: var(--ground);
-  background-image: radial-gradient(var(--grid-dot) 1px, transparent 1px);
-  background-size: 26px 26px;
-}
-
-/* One light source, off the top-left corner, mixed from the accent rather than
- * written as a colour — it has to survive the theme flip, and on the dark
- * ground the same 9% of Spark is what keeps the corner from reading as a hole. */
-.signin__stage::before {
-  content: '';
-  position: absolute;
-  top: -20%;
-  left: -10%;
-  width: 70%;
-  height: 80%;
-  background: radial-gradient(
-    closest-side,
-    color-mix(in srgb, var(--accent) 9%, transparent),
-    transparent
-  );
-  pointer-events: none;
-}
-
-/* Above the stage's own light wash, which is absolutely positioned behind it.
-   Past the column's cap the extra width stays as graph paper rather than
-   stretching a headline across a metre of monitor — and empty graph paper is
-   the one background in this product that is *supposed* to look like there is
-   room to draw on it. */
-.signin__stage > * {
-  position: relative;
-  min-width: 0;
+  padding: 0 var(--s5);
+  border-bottom: 1px solid var(--line);
+  background: var(--rail);
 }
 
 .signin__brand {
@@ -8184,7 +8140,6 @@ tr:hover .stratum__fill {
   align-items: center;
   gap: var(--s2);
   color: var(--spark);
-  animation: signinRise var(--motion-panel) var(--ease-out) both;
 }
 
 .signin__word {
@@ -8194,192 +8149,55 @@ tr:hover .stratum__fill {
   color: var(--text-primary);
 }
 
-/* The one piece of display type in the product. It is allowed to be big here
- * and nowhere else: this is the only screen with nothing on it to compete with,
- * and `--size-hero` is sized for a page that also carries a table. */
-.signin__pitch {
-  margin: var(--s3) 0 0;
-  font-size: clamp(2rem, 3.2vw, 3.75rem);
-  font-weight: 700;
-  line-height: 1.04;
-  letter-spacing: -0.035em;
-  color: var(--text-primary);
-  animation: signinRise var(--motion-slow) var(--ease-out) both;
-  animation-delay: calc(var(--beat) * 2);
-}
-
-.signin__blurb {
-  margin: 0;
-  max-width: 42ch;
-  font-size: 0.875rem;
-  line-height: 1.6;
-  color: var(--text-secondary);
-  animation: signinRise var(--motion-slow) var(--ease-out) both;
-  animation-delay: calc(var(--beat) * 4);
-}
-
-.signin__draw {
-  margin-top: var(--s3);
-}
-
-.signin__svg {
-  display: block;
-  width: 100%;
-  height: auto;
-  overflow: visible;
-}
-
-/* The drawing's nodes: a slab lifted off the graph paper, which is the same
- * relationship `.gnode` has to the real canvas. */
-.signin__node {
-  animation: signinNode var(--motion-chart) var(--ease) var(--delay, 0ms) both;
-}
-
-.signin__nodebox {
-  fill: var(--slab);
-  stroke: var(--line-strong);
-  stroke-width: 1;
-}
-
-/* The kind key, in the diagram's own colours — table, materialized view,
-   dictionary. Drawn as a pill inset from the leading edge rather than flush
-   like `.gnode::before`, because an SVG rect cannot inherit its parent's
-   corner radius and a square corner poking out of a rounded one is worse than
-   a deliberate inset. */
-.signin__noderail {
-  fill: var(--k-table);
-}
-.signin__node--materialized_view .signin__noderail {
-  fill: var(--k-matview);
-}
-.signin__node--dictionary .signin__noderail {
-  fill: var(--k-dictionary);
-}
-
-/* Mono, because a table name is an identifier: the characters are the content.
-   Same rule as everywhere else in Flint. */
-.signin__nodename {
-  fill: var(--text-primary);
+/* Mono, because it is an address or the absence of one, not a label for it. */
+.signin__state {
   font-family: var(--font-data);
-  font-size: 10.5px;
-  font-weight: 500;
-}
-
-/* An edge, arriving by drawing itself along its own length. `pathLength="1"`
- * puts every wire on the same clock however long it is, which is the point:
- * they are one diagram appearing, not four lines racing. */
-.signin__wire {
-  fill: none;
-  stroke: var(--edge);
-  stroke-width: 1.5;
-  stroke-linecap: round;
-  stroke-dasharray: 1;
-  stroke-dashoffset: 1;
-  animation: signinWire var(--motion-slow) var(--ease) var(--delay, 0ms) forwards;
-}
-
-/* Inferred rather than declared — Flint reads most references out of the DDL
- * rather than being told. Dashed, and so it cannot arrive by drawing: the dash
- * pattern is the same channel the draw-in animates, and a `pathLength` of 1
- * rescales it into one dash longer than the whole line, which is how this edge
- * first shipped drawn solid. No `pathLength` on it, and it fades in instead. */
-.signin__wire--inferred {
-  stroke-dasharray: 3 4;
-  stroke-dashoffset: 0;
-  opacity: 0;
-  animation-name: signinFade;
-  animation-duration: var(--motion-panel);
-}
-
-/* The dots travelling a pipe, on the product's own physics: `--flow-speed` and
- * the shared `flow` keyframe, so the login screen and the schema page move at
- * one pace. The spacing carries the volume; the speed never varies. */
-.signin__flow {
-  --dot: 2;
-  --period: calc(var(--dot) + var(--gap, 22));
-  fill: none;
-  stroke: var(--accent);
-  stroke-width: 2.25;
-  stroke-linecap: round;
-  stroke-dasharray: calc(var(--dot) * 1px) calc(var(--gap, 22) * 1px);
-  opacity: 0;
-  /* token-exempt: `* 1s` is the unit conversion that turns a unitless --period
-     into a time, not a duration somebody chose. */
-  animation: signinFade var(--motion-base) var(--ease) var(--delay, 0ms) forwards,
-    flow calc(var(--period) / var(--flow-speed) * 1s) linear infinite;
-}
-
-/* Last, and composed from the scale rather than measured off the sequence
-   above it: after the slabs (--motion-chart), the lines (--motion-slow) and the
-   dots (--motion-base) — which is the order they arrive in. A caption that
-   names a drawing has nothing to say until the drawing is there. */
-.signin__caption {
-  margin: var(--s3) 0 0;
   font-size: var(--size-label);
-  line-height: 1.5;
-  color: var(--text-muted);
-  animation: signinFade var(--motion-slow) var(--ease) both;
-  animation-delay: calc(var(--motion-chart) + var(--motion-slow) + var(--motion-base));
+  color: var(--chalk-faint);
 }
 
-@keyframes signinRise {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-}
-
-@keyframes signinWire {
-  to {
-    stroke-dashoffset: 0;
-  }
-}
-
-@keyframes signinFade {
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes signinNode {
-  from {
-    opacity: 0;
-    transform: translateY(7px);
-  }
+/* The form and what it found, side by side and both centred on their own.
+ *
+ * Asymmetric and capped: the panel is the wider half because it holds six rows
+ * of two lines each, and a form column past about 420px is a text input nobody
+ * can read the start and end of at once. Past the caps the extra width is
+ * margin — there is nothing on this screen that gets better by being stretched. */
+.signin__body {
+  display: grid;
+  grid-template-columns: minmax(0, 26rem) minmax(0, 30rem);
+  /* `start` inside a row that is itself centred. Centring each half on its own
+     put the form's heading a hundred and seventy pixels below the panel's,
+     because the two are never the same height — the panel grows a row of notes
+     and the form does not. Aligned at the top, the two headings sit on one
+     line, which is the only alignment on this screen a reader can see. */
+  align-items: start;
+  align-content: center;
+  justify-content: center;
+  gap: var(--s8);
+  padding: var(--s7) var(--s6);
+  overflow-y: auto;
 }
 
 /* ── The form ──────────────────────────────────────────────────────────── */
 
-.signin__panel {
-  display: flex;
-  padding: var(--s7) var(--s6);
-  border-left: 1px solid var(--line);
-  background: var(--slab);
-  overflow-y: auto;
-}
-
-/* `margin: auto` rather than `align-items: center`, because this column
-   scrolls: a centred flex item taller than its container is clipped at the top,
-   which on a short laptop screen hides the heading and the first field. */
 .signin__form {
   display: flex;
   flex-direction: column;
   gap: var(--s3);
-  margin: auto;
-  width: 100%;
-  max-width: 368px;
+  min-width: 0;
 }
 
 .signin__title {
   margin: 0;
-  font-size: 1.5rem;
+  font-size: 1.75rem;
   font-weight: 650;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.025em;
   color: var(--text-primary);
 }
 
 .signin__sub {
   margin: 0;
+  max-width: 46ch;
   font-size: var(--size-body);
   line-height: 1.55;
   color: var(--text-secondary);
@@ -8389,29 +8207,71 @@ tr:hover .stratum__fill {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
+}
+
+/* Who you are, on one line: it is one thought, and stacking the two pushed the
+   button under the fold on a laptop once the panel beside it had a heading. */
+.signin__pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s3);
   margin-top: var(--s2);
 }
 
-/* Taller than the app's control. `.input` is 32px because it lives in
-   toolbars and filter rows next to twenty other things; here there are three
-   fields on an empty screen and they are what the screen is for. */
-.signin__panel .input {
+/* Taller than the app's control. `.input` is 32px because it lives in toolbars
+   and filter rows next to twenty other things; here there are three fields on
+   an otherwise empty screen and they are what the screen is for. */
+.signin__form .input {
   min-height: 40px;
   padding: 0 var(--s3);
   font-size: 0.875rem;
 }
-.signin__panel .input:hover:not(:focus) {
+.signin__form .input:hover:not(:focus) {
   border-color: var(--line-strong);
 }
 
 .signin__wrap {
   position: relative;
   display: flex;
+  min-width: 0;
 }
 
-/* Room for the reveal, so a long password never runs under it. */
+/* Room for whatever the round trip had to say, so a long address never runs
+   under it. Only when there is something there: an empty field reserving a
+   hundred pixels for a message nobody has asked for reads as a broken layout. */
+.signin__endpoint--said {
+  padding-right: 8.5rem;
+}
+
+/* Inside the field, because it is a fact about the address in it rather than a
+   line of its own. */
+.signin__latency {
+  position: absolute;
+  top: 50%;
+  right: var(--s3);
+  transform: translateY(-50%);
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+  pointer-events: none;
+}
+.signin__latency--ok {
+  color: var(--spark);
+}
+/* Something answered and it was not a database. The one failure this field is
+   the right place for, so it is the one that takes the alarm colour. */
+.signin__latency--no {
+  color: var(--alarm-text);
+}
+/* Nothing answered. Quiet: the panel beside it is already saying what happened
+   in a whole sentence, and two red things for one failure reads as two. */
+.signin__latency--plain {
+  color: var(--chalk-faint);
+}
+
 .signin__pw {
-  padding-right: 60px;
+  padding-right: 3.75rem;
 }
 
 .signin__reveal {
@@ -8439,10 +8299,21 @@ tr:hover .stratum__fill {
 }
 
 .signin__go {
-  margin-top: var(--s4);
-  justify-content: center;
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin-top: var(--s3);
+}
+.signin__go .btn {
   height: 42px;
+  min-width: 11rem;
+  justify-content: center;
   font-size: 0.875rem;
+}
+
+.signin__shortcut {
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
 }
 
 /* A refusal is the expected outcome of a form like this, so it is coloured as
@@ -8467,10 +8338,7 @@ tr:hover .stratum__fill {
 }
 
 .signin__foot {
-  display: flex;
-  align-items: center;
-  gap: var(--s2);
-  margin: var(--s4) 0 0;
+  margin: var(--s2) 0 0;
   padding-top: var(--s3);
   border-top: 1px solid var(--line);
   font-size: var(--size-label);
@@ -8478,62 +8346,249 @@ tr:hover .stratum__fill {
   color: var(--text-muted);
 }
 
-.signin__sep {
-  flex: none;
-  width: 1px;
-  height: 10px;
-  background: var(--line);
+/* ── What these credentials can do ─────────────────────────────────────── */
+
+.signin__panel {
+  min-width: 0;
+  padding: var(--s5);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--slab);
+  box-shadow: var(--shadow-1);
+  transition: opacity var(--motion-base) var(--ease-out);
+}
+
+/* The reading is about an address somebody has since edited. Dimmed rather than
+   cleared: throwing away the answer they just read is the one thing worse than
+   showing them a stale one, and the header grows a button to ask again. */
+.signin__panel.is-stale {
+  opacity: 0.5;
+}
+
+.signin__panelhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+}
+
+.signin__paneltitle {
+  margin: 0;
+  font-size: var(--size-head);
+  font-weight: 650;
+  color: var(--text-primary);
+}
+
+.signin__again {
+  height: 26px;
+  padding: 0 var(--s2);
+  font-size: var(--size-label);
+}
+
+.signin__panelsub {
+  margin: var(--s2) 0 0;
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.signin__panelno {
+  margin: var(--s4) 0 calc(var(--s4) * -1);
+  padding: var(--s3);
+  border-radius: var(--radius-sm);
+  background: var(--warning-weak);
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--warning);
+}
+
+.signin__checks {
+  margin: var(--s4) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.signin__check {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--s3);
+  padding: var(--s3) 0;
+  border-top: 1px solid var(--divider);
+}
+.signin__check:first-child {
+  border-top: none;
+  padding-top: var(--s1);
+}
+
+/* The verdict, as a mark rather than as a word — the word is in the right-hand
+   column and reading it twice is not reading it better. Five states, in Flint's
+   own palette: `off` takes Cold because dormant is what it means, and a thing
+   this deployment does not have is neither working nor broken. */
+.signin__swatch {
+  width: 8px;
+  height: 8px;
+  margin-top: 5px;
+  border-radius: 2px;
+  background: var(--chalk-ghost);
+}
+.signin__check--granted .signin__swatch {
+  background: var(--success);
+}
+.signin__check--refused .signin__swatch {
+  background: var(--alarm);
+}
+.signin__check--partial .signin__swatch {
+  background: var(--warning);
+}
+.signin__check--off .signin__swatch {
+  background: var(--cold);
+}
+/* Nothing measured yet. Hollow rather than grey-filled: an empty outline reads
+   as "not asked", and a filled neutral square reads as a fifth verdict. */
+.signin__check--none .signin__swatch {
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+
+.signin__what {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.signin__label {
+  font-size: var(--size-body);
+  color: var(--text-primary);
+}
+.signin__check--none .signin__label {
+  color: var(--text-muted);
+}
+
+/* What the verdict rests on, in the server's own vocabulary. It wraps rather
+   than truncating: a privilege list cut off mid-identifier is the one thing on
+   this panel nobody can check. */
+.signin__rests {
+  font-size: var(--size-label);
+  line-height: 1.45;
+  color: var(--chalk-faint);
+  overflow-wrap: anywhere;
+}
+
+.signin__verdict {
+  font-size: var(--size-label);
+  white-space: nowrap;
+  color: var(--chalk-faint);
+}
+.signin__check--granted .signin__verdict {
+  color: var(--success-text);
+}
+.signin__check--refused .signin__verdict {
+  color: var(--alarm-text);
+}
+.signin__check--partial .signin__verdict {
+  color: var(--warning);
+}
+.signin__check--off .signin__verdict {
+  color: var(--cold);
+}
+
+/* What a reader will actually notice — a tab that will not be there, a page
+   that will be thin. Railed rather than boxed, because it is a consequence of
+   the row above it rather than a warning of its own. */
+.signin__note {
+  margin: var(--s2) 0 0;
+  padding: 7px var(--s3);
+  border-left: 2px solid var(--warning);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--slab-raised);
+  font-size: var(--size-label);
+  line-height: 1.5;
+}
+.signin__note:first-of-type {
+  margin-top: var(--s4);
+}
+
+.signin__notetitle {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.signin__notebody {
+  color: var(--text-secondary);
+}
+
+.signin__detected {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  margin: var(--s4) 0 0;
+  padding-top: var(--s3);
+  border-top: 1px solid var(--divider);
+}
+
+.signin__figures {
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+.signin__figures--waiting {
+  font-family: var(--font-ui);
 }
 
 /* ── Narrow ────────────────────────────────────────────────────────────── */
 
-/* Stacked, and the drawing goes rather than shrinking. At 400px wide the five
- * nodes are still five nodes but the names are unreadable, and a diagram
- * nobody can read is decoration in the way of a form. The claim stays: it is
- * the sentence the drawing was illustrating. */
-@media (max-width: 960px) {
-  .signin {
-    grid-template-columns: 1fr;
-  }
-
-  .signin__stage {
-    grid-template-columns: minmax(0, 100%);
-    gap: var(--s3);
+/* Stacked, form first: the panel is about what is in the form, and reading a
+ * verdict above the fields it was measured from is reading it backwards. */
+@media (max-width: 1080px) {
+  .signin__body {
+    grid-template-columns: minmax(0, 30rem);
+    gap: var(--s6);
+    align-items: stretch;
+    align-content: start;
     padding: var(--s6) var(--s5);
-  }
-
-  .signin__pitch {
-    font-size: 1.75rem;
-  }
-
-  .signin__pitch br {
-    display: none;
-  }
-
-  .signin__draw,
-  .signin__caption {
-    display: none;
-  }
-
-  .signin__panel {
-    padding: var(--s6) var(--s5) var(--s7);
-    border-left: none;
-    border-top: 1px solid var(--line);
-  }
-
-  .signin__form {
-    margin: 0 auto;
-    max-width: 420px;
   }
 }
 
-@media (max-width: 520px) {
-  .signin__stage {
-    padding: var(--s5) var(--s4);
+@media (max-width: 560px) {
+  .signin__bar {
+    padding: 0 var(--s4);
+  }
+
+  /* Block rather than a baseline row: wrapped, the figures used to continue
+     under the first one instead of at the panel's edge. */
+  .signin__detected {
+    display: block;
+  }
+  .signin__detected .label {
+    margin-right: var(--s2);
+  }
+
+  .signin__body {
+    gap: var(--s5);
+    padding: var(--s5) var(--s4) var(--s6);
+  }
+
+  /* One at a time. Two 40px inputs in a 320px column leaves each of them
+     narrower than the placeholder it holds. */
+  .signin__pair {
+    grid-template-columns: 1fr;
   }
 
   .signin__panel {
-    padding: var(--s5) var(--s4) var(--s6);
+    padding: var(--s4);
+  }
+
+  .signin__go {
+    flex-wrap: wrap;
+  }
+  .signin__go .btn {
+    width: 100%;
+  }
+  /* The shortcut is a pointerless machine's affordance, and a phone is not one. */
+  .signin__shortcut {
+    display: none;
   }
 }
 
