@@ -699,6 +699,14 @@ export const api = {
     request<QueryResult>(
       `/databases/${enc(db)}/tables/${enc(table)}/preview?limit=${limit}`,
     ),
+  /** Whether the address an external table points at answers, asked once, now.
+   *  A POST because it opens a connection to somebody else's infrastructure —
+   *  it is a button, not a reading taken on page load. */
+  connect: (db: string, table: string) =>
+    request<import('./connect').Attempt>(
+      `/databases/${enc(db)}/tables/${enc(table)}/connect`,
+      { method: 'POST' },
+    ),
   /** What a table's background reader is doing — a Kafka consumer's position
    *  and errors, or an S3Queue's log. Empty for every other engine, which is an
    *  answer rather than a failure. */

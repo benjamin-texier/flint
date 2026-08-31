@@ -13,7 +13,7 @@ import { analyseDefinition } from '../lib/lineage'
 import { shortType } from '../lib/chType'
 import { KindGlyph } from './TypeBadge'
 import { ExternalLine } from './ExternalSource'
-import { isExternalEngine } from '../lib/external'
+import { QUEUE_UNREADABLE, backgroundReader, isExternalEngine } from '../lib/external'
 
 /** Fields of the first row, before the list becomes a wall. The count of what
  *  was left out goes underneath. */
@@ -199,6 +199,9 @@ export function NodePanel({
  *  them, both ellipsised, whereas one row down the page shows every field with
  *  its value beside it — which is what makes an object recognisable. */
 function Sample({ node }: { node: GraphNode }) {
+  // Not merely hidden: not asked for. Clicking a node is not consent to take a
+  // message off somebody's topic.
+  const queue = backgroundReader(node.engine)
   const sample = useQuery({
     queryKey: ['preview', node.database, node.name, 1],
     queryFn: () => api.preview(node.database, node.name, 1),
@@ -206,7 +209,17 @@ function Sample({ node }: { node: GraphNode }) {
     // long enough that clicking around the diagram does not re-run it.
     retry: false,
     staleTime: 5 * 60_000,
+    enabled: !queue,
   })
+
+  if (queue) {
+    return (
+      <section className="npanel__section">
+        <h4 className="npanel__sectiontitle">First row</h4>
+        <p className="npanel__none">{QUEUE_UNREADABLE}</p>
+      </section>
+    )
+  }
 
   return (
     <section className="npanel__section">

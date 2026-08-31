@@ -4,7 +4,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::clickhouse::{
-    affinity, compare, distribution, drift, graph, mass, meta, probe, profile, projection,
+    affinity, compare, connect, distribution, drift, graph, mass, meta, probe, profile, projection,
     relations, review, streams, timeline, QueryOptions, TableResult,
 };
 use crate::error::{Error, Result};
@@ -251,6 +251,23 @@ pub async fn table_stream(
     let engine = crate::clickhouse::meta::table_engine(&ch, &database, &table).await?;
     Ok(Json(
         streams::stream(&ch, &database, &table, &engine).await?,
+    ))
+}
+
+/// Whether the address an external table points at actually answers.
+///
+/// A POST, and a button behind it, because it opens a connection to somebody
+/// else's infrastructure. Every other reading on that page comes out of
+/// `system.*` on a server Flint is already talking to; this one does not, and a
+/// page that contacts a production Postgres because a tab was opened is a page
+/// nobody can leave open.
+pub async fn table_connect(
+    Caller(ch): Caller,
+    Path((database, table)): Path<(String, String)>,
+) -> Result<Json<connect::Attempt>> {
+    let engine = meta::table_engine(&ch, &database, &table).await?;
+    Ok(Json(
+        connect::attempt(&ch, &database, &table, &engine).await?,
     ))
 }
 

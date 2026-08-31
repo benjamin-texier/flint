@@ -1,5 +1,10 @@
+import { useMutation } from '@tanstack/react-query'
+
+import { api } from '../lib/api'
+import { saysAttempt, verdictOf } from '../lib/connect'
 import {
   EXTERNAL_KIND_LABEL,
+  backgroundReader,
   externalNotes,
   externalSource,
   externalWhere,
@@ -24,19 +29,44 @@ export function ExternalPanel({
   engineFull,
   scope = 'table',
   paths,
+  database,
+  table,
 }: {
   engine: string
   engineFull: string
   scope?: 'table' | 'database'
   /** `data_paths`, which is where a `File` table's path lives. */
   paths?: string[]
+  /** Which object this describes, so the panel can offer to check it. Absent
+   *  on a database, which has nothing to ask for. */
+  database?: string
+  table?: string
 }) {
   const source = externalSource(engine, engineFull, { scope, paths })
   if (!source) return null
-  return <Panel source={source} />
+  return (
+    <Panel
+      source={source}
+      /* Only where there is a table to check. A database engine has no rows to
+         ask for, and the two queue engines are refused by the backend anyway —
+         reading them takes from them, and they have a tab that reads their
+         state instead. */
+      check={
+        scope === 'table' && table && database && !backgroundReader(engine)
+          ? { database, table }
+          : null
+      }
+    />
+  )
 }
 
-function Panel({ source }: { source: Source }) {
+function Panel({
+  source,
+  check,
+}: {
+  source: Source
+  check: { database: string; table: string } | null
+}) {
   const notes = externalNotes(source)
   return (
     <section className="xsrc" aria-label="Where these rows are">
@@ -74,7 +104,40 @@ function Panel({ source }: { source: Source }) {
           {note}
         </p>
       ))}
+
+      {check ? <Check database={check.database} table={check.table} /> : null}
     </section>
+  )
+}
+
+/** Ask the far end, once, now.
+ *
+ *  A button rather than something the page does on its own. Everything else on
+ *  this page is a read of `system.*` on a server Flint is already talking to;
+ *  this opens a connection to somebody else's infrastructure, and a page that
+ *  contacts a production Postgres because a tab was opened is a page nobody can
+ *  leave open. */
+function Check({ database, table }: { database: string; table: string }) {
+  const ask = useMutation({ mutationFn: () => api.connect(database, table) })
+  const attempt = ask.data
+  const verdict = attempt ? verdictOf(attempt) : null
+
+  return (
+    <div className="xsrc__check">
+      <button className="btn btn--quiet" onClick={() => ask.mutate()} disabled={ask.isPending}>
+        {ask.isPending ? 'Asking…' : attempt ? 'Check again' : 'Check the connection'}
+      </button>
+      {/* The request itself failing is a different thing from the far end not
+          answering — one is Flint or ClickHouse, the other is the address. */}
+      {ask.error ? (
+        <span className="xsrc__verdict xsrc__verdict--failed">
+          {ask.error instanceof Error ? ask.error.message : 'The check could not be run.'}
+        </span>
+      ) : null}
+      {attempt && verdict ? (
+        <span className={`xsrc__verdict xsrc__verdict--${verdict}`}>{saysAttempt(attempt)}</span>
+      ) : null}
+    </div>
   )
 }
 

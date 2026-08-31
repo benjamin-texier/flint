@@ -9,7 +9,7 @@ import { ShareBar, StratumBar } from '../components/StratumBar'
 import { TypeBadge, KindGlyph } from '../components/TypeBadge'
 import { TypeIcon } from '../components/TypeIcon'
 import { CLAUSE_MEANING, KIND_LABEL, KIND_MEANING, explainEngine } from '../lib/explain'
-import { backgroundReader, isExternalEngine } from '../lib/external'
+import { QUEUE_UNREADABLE, backgroundReader, isExternalEngine } from '../lib/external'
 import { formatDdl, tokenize } from '../lib/ddl'
 import { depthOf, lineagePath } from '../lib/path'
 import { lineageSubgraph } from '../lib/graph'
@@ -220,7 +220,13 @@ export function TableView({ database, table }: { database: string; table: string
         {/* And *where*, for the engines that hold nothing themselves. The
             sentence above says an S3 table reads files outside ClickHouse; the
             only follow-up anybody has is which ones. */}
-        <ExternalPanel engine={t.engine} engineFull={t.engine_full} paths={t.data_paths} />
+        <ExternalPanel
+          engine={t.engine}
+          engineFull={t.engine_full}
+          paths={t.data_paths}
+          database={database}
+          table={table}
+        />
         {/* The figures below belong to a table nobody wrote, so the page says
             which one rather than presenting them as the view's own. */}
         {t.storage ? (
@@ -298,7 +304,13 @@ export function TableView({ database, table }: { database: string; table: string
             <Changes database={database} table={table} />
           </div>
         ) : null}
-        {tab === 'preview' ? (
+        {tab === 'preview' && reader ? (
+          <EmptyNote title="No preview of a queue">
+            {QUEUE_UNREADABLE} The {reader === 'kafka' ? 'Consuming' : 'Queue'} tab reads its state
+            instead of its rows.
+          </EmptyNote>
+        ) : null}
+        {tab === 'preview' && !reader ? (
           <Preview
             database={database}
             table={table}
