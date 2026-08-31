@@ -7,8 +7,11 @@ import {
   fromQueries,
   fromStorage,
   fromTraffic,
+  couldHaveBeen,
   rank,
   saysReport,
+  saysSession,
+  sessionWindow,
   type Finding,
 } from './checkup'
 
@@ -85,6 +88,7 @@ describe('fromQueries', () => {
     ({
       available: true,
       window_days: 7,
+      window_seconds: 7 * 86400,
       summary: null,
       patterns: [],
       failures: [],
@@ -187,7 +191,7 @@ describe('fromTraffic', () => {
     last_write: 'then',
   })
   const report = (list: ReturnType<typeof unused>[]) =>
-    ({ available: true, unused: list }) as unknown as Parameters<typeof fromTraffic>[0]
+    ({ available: true, window_days: 7, window_seconds: 7 * 86400, unused: list }) as unknown as Parameters<typeof fromTraffic>[0]
 
   it('ignores a small unread table, because every server has forty', () => {
     expect(fromTraffic(report([unused('a.small', 1024)]))).toEqual([])
@@ -357,5 +361,83 @@ describe('saysReport', () => {
     // An indicator that is always lit is not an indicator; nor is one that
     // congratulates.
     expect(saysReport([], 0)).toBe('Nothing on this server is asking to be changed.')
+  })
+})
+
+describe('couldHaveBeen', () => {
+  const shape = (over: Record<string, number | string[]>) => ({
+    read_rows: 0,
+    read_bytes: 0,
+    runs: 1,
+    total_ms: 1,
+    tables: [],
+    ...over,
+  }) as Parameters<typeof couldHaveBeen>[0]
+
+  it('names a scan by the rows each run reads, and calls it a question', () => {
+    // Not proof: a genuine aggregate over a million rows reads a million rows.
+    const said = couldHaveBeen(shape({ runs: 4, read_rows: 8_000_000 }), 60)
+    expect(said).toContain('2,000,000 rows')
+    expect(said).toContain('If it filters')
+  })
+
+  it('recognises a loop by its rate, which only a window can measure', () => {
+    /* 120 runs of one shape is a loop inside a minute and nothing across a
+       week, so the rate is the finding and the count is not.
+
+       The first version looked for few rows per run and could never have
+       fired: measured on a real point lookup returning three rows,
+       `read_rows` was 25,600 — three granules, because in ClickHouse the
+       floor for a read is a granule. */
+    const inAMinute = couldHaveBeen(shape({ runs: 120, read_rows: 3_072_000 }), 60)
+    expect(inAMinute).toContain('120 runs — 2 a second')
+    expect(inAMinute).toContain('IN or a JOIN')
+    expect(couldHaveBeen(shape({ runs: 120, read_rows: 3_072_000 }), 7 * 86400)).toBeNull()
+  })
+
+  it('recognises cheap-each-time and enormous-in-total', () => {
+    const said = couldHaveBeen(shape({ runs: 900, read_rows: 900 * 500, total_ms: 900 * 20 }), 7 * 86400)
+    expect(said).toContain('materialised view')
+  })
+
+  it('says nothing about an ordinary statement', () => {
+    expect(couldHaveBeen(shape({ runs: 5, read_rows: 500, total_ms: 400 }), 7 * 86400)).toBeNull()
+  })
+
+  it('never claims anything a parser would be needed for', () => {
+    /* "This should have a LIMIT" needs to know whether it has one, and that
+       means parsing SQL — which this codebase refuses. Every reading here is
+       arithmetic over what the log already measured. */
+    const all = [
+      couldHaveBeen(shape({ runs: 4, read_rows: 8_000_000 }), 60),
+      couldHaveBeen(shape({ runs: 300, read_rows: 3000 }), 60),
+      couldHaveBeen(shape({ runs: 900, read_rows: 450000, total_ms: 18000 }), 7 * 86400),
+    ].join(' ')
+    expect(all).not.toMatch(/LIMIT|SELECT \*|WHERE/i)
+  })
+})
+
+describe('sessionWindow', () => {
+  it('is nothing without a mark', () => {
+    expect(sessionWindow(null)).toBeNull()
+  })
+
+  it('rounds up, because the log row is written after the statement ends', () => {
+    // A second of slack costs nothing; the alternative is a missing row
+    // nobody can explain.
+    expect(sessionWindow(1000, 1000 + 90_400)).toBe(92)
+  })
+
+  it('never asks for less than a minute', () => {
+    // Shorter than that catches the clock skew, not the work.
+    expect(sessionWindow(1000, 1000 + 2000)).toBe(60)
+  })
+})
+
+describe('saysSession', () => {
+  it('uses the unit that suits the length', () => {
+    expect(saysSession(0, 45_000)).toBe('45 seconds')
+    expect(saysSession(0, 12 * 60_000)).toBe('12 minutes')
+    expect(saysSession(0, 3 * 3600_000)).toBe('3.0 hours')
   })
 })

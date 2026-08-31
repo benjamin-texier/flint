@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { api } from '../lib/api'
 import { bytes as fmtBytes, count } from '../lib/format'
@@ -12,8 +12,11 @@ import {
   fromQueries,
   fromStorage,
   fromTraffic,
+  SESSION_KEY,
   inArea,
   saysReport,
+  saysSession,
+  sessionWindow,
   type Area,
   type Finding,
   type Gain,
@@ -47,6 +50,48 @@ import { ErrorNote } from '../components/Note'
 export function CheckupPage() {
   const config = useQuery({ queryKey: ['config'], queryFn: api.config })
 
+  /* The mark, and nothing else. A session is a moment the browser remembers
+     and a window computed from it — there is no session object anywhere,
+     which is what lets this work on a Flint with no workspace.
+
+     It lives in `localStorage` because leaving the tab is the whole point: you
+     start it, go and put your application through its paces, and come back.
+     A reload in between must not lose the mark. Wrapped, because the accessor
+     itself throws in a private window and in a browser set to block site
+     data, and a checkup that will not open because of that is worse than one
+     with no session. */
+  const [startedAt, setStartedAt] = useState<number | null>(() => {
+    try {
+      const raw = localStorage.getItem(SESSION_KEY)
+      const at = raw === null ? NaN : Number(raw)
+      return Number.isFinite(at) ? at : null
+    } catch {
+      return null
+    }
+  })
+  /* Re-rendered once a second while a session runs, so "4 minutes" is not a
+     figure that was true when the page loaded. Only while it runs: a page
+     with nothing happening on it should not be waking up every second. */
+  const [, tick] = useState(0)
+  useEffect(() => {
+    if (startedAt === null) return
+    const timer = setInterval(() => tick((n) => n + 1), 1000)
+    return () => clearInterval(timer)
+  }, [startedAt])
+
+  const mark = (at: number | null) => {
+    setStartedAt(at)
+    try {
+      if (at === null) localStorage.removeItem(SESSION_KEY)
+      else localStorage.setItem(SESSION_KEY, String(at))
+    } catch {
+      /* A browser that will not store it still runs the session — the mark is
+         held in state, and only surviving a reload is lost. Said nowhere,
+         because the reader finds out by reloading and there is nothing they
+         could do about it. */
+    }
+  }
+
   /* Each of these is a reading the backend already produces. The checkup does
      not measure anything of its own — it judges, and the judging is in
      `lib/checkup` where it can be argued with in a test. */
@@ -59,15 +104,19 @@ export function CheckupPage() {
      is the most expensive thing this page can ask for, and on a server whose
      log has just rolled it answers nothing — so it is asked for deliberately
      and its absence is said rather than shown as an empty section. */
+  /* The window is fixed at the moment of reading, not held live: a query key
+     carrying a number that changes every second would refetch every second.
+     `read` is what was asked for, and it is only ever set by a button. */
+  const [read, setRead] = useState<{ seconds?: number } | null>(null)
   const queries = useQuery({
-    queryKey: ['diag', 'queries', 7],
-    queryFn: () => api.diagnoseQueries(7),
-    enabled: false,
+    queryKey: ['diag', 'queries', read?.seconds ?? 7],
+    queryFn: () => api.diagnoseQueries(7, read?.seconds),
+    enabled: read !== null,
   })
   const traffic = useQuery({
-    queryKey: ['diag', 'traffic', 7],
-    queryFn: () => api.diagnoseTraffic(7),
-    enabled: false,
+    queryKey: ['diag', 'traffic', read?.seconds ?? 7],
+    queryFn: () => api.diagnoseTraffic(7, read?.seconds),
+    enabled: read !== null,
   })
 
   /* Where the bytes are, per database. Metadata only — no sampling — which is
@@ -97,7 +146,7 @@ export function CheckupPage() {
     [storage.data, detached.data, backups.data, heavy.data, queries.data, traffic.data],
   )
 
-  const workloadAsked = queries.fetchStatus !== 'idle' || queries.isFetched
+  const workloadAsked = read !== null
   const workloadPending = queries.isFetching || traffic.isFetching
 
   return (
@@ -112,20 +161,51 @@ export function CheckupPage() {
         <button
           className="btn"
           disabled={workloadPending}
-          onClick={() => {
-            void queries.refetch()
-            void traffic.refetch()
-          }}
+          onClick={() => setRead({})}
         >
-          {workloadPending ? 'Reading the log…' : 'Read the workload'}
+          {workloadPending && !read?.seconds ? 'Reading the log…' : 'Read the last 7 days'}
         </button>
         {/* Said beside the button rather than after pressing it: the cost is
             the reason it is a button, so the reason belongs where the decision
             is made. */}
         <span className="says">
-          Scans <code>system.query_log</code> over the last 7 days — what failed, what cost the
-          most, and what nothing has read.
+          Scans <code>system.query_log</code> — what failed, what cost the most, and what nothing
+          has read.
         </span>
+      </div>
+
+      {/* The session. Mark a moment, go and put the application through its
+          paces, come back. A QA pass puts hundreds of statements through a
+          server in ten minutes and a seven-day window buries every one. */}
+      <div className="checkup__session">
+        {startedAt === null ? (
+          <>
+            <button className="btn" onClick={() => mark(Date.now())}>
+              Start watching
+            </button>
+            <span className="says">
+              Marks this moment. Go and use the application, then come back and read only what
+              happened in between.
+            </span>
+          </>
+        ) : (
+          <>
+            <button
+              className="btn btn--spark"
+              disabled={workloadPending}
+              onClick={() => setRead({ seconds: sessionWindow(startedAt) ?? 60 })}
+            >
+              Read these {saysSession(startedAt)}
+            </button>
+            <button className="btn" onClick={() => mark(null)}>
+              Forget the mark
+            </button>
+            <span className="says checkup__watching">
+              Watching since {new Date(startedAt).toLocaleTimeString()}. Nothing is being recorded —
+              the server's own log is, and this is only the moment to read it from.
+            </span>
+          </>
+        )}
       </div>
 
       {/* One error line per reading that could not answer, and the page carries
@@ -135,6 +215,16 @@ export function CheckupPage() {
         r.error ? <ErrorNote key={i} error={r.error} retry={() => void r.refetch()} /> : null,
       )}
       {queries.error ? <ErrorNote error={queries.error} retry={() => void queries.refetch()} /> : null}
+
+      {/* Which window the workload findings are of. On a page that can show
+          two different spans of the same log, leaving this to be remembered
+          is how somebody reads a ten-minute session as a week. */}
+      {queries.data ? (
+        <p className="says checkup__window">
+          The workload below is {saysWindow(queries.data.window_seconds)} of{' '}
+          <code>system.query_log</code>.
+        </p>
+      ) : null}
 
       {AREAS.map((area) => (
         <AreaSection
@@ -147,6 +237,17 @@ export function CheckupPage() {
       ))}
     </article>
   )
+}
+
+/** The window a reading covered, in the unit that suits its size.
+ *
+ *  From seconds and never from `window_days`, which is zero for a session and
+ *  would print "the last 0 days" over the reading somebody just asked for. */
+export function saysWindow(seconds: number): string {
+  if (seconds < 90) return `the last ${seconds} seconds`
+  if (seconds < 5400) return `the last ${Math.round(seconds / 60)} minutes`
+  if (seconds < 172800) return `the last ${Math.round(seconds / 3600)} hours`
+  return `the last ${Math.round(seconds / 86400)} days`
 }
 
 /** What a section says while it has nothing yet — which is not the same

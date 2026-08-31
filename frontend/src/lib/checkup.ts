@@ -208,10 +208,11 @@ export function fromQueries(report: QueryReport): Finding[] {
       urgency: 'worth',
       title: `One statement shape is ${Math.round(share * 100)}% of the workload's time`,
       why:
-        pattern.tables.length > 0
+        couldHaveBeen(pattern, report.window_seconds) ??
+        (pattern.tables.length > 0
           ? `It reads ${pattern.tables.join(', ')}. Whether its sorting key serves the filter it runs is the question worth asking of it.`
-          : 'Whether the tables it reads are keyed for the filter it runs is the question worth asking of it.',
-      evidence: `${pattern.runs} runs, ${Math.round(pattern.total_ms)} ms altogether, p95 ${Math.round(pattern.p95_ms)} ms, ${pattern.read_rows} rows read.`,
+          : 'Whether the tables it reads are keyed for the filter it runs is the question worth asking of it.'),
+      evidence: `${pattern.runs} runs, ${Math.round(pattern.total_ms)} ms altogether, p95 ${Math.round(pattern.p95_ms)} ms, ${Math.round(pattern.read_rows / Math.max(1, pattern.runs)).toLocaleString('en')} rows read per run.`,
       gain: { kind: 'seconds', n: pattern.total_ms / 1000 },
       object: pattern.tables[0],
       act: { to: '/diagnose?view=queries', label: 'What the statements cost' },
@@ -435,4 +436,100 @@ export function saysReport(findings: Finding[], stillReading: number): string {
   if (now > 0) parts.push(`${now} ${now === 1 ? 'thing is' : 'things are'} happening now`)
   if (worth > 0) parts.push(`${worth} ${worth === 1 ? 'is' : 'are'} worth doing`)
   return `${parts.join(', ')}.${tail}`
+}
+
+/* ── A traffic session ──────────────────────────────────────────────────────
+ *
+ * The reading this page was asked for first: mark a moment, go and exercise
+ * the application, come back and see *those* calls rather than the week around
+ * them. A QA pass over a frontend puts hundreds of statements through a server
+ * in ten minutes, and a seven-day window buries every one of them.
+ *
+ * The mark is a timestamp and nothing else, which is what lets this work with
+ * no workspace: there is no session object anywhere, only a moment the browser
+ * remembers and a window computed from it when the reader comes back. It
+ * survives a reload because the whole point is to leave the tab and come back
+ * to it. */
+
+/** Where the mark is kept. The browser's, not the server's — see above. */
+export const SESSION_KEY = 'flint.checkup.session'
+
+/** A window in seconds from a mark, or null where there is no mark.
+ *
+ *  Rounded up rather than down: a session of 90 seconds asked for as 90 can
+ *  miss the last statement, because the server writes the log row after the
+ *  statement ends and the clocks are not the same clock. A second of slack
+ *  costs nothing and the alternative is a missing row nobody can explain. */
+export function sessionWindow(startedAt: number | null, now = Date.now()): number | null {
+  if (startedAt === null) return null
+  return Math.max(60, Math.ceil((now - startedAt) / 1000) + 1)
+}
+
+/** How long a session has been running, in words a reader would use. */
+export function saysSession(startedAt: number, now = Date.now()): string {
+  const secs = Math.max(0, Math.round((now - startedAt) / 1000))
+  if (secs < 90) return `${secs} seconds`
+  const mins = Math.round(secs / 60)
+  if (mins < 90) return `${mins} minutes`
+  return `${(secs / 3600).toFixed(1)} hours`
+}
+
+/** Whether a statement could have been asked differently.
+ *
+ *  The question the session exists to answer, and the one place this file
+ *  comes close to advice. It is deliberately narrow: three readings, each
+ *  computable from what `system.query_log` already recorded, and none of them
+ *  requiring Flint to understand the statement.
+ *
+ *  What it will not do is guess at SQL. "This should have a `LIMIT`" needs to
+ *  know whether the statement has one, and finding that out means parsing —
+ *  which this codebase refuses everywhere and would get wrong on the first
+ *  statement with a subquery. So every reading here is arithmetic over
+ *  measurements. */
+export function couldHaveBeen(
+  pattern: {
+    read_rows: number
+    read_bytes: number
+    runs: number
+    total_ms: number
+    tables: string[]
+  },
+  windowSeconds: number,
+): string | null {
+  const perRun = pattern.runs > 0 ? pattern.read_rows / pattern.runs : 0
+  const perSecond = windowSeconds > 0 ? pattern.runs / windowSeconds : 0
+
+  /* A million rows read per run, on a server that answers in milliseconds, is
+     the shape of a scan. It is not proof of one — a genuine aggregate over a
+     million rows reads a million rows — which is why this says "worth asking"
+     rather than "wrong". */
+  if (perRun >= 1_000_000) {
+    return `Each run reads about ${Math.round(perRun).toLocaleString('en')} rows. If it filters on something that is not a prefix of the sorting key, that is a scan the key could have avoided.`
+  }
+
+  /* Asked in a loop: the most common thing a QA pass over a frontend reveals,
+     and the reason the session exists.
+
+     A *rate*, not a count, and that is the whole reason the window is a
+     parameter: 120 runs of one shape is a loop inside a minute and is nothing
+     at all across a week. Only a session can tell those apart.
+
+     The first version of this looked for few rows per run instead, and it
+     could never have fired. Measured on a real point lookup returning three
+     rows: `read_rows` was **25,600** — three granules, because in ClickHouse
+     the floor for a read is a granule and never a row. A rows-per-run
+     threshold is a threshold about the server's block size, not about the
+     statement. */
+  if (perSecond >= 0.5 && pattern.runs >= 20) {
+    const rate =
+      perSecond >= 1 ? `${Math.round(perSecond)} a second` : 'about one every two seconds'
+    return `${pattern.runs} runs — ${rate}. That is the shape of a question asked once per item, which one statement with an IN or a JOIN would answer in a single pass.`
+  }
+
+  /* Cheap each time and enormous in total. Nothing is wrong with any one run;
+     the finding is that the total is worth a cache or a materialised view. */
+  if (pattern.runs >= 500 && pattern.total_ms / pattern.runs < 50) {
+    return `${pattern.runs} runs averaging ${Math.round(pattern.total_ms / pattern.runs)} ms. Each one is cheap and there are a great many — a materialised view or a cache in front of it would give back the total rather than the average.`
+  }
+  return null
 }

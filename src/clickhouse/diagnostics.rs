@@ -28,6 +28,56 @@ fn window(days: u64) -> u64 {
     days.clamp(1, 90)
 }
 
+/// How far back a reading of the log looks.
+///
+/// Every page but one asks for "lately" and means days. The checkup asks
+/// something else: somebody marks a moment, goes and exercises their
+/// application, and comes back wanting *those* calls rather than the week
+/// around them. A session is minutes, and `INTERVAL n DAY` cannot say minutes.
+///
+/// So one unit reaches the statement and it is seconds. That costs nothing and
+/// was measured rather than assumed: `EXPLAIN indexes=1` gives
+/// `INTERVAL 604800 SECOND` and `INTERVAL 7 DAY` the same plan, the same eight
+/// parts and the same 164 granules. A second predicate for the second unit
+/// would have had to be kept in step across five statements, which is how two
+/// windows on one page come to mean different things.
+#[derive(Debug, Clone, Copy)]
+pub struct Span {
+    seconds: u64,
+}
+
+impl Span {
+    /// The clamp is the one `window` already applied: a day at the floor, and
+    /// ninety at the ceiling because past that the log has almost always been
+    /// rolled and the answer is a smaller window wearing a bigger number.
+    pub fn days(days: u64) -> Self {
+        Self {
+            seconds: window(days) * 86_400,
+        }
+    }
+
+    /// A session. The floor is a minute — a window shorter than that catches
+    /// the clock skew between marking it and the server writing the row, not
+    /// the work in between.
+    pub fn seconds(seconds: u64) -> Self {
+        Self {
+            seconds: seconds.clamp(60, 90 * 86_400),
+        }
+    }
+
+    fn as_secs(self) -> u64 {
+        self.seconds
+    }
+
+    /// Whole days, for the reports that have always carried one. Zero for a
+    /// session, which is honest: a twelve-minute window is not "0 days" so
+    /// much as not a number of days at all, and the page phrases it from
+    /// `window_seconds` instead.
+    fn as_days(self) -> u64 {
+        self.seconds / 86_400
+    }
+}
+
 /// A filter that leaves out Flint's own questions about `system.*`.
 ///
 /// Without it the report is mostly self-portrait: the page that ranks queries
@@ -176,6 +226,10 @@ pub struct QueryReport {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
     pub window_days: u64,
+    /// The same window to the second. `window_days` is this divided down, so
+    /// the two cannot disagree — and a session, which is minutes, has a
+    /// `window_days` of zero and is phrased from this instead.
+    pub window_seconds: u64,
     pub summary: Option<Summary>,
     pub patterns: Vec<Pattern>,
     pub failures: Vec<Failure>,
@@ -187,6 +241,7 @@ impl QueryReport {
             available: false,
             reason: Some(reason.into()),
             window_days: days,
+            window_seconds: days * 86_400,
             summary: None,
             patterns: Vec::new(),
             failures: Vec::new(),
@@ -197,8 +252,9 @@ impl QueryReport {
 /// What ran, what it cost, and what failed — grouped by pattern rather than
 /// listed one row at a time, because a single slow query is an anecdote and a
 /// slow pattern is a problem.
-pub async fn queries(ch: &Client, days: u64, limit: u64) -> Result<QueryReport> {
-    let days = window(days);
+pub async fn queries(ch: &Client, span: Span, limit: u64) -> Result<QueryReport> {
+    let days = span.as_days();
+    let seconds = span.as_secs();
     if let Some(reason) = blocked(ch.reach("query_log").await?, "query_log") {
         return Ok(QueryReport::unavailable(days, reason));
     }
@@ -243,7 +299,7 @@ pub async fn queries(ch: &Client, days: u64, limit: u64) -> Result<QueryReport> 
                 uniqExact(user)                               AS users, \
                 toString(min(event_time))                     AS since \
          FROM system.query_log \
-         WHERE type != 'QueryStart' AND event_time > now() - INTERVAL {days} DAY {ours}"
+         WHERE type != 'QueryStart' AND event_time > now() - INTERVAL {seconds} SECOND {ours}"
     );
 
     let patterns_sql = format!(
@@ -262,7 +318,7 @@ pub async fn queries(ch: &Client, days: u64, limit: u64) -> Result<QueryReport> 
                 any(query)                                    AS sample, \
                 {tables_expr}                                 AS tables \
          FROM system.query_log \
-         WHERE type != 'QueryStart' AND event_time > now() - INTERVAL {days} DAY \
+         WHERE type != 'QueryStart' AND event_time > now() - INTERVAL {seconds} SECOND \
            AND query_kind = 'Select' {ours}\
          GROUP BY normalized_query_hash \
          ORDER BY total_ms DESC \
@@ -279,7 +335,7 @@ pub async fn queries(ch: &Client, days: u64, limit: u64) -> Result<QueryReport> 
                 any(query)                                    AS sample, \
                 any(exception)                                AS message \
          FROM system.query_log \
-         WHERE type != 'QueryStart' AND event_time > now() - INTERVAL {days} DAY \
+         WHERE type != 'QueryStart' AND event_time > now() - INTERVAL {seconds} SECOND \
            AND exception_code != 0 {ours}\
          GROUP BY exception_code \
          ORDER BY occurrences DESC \
@@ -303,6 +359,7 @@ pub async fn queries(ch: &Client, days: u64, limit: u64) -> Result<QueryReport> 
         available: true,
         reason: None,
         window_days: days,
+        window_seconds: seconds,
         summary,
         patterns,
         failures,
@@ -340,6 +397,10 @@ pub struct TrafficReport {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
     pub window_days: u64,
+    /// The same window to the second. `window_days` is this divided down, so
+    /// the two cannot disagree — and a session, which is minutes, has a
+    /// `window_days` of zero and is phrased from this instead.
+    pub window_seconds: u64,
     pub traffic: Vec<TableTraffic>,
     pub unused: Vec<UnusedTable>,
 }
@@ -350,6 +411,7 @@ impl TrafficReport {
             available: false,
             reason: Some(reason.into()),
             window_days: days,
+            window_seconds: days * 86_400,
             traffic: Vec::new(),
             unused: Vec::new(),
         }
@@ -364,11 +426,12 @@ impl TrafficReport {
 /// was written by the insert, and nobody has selected from it in weeks.
 pub async fn traffic(
     ch: &Client,
-    days: u64,
+    span: Span,
     limit: u64,
     workspace: Option<&str>,
 ) -> Result<TrafficReport> {
-    let days = window(days);
+    let days = span.as_days();
+    let seconds = span.as_secs();
     if let Some(reason) = blocked(ch.reach("query_log").await?, "query_log") {
         return Ok(TrafficReport::unavailable(days, reason));
     }
@@ -397,7 +460,7 @@ pub async fn traffic(
                 toString(maxIf(event_time, query_kind = 'Select')) AS last_read \
          FROM system.query_log \
          ARRAY JOIN tables AS t \
-         WHERE type != 'QueryStart' AND event_time > now() - INTERVAL {days} DAY {ours}\
+         WHERE type != 'QueryStart' AND event_time > now() - INTERVAL {seconds} SECOND {ours}\
            AND notEmpty(t) \
            AND t NOT LIKE 'system.%' \
            AND t NOT LIKE '\\_table\\_function.%' \
@@ -426,7 +489,7 @@ pub async fn traffic(
              SELECT DISTINCT t FROM system.query_log \
              ARRAY JOIN tables AS t \
              WHERE type != 'QueryStart' AND query_kind = 'Select' {ours}\
-               AND event_time > now() - INTERVAL {days} DAY \
+               AND event_time > now() - INTERVAL {seconds} SECOND \
          ), \
          stored AS ( \
              SELECT database AS db, table AS tbl, \
@@ -463,6 +526,7 @@ pub async fn traffic(
         available: true,
         reason: None,
         window_days: days,
+        window_seconds: seconds,
         traffic,
         unused,
     })
@@ -787,6 +851,9 @@ pub struct UsageReport {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
     pub window_days: u64,
+    /// The same window to the second. `window_days` is this divided down, so
+    /// the two cannot disagree — and a session, which is minutes, has a
+    /// `window_days` of zero and is phrased from this instead.
     pub usage: Vec<ApiUsage>,
 }
 
