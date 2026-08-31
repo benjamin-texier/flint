@@ -240,7 +240,7 @@ export function CallBuilder({
         {result ? <Verdict result={result} /> : null}
       </div>
 
-      {unreachable ? <p className="says says--throw">{unreachable}</p> : null}
+      {unreachable ? <p className="says says--wide says--throw">{unreachable}</p> : null}
       {result ? <Body result={result} /> : null}
     </section>
   )
@@ -318,7 +318,7 @@ function Reference({
         {/* The trap in every offset-paged API, and it is worth the sentence:
             without an order the rows have no order, and two pages of an
             unordered result can repeat one row and never show another. */}
-        <p className="says says--watch">
+        <p className="says says--wide says--watch">
           A page is only stable if the rows have an order. Give one below, or put an ORDER BY
           in the statement — otherwise page two can repeat a row from page one and skip
           another entirely.
@@ -340,7 +340,7 @@ function Reference({
       </div>
 
       {schema?.shadowed.length ? (
-        <p className="says says--watch">
+        <p className="says says--wide says--watch">
           This statement declares {schema.shadowed.map((s) => `\`${s}\``).join(', ')} itself, so
           Flint leaves {schema.shadowed.length === 1 ? 'that name' : 'those names'} to it — a
           caller sending {schema.shadowed.length === 1 ? 'it' : 'them'} is answering the

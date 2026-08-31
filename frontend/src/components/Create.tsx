@@ -95,7 +95,7 @@ export function Create({
         </p>
       ) : null}
       {act.error ? (
-        <p className="says says--throw">
+        <p className="says says--wide says--throw">
           {act.error instanceof Error ? act.error.message : 'it was refused'}
         </p>
       ) : null}

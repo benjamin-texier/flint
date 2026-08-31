@@ -80,6 +80,8 @@ function Body({ report }: { report: SettingsReport }) {
             <label className="cfg__find">
               <span className="label">FIND</span>
               <input
+                className="input cfg__findbox"
+                type="search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="name or value"
@@ -408,7 +410,7 @@ function Console({ commands }: { commands: SystemCommand[] }) {
                stopped or idle, verified by stopping them and looking — so a tool
                offering the switch is offering one with nothing to show its
                position. Said, rather than implied away. */
-            <p className="says says--throw">
+            <p className="says says--wide says--throw">
               The server reports no state for this, so nothing on this page will look different
               afterwards. The job row — who pressed it, and when — is the only record there is.
             </p>
@@ -423,7 +425,7 @@ function Console({ commands }: { commands: SystemCommand[] }) {
             </button>
           </p>
           {act.error ? (
-            <p className="says says--throw">
+            <p className="says says--wide says--throw">
               {act.error instanceof Error ? act.error.message : 'the server refused it'}
             </p>
           ) : null}

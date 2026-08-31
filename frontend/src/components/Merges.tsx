@@ -68,7 +68,7 @@ export function Merges() {
       ) : null}
 
       {data?.failed ? (
-        <p className="says says--throw">
+        <p className="says says--wide says--throw">
           {count(data.failed)} merge{data.failed === 1 ? '' : 's'} failed
           {data.last_exception ? `: ${data.last_exception.split('\n')[0]}` : ''}
         </p>

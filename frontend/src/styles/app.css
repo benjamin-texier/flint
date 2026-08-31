@@ -5293,10 +5293,17 @@ tr:hover .stratum__fill {
   background: none;
 }
 
+/* On its own on a page rather than at the head of a saved-queries list, where
+   `flex: 1` on the name meant a 1100px field for the words "Weekly load" with
+   its button pushed to the far edge of the screen. A field sized to what goes in
+   it, with the action beside it. */
 .saveform--bare {
   border-bottom: none;
   padding-left: 0;
   padding-right: 0;
+}
+.saveform--bare .saveform__name {
+  flex: 0 1 34ch;
 }
 
 .dashadded {
@@ -11058,6 +11065,13 @@ button.acol__val:hover {
   margin: var(--s3) 0;
 }
 
+/* The shared field, sized to what goes in it: `.input` is width:100%, which in
+   an inline-flex label stretches to whatever the label happens to be. A setting
+   name is the longest thing typed here. */
+.cfg__findbox {
+  width: 28ch;
+}
+
 /* A value can be a path, a byte count, or a comma-separated list of hosts.
    Wrapping rather than nowrap, and bounded, so one long path does not make the
    table wider than the screen — the mistake the restore column made. */
@@ -11132,11 +11146,40 @@ button.acol__val:hover {
   background: var(--slab);
 }
 
+/* Title and the way out on one line, the scope sentence under both — the
+   header holds all three, so a plain flex row put a paragraph beside a heading. */
+.heavy__head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--s1) var(--s3);
+  align-items: baseline;
+}
+.heavy__head .heavy__scope {
+  grid-column: 1 / -1;
+}
+
 .heavy__title {
   margin: 0;
   font-size: var(--size-body);
   font-weight: 600;
   color: var(--chalk);
+}
+
+/* The way back out, in the same quiet voice as the plate's own toggle. */
+.heavy__hide {
+  padding: 2px 6px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  color: var(--chalk-faint);
+  cursor: pointer;
+  transition: color var(--motion-fast) var(--ease-out), background var(--motion-fast) var(--ease-out);
+}
+.heavy__hide:hover {
+  background: var(--spark-wash);
+  color: var(--spark);
 }
 
 .heavy__scope {

@@ -80,8 +80,8 @@ export function CheckPanel({
         ) : null}
       </div>
 
-      {blocked ? <p className="says says--watch">{blocked}</p> : null}
-      {failed ? <p className="says says--throw">{failed}</p> : null}
+      {blocked ? <p className="says says--wide says--watch">{blocked}</p> : null}
+      {failed ? <p className="says says--wide says--throw">{failed}</p> : null}
 
       {/* The verdict first: for an alert it is the answer, and the rows are
           only how it was reached. */}
@@ -92,7 +92,7 @@ export function CheckPanel({
       ) : null}
 
       {result && !result.ok ? (
-        <p className="says says--throw">{result.error}</p>
+        <p className="says says--wide says--throw">{result.error}</p>
       ) : null}
 
       {result?.ok && result.columns.length ? (
@@ -130,7 +130,7 @@ export function CheckPanel({
       {result?.ok && !result.rows.length ? (
         /* Worth saying plainly: for a `rows > 0` alert this is the quiet case,
            and for a report section it is probably a mistake. */
-        <p className="says says--watch">
+        <p className="says says--wide says--watch">
           It ran, and returned no rows.
         </p>
       ) : null}

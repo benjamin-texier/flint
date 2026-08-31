@@ -723,8 +723,16 @@ function Elsewhere({ database, table }: { database: string; table: string }) {
 
   if (!open) {
     return (
-      <button className="review__elsewhere" onClick={() => setOpen(true)} type="button">
-        Where the rest of {database} keeps its disk →
+      /* `→` is this product's mark for "this goes somewhere" — a lineage chip,
+         the rail's foot, a link out. This opens a panel in place, so it wears
+         the disclosure mark the rest of the page uses instead. */
+      <button
+        className="review__elsewhere"
+        onClick={() => setOpen(true)}
+        type="button"
+        aria-expanded={false}
+      >
+        ▸ Where the rest of {database} keeps its disk
       </button>
     )
   }
@@ -740,6 +748,11 @@ function Elsewhere({ database, table }: { database: string; table: string }) {
     <section className="heavy">
       <header className="heavy__head">
         <h4 className="heavy__title">Where {database} keeps its disk</h4>
+        {/* A panel that opens and cannot be closed is a one-way door on a page
+            whose subject is the findings underneath it. */}
+        <button className="heavy__hide" onClick={() => setOpen(false)} type="button">
+          hide
+        </button>
         <p className="heavy__scope">
           {data.columns_total > data.columns.length
             ? `The ${data.columns.length} heaviest of ${count(data.columns_total)} columns, from part metadata — nothing sampled. `

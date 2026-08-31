@@ -80,7 +80,11 @@ export function DashboardList() {
     <article className="page">
       <header className="page__head">
         <p className="eyebrow">Dashboards</p>
-        <h1 className="page__title page__title--hero">Dashboards</h1>
+        {/* Every other page in the product answers a question in its title —
+            "What your queries cost", "Who can do what", "Whether the views are
+            flowing". This one restated its own eyebrow, which is the one thing a
+            title can say that the reader already knows. */}
+        <h1 className="page__title page__title--hero">What you keep in front of you</h1>
         <p className="page__lead">
           Each tile is a query and a chart. Build one from the editor — run something, pick a
           form, then add it here.

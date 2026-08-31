@@ -78,7 +78,7 @@ export function PipelinesView({ days, readonly }: { days: number; readonly: bool
         {report.error ? <ErrorNote error={report.error} retry={() => report.refetch()} /> : null}
 
         {report.data && !report.data.log_available ? (
-          <p className="says says--watch">
+          <p className="says says--wide says--watch">
             {report.data.log_reason} — a view with no runs below means “we cannot tell”, not
             “nothing happened”.
           </p>
@@ -188,7 +188,7 @@ function ViewRow({
         ) : null}
       </p>
 
-      {view.last_error ? <p className="says says--throw">{view.last_error}</p> : null}
+      {view.last_error ? <p className="says says--wide says--throw">{view.last_error}</p> : null}
       {refresh.error ? <ErrorNote error={refresh.error} /> : null}
 
       {showBackfill && forcing.kind === 'backfill' ? (
@@ -204,7 +204,7 @@ function ViewRow({
           <pre className="pipe__sql">{forcing.statement}</pre>
         </div>
       ) : null}
-      {forcing.kind === 'none' ? <p className="says says--watch">{forcing.why}</p> : null}
+      {forcing.kind === 'none' ? <p className="says says--wide says--watch">{forcing.why}</p> : null}
     </article>
   )
 }

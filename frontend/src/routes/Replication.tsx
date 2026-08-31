@@ -56,7 +56,7 @@ export function ReplicationView() {
           count is the headline; with everything caught up it is a vanity number,
           and the rows below already say so one at a time. */}
       {summarise(report.data) ? (
-        <p className="says says--watch">{summarise(report.data)}</p>
+        <p className="says says--wide says--watch">{summarise(report.data)}</p>
       ) : null}
 
       {report.data && !report.data.available ? (
@@ -193,10 +193,10 @@ function ReplicaRow({ replica, mayOperate }: { replica: Replica; mayOperate: boo
       {/* Both exceptions, separately: a queue entry that keeps failing and a
           Keeper connection that dropped are different repairs. */}
       {replica.queue_exception ? (
-        <p className="says says--throw">queue: {replica.queue_exception}</p>
+        <p className="says says--wide says--throw">queue: {replica.queue_exception}</p>
       ) : null}
       {replica.zookeeper_exception && replica.zookeeper_exception !== replica.queue_exception ? (
-        <p className="says says--throw">Keeper: {replica.zookeeper_exception}</p>
+        <p className="says says--wide says--throw">Keeper: {replica.zookeeper_exception}</p>
       ) : null}
 
       {mayOperate ? <ReplicaActions replica={replica} /> : null}

@@ -87,7 +87,7 @@ export function PublishPage() {
         <div className="page__titlerow">
           <h1 className="page__title page__title--hero">What is exposed, and to whom</h1>
           {!stateless ? (
-            <>
+            <div className="page__actions">
               {/* Two doors, because they are two different jobs. A statement is
                   for a join or an aggregate somebody wrote; tables are for
                   handing a partner read access to fifteen of them, which used
@@ -111,7 +111,7 @@ export function PublishPage() {
               >
                 Publish a statement
               </button>
-            </>
+            </div>
           ) : null}
         </div>
         <p className="page__lead">

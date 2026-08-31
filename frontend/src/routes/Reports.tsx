@@ -138,12 +138,6 @@ export function ReportsPage() {
         </EmptyNote>
       ) : null}
 
-      {/* An edition asked for by hand is a job now — it returns before it is
-          made — so something has to say it is running. Here rather than on the
-          row that started it: a second person opening this page should see it
-          too, and the schedule's own editions are listed with their report. */}
-      {!stateless ? <Operations space="data" /> : null}
-
       {reports.isPending && !stateless ? <Loading label="Reading reports" /> : null}
       {reports.error ? <ErrorNote error={reports.error} retry={() => reports.refetch()} /> : null}
 
@@ -190,6 +184,16 @@ export function ReportsPage() {
           errors — and Flint will run them on a schedule and keep each answer.
         </EmptyNote>
       ) : null}
+
+      {/* An edition asked for by hand is a job now — it returns before it is
+          made — so something has to say it is running. Below the reports rather
+          than above them: it is a log of what was asked for, and somebody who
+          opens this page came for the reports. Above them, an operations table
+          with its own heading made the unlabelled list beneath it read as one of
+          its rows. A second person still sees a run in flight, which is why it
+          is on the page at all, and the schedule's own editions are listed with
+          their report. */}
+      {!stateless ? <Operations space="data" /> : null}
 
       {runs.data?.length ? (
         <section className="diag">
@@ -735,18 +739,18 @@ function ReportForm({
           the server's, and if it could not be read the picker is short for a
           reason a person can act on. */}
       {kind !== 'every' && zones.error ? (
-        <p className="says says--watch">
+        <p className="says says--wide says--watch">
           The list of timezones could not be read from ClickHouse, so only the server's own is
           offered here.
         </p>
       ) : null}
       {webhook.trim() && !webhooksAllowed ? (
-        <p className="says says--watch">
+        <p className="says says--wide says--watch">
           Webhook delivery is switched off on this Flint, so this will be recorded but not sent.
         </p>
       ) : null}
 
-      {problem ? <p className="says says--watch">{problem}</p> : null}
+      {problem ? <p className="says says--wide says--watch">{problem}</p> : null}
       {save.error ? <ErrorNote error={save.error} /> : null}
 
       <div className="aform__actions">
