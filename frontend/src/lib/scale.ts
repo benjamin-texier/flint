@@ -20,3 +20,22 @@ export function barScale(values: readonly number[]): number {
   const index = Math.ceil(0.9 * (present.length - 1))
   return present[index] ?? present[present.length - 1]!
 }
+
+/** The floor under a cell that holds anything at all, as a fraction of the
+ *  scale.
+ *
+ *  "Small" and "not there" are different answers, and a grid of cells exists to
+ *  tell them apart — so anything present keeps a visible share of the ink even
+ *  where its true share rounds to nothing. Everything above the floor keeps its
+ *  real proportion.
+ *
+ *  The figure is high for a floor. A tenth would be arithmetically honest and,
+ *  on screen, a square nobody can tell from an empty one: verified in a browser
+ *  rather than reasoned about, at 8% a partition holding a hundred rows beside
+ *  one holding a million was white, and the row read as a table with no data in
+ *  it at all.
+ *
+ *  Shared by the partition grid and the co-access matrix, because they are the
+ *  same physics drawn twice — one product, one floor. Two constants of the same
+ *  name in two files is how the two drift apart. */
+export const CELL_FLOOR = 0.2

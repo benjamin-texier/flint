@@ -2,8 +2,18 @@
 
 export interface AppConfig {
   version: string
-  endpoint: string
-  user: string
+  /** Whether the manifest names the ClickHouse, or the browser does at
+   *  sign-in. False is *unpinned*: a different first screen, and a narrower
+   *  Flint — no workspace, nothing on a schedule, no account of its own. Sent
+   *  as its own fact rather than inferred from `endpoint` being null, because
+   *  the UI branches on it before it has anything to show. */
+  pinned: boolean
+  /** Null unpinned: there is no endpoint until somebody names one, and the one
+   *  they named is on `Session` — it is theirs, not the deployment's. */
+  endpoint: string | null
+  /** The account Flint's own work runs as. Null unpinned, where there is no
+   *  such account: everything runs as whoever signed in. */
+  user: string | null
   default_database: string
   readonly: boolean
   /** What this deployment may do. Gates actions, never reads — see
@@ -16,11 +26,39 @@ export interface AppConfig {
   query_timeout_secs: number
   /** What Flint attaches to every statement it sends. */
   query_settings: Record<string, string>
+  /** Setting names the console may not carry, because Flint sends them itself.
+   *  Published so the prompt can refuse one at the point of typing rather than
+   *  letting it fail every statement that follows. */
+  reserved_settings: string[]
   /** The database Flint persists into, or null when it is stateless. */
   workspace: string | null
   /** Whether alerts may POST anywhere. False makes the alert form say so
    *  up front rather than leaving it to be found in the history. */
   alert_webhooks: boolean
+  /** Roles a published endpoint may be made to run as. Empty means this
+   *  deployment delegates none, and the form does not offer the control. */
+  delegatable_roles: string[]
+  /** Whether everyone must sign in with their own ClickHouse credentials.
+   *  A fact about the deployment; who you are is `Session`. */
+  auth: boolean
+}
+
+/** Who is asking, and whether Flint is asking anybody. */
+export interface Session {
+  /** Whether signing in is required here at all. */
+  required: boolean
+  /** The ClickHouse user statements run as. Null only when signing in is
+   *  required and nobody has. */
+  user: string | null
+  /** Which server *this session* is on, falling back to the manifest's where
+   *  there is one. On an unpinned Flint two people can be signed in to two
+   *  different ClickHouses, so the chrome reads this rather than `AppConfig`. */
+  endpoint: string | null
+  /** The account in the manifest — what Flint itself connects as. Shown on the
+   *  sign-in screen so somebody can see which server they are signing in to,
+   *  and as whom the schedule will keep running. Null unpinned: signing out
+   *  leaves you as nobody, because there is no such account. */
+  service_user: string | null
 }
 
 export interface Dashboard {
@@ -185,6 +223,316 @@ export interface CheckResult {
   }
 }
 
+/** One column, as the schema review measured it. Counts only — what they mean
+ *  is `lib/review`'s decision, and the two are deliberately separate. */
+export interface ColumnFacts {
+  name: string
+  type: string
+  nullable: boolean
+  codec: string
+  in_sorting_key: boolean
+  in_partition_key: boolean
+  /** Null when the table's parts are Compact, where per-column bytes do not
+   *  exist at all. */
+  compressed_bytes: number | null
+  uncompressed_bytes: number | null
+  /** Approximate — `uniqCombined`. Only ever compared against the
+   *  LowCardinality threshold, where a percent of error changes nothing. */
+  distinct: number
+  distinct_capped: boolean
+  /** Exact when it is 100 or less; 101 means "more than a hundred". The figure a
+   *  rule may draw a conclusion from. */
+  distinct_small: number
+  nulls: number
+  empties: number
+  /** Text, always: an Int64's range does not survive a double. */
+  min: string | null
+  max: string | null
+  min_len: number | null
+  max_len: number | null
+  not_a_date: number | null
+  not_a_number: number | null
+  not_a_uuid: number | null
+  fractional: number | null
+  /** Queries that read this column in the window. Null when the query log
+   *  cannot be read at all — which is a different answer from zero, and the two
+   *  must never be shown alike. */
+  read_by: number | null
+}
+
+/** What weighing one proposed type change measured. Sizes in bytes, and never a
+ *  prediction: `before` and `after` are the same rows written both ways. */
+export interface ProbeOutcome {
+  column: string
+  from_type: string
+  to_type: string
+  /** Rows written into the scratch table. Zero when the conversion refused. */
+  rows: number
+  before_compressed: number
+  after_compressed: number
+  before_raw: number
+  after_raw: number
+  /** Bytes the engine moved to do the same work over each column — one grouping
+   *  of the whole thing. Bytes, not milliseconds: a timing over a table written
+   *  a second ago measures the page cache. */
+  before_scanned: number
+  after_scanned: number
+  /** The column's real size today, or null where the parts are Compact. */
+  column_compressed: number | null
+  total_rows: number
+  /** The server's own words when the conversion refused — a stronger finding
+   *  than any saving. */
+  refused: string | null
+}
+
+/** One shape of query that read a column — grouped by ClickHouse's own
+ *  `normalized_query_hash`, so a hundred runs differing in a literal are one
+ *  entry. */
+export interface Reader {
+  runs: number
+  read_bytes: number
+  read_rows: number
+  max_ms: number
+  users: number
+  last_seen: string
+  sample: string
+}
+
+export interface Readers {
+  column: string
+  days: number
+  /** Distinct query shapes that read the column, including those past the
+   *  limit — so a list of five can say what it is five of. */
+  shapes: number
+  /** Hours the log actually holds, computed by the server. Where this is short
+   *  of `days`, it is what the panel says. */
+  hours: number | null
+  /** False when the query log could not be read at all. */
+  available: boolean
+  entries: Reader[]
+}
+
+/** One codec weighed against the column as it stands. Lossless, so the only
+ *  question is bytes. */
+export interface CodecReading {
+  codec: string
+  compressed: number
+  raw: number
+}
+
+export interface CodecOutcome {
+  column: string
+  type: string
+  /** The codec the column has today; empty when it takes the table's default. */
+  current: string
+  rows: number
+  baseline: number
+  baseline_raw: number
+  candidates: CodecReading[]
+  column_compressed: number | null
+}
+
+/** One column of a database, ranked by what it occupies. Metadata only — no
+ *  sampling, no data read. */
+export interface HeavyColumn {
+  table: string
+  column: string
+  type: string
+  compressed: number
+  uncompressed: number
+}
+
+export interface Heavy {
+  database: string
+  /** Columns with measurable bytes in the database, including those past the
+   *  limit. */
+  columns_total: number
+  /** Bytes the per-column accounting can see. */
+  visible: number
+  /** What the database's active parts occupy altogether. Often more than
+   *  `visible`, because a Compact part keeps every column in one file. */
+  on_disk: number
+  compact_parts: number
+  parts: number
+  columns: HeavyColumn[]
+}
+
+export interface SchemaReview {
+  database: string
+  table: string
+  engine: string
+  sorting_key: string
+  partition_key: string
+  total_rows: number
+  /** Rows the pass looked at. */
+  scanned: number
+  /** True when that was every row — a verdict rather than a hypothesis. */
+  verified: boolean
+  part_type: string
+  sizes_known: boolean
+  degraded: boolean
+  /** The window the `read_by` counts cover. */
+  usage_days: number
+  usage_known: boolean
+  /** The oldest moment the query log still holds. Often far short of
+   *  `usage_days`: a log with a one-day TTL answers a seven-day question with
+   *  twelve hours, and saying "nothing read this in 7 days" on that is wrong by
+   *  a factor of fourteen. */
+  usage_since: string | null
+  /** How many hours back that is, computed by the server — because `event_time`
+   *  is on ClickHouse's clock and `Date.now()` is on the reader's, and
+   *  subtracting one from the other silently adds the offset between them. */
+  usage_hours: number | null
+  /** Inserts into this table in the window. Load-bearing: for an INSERT
+   *  ClickHouse logs no columns at all, so a table written to every minute
+   *  looks unused from the read counts alone. */
+  writes: number | null
+  columns: ColumnFacts[]
+}
+
+/** One query shape against a table, as `system.query_log` recorded it.
+ *
+ *  `statement` is a real statement of that shape, literals and all — the
+ *  advisor parses it because `query_log.columns` names every column a statement
+ *  touched without saying *how*, and filtered-on and grouped-by are the whole
+ *  question. */
+export interface Pattern {
+  hash: string
+  runs: number
+  statement: string
+  avg_ms: number
+  p95_ms: number
+  total_ms: number
+  read_rows: number
+  read_bytes: number
+  users: number
+  last_seen: string
+  first_seen: string
+  tables: string[]
+  /** Projections the server actually chose for this shape. Evidence rather
+   *  than inference — empty on a server whose log does not record the field,
+   *  which is why nothing is concluded from emptiness alone. */
+  projections: string[]
+}
+
+/** A projection this table already carries. */
+export interface Existing {
+  name: string
+  /** `Normal` or `Aggregate`. */
+  kind: string
+  query: string
+  sorting_key: string[]
+  parts: number
+  rows: number
+  bytes: number
+  /** Declared and holding nothing: every query ignores it, and no error is
+   *  raised anywhere. The size is the only tell. */
+  inert: boolean
+  /** Runs in the window the log says it answered. `null` where the log could
+   *  not be read — a different answer from zero, and never shown as one. */
+  used_by: number | null
+}
+
+export interface AdviceColumn {
+  name: string
+  type: string
+  /** 1-based place in the sorting key, or null when it is not in it. */
+  sorting_position: number | null
+  in_partition_key: boolean
+  compressed_bytes: number | null
+}
+
+export interface Advice {
+  database: string
+  table: string
+  engine: string
+  /** False for an engine that cannot carry a projection at all. */
+  supported: boolean
+  sorting_key: string[]
+  partition_key: string
+  total_rows: number
+  table_bytes: number
+  parts: number
+  index_granularity: number
+  columns: AdviceColumn[]
+  existing: Existing[]
+  window_days: number
+  /** The oldest entry the log still holds, which is the window actually
+   *  granted rather than the one asked for. */
+  since: string | null
+  workload: { items: Pattern[]; blocked?: string }
+  /** Shapes and runs before the list was capped at the costliest few. Null
+   *  where the workload could not be read at all. A list silently truncated
+   *  reads as the whole truth, which is what these two exist to prevent. */
+  shapes_total: number | null
+  runs_total: number | null
+}
+
+/** One table of a database, and what its workload spends on it. */
+export interface TableStanding {
+  table: string
+  engine: string
+  rows: number
+  bytes: number
+  parts: number
+  sorting_key: string[]
+  projections: number
+  projection_bytes: number
+  /** Over the whole window, not over the samples below. */
+  shapes: number
+  runs: number
+  total_ms: number
+  read_rows: number
+  /** The costliest shapes only — enough to read the access pattern from, and
+   *  deliberately not the whole workload: that is the table tab's job. */
+  samples: Pattern[]
+}
+
+export interface DatabaseAdvice {
+  database: string
+  window_days: number
+  tables: TableStanding[]
+  /** Tables that could hold a projection at all, before the cap. */
+  tables_total: number
+  /** Tables anything read in the window. */
+  tables_read: number
+  blocked?: string
+}
+
+/** What a proposed key measures out at. Counted, not modelled. */
+export interface Measurement {
+  keys: string[]
+  total_rows: number
+  groups: number
+  /** False when `groups` is an estimate rather than a count. */
+  groups_exact: boolean
+  max_rows_per_key: number | null
+  avg_rows_per_key: number | null
+  /** What the columns the projection would hold cost today. Null where the
+   *  parts are Compact and per-column bytes do not exist. */
+  columns_compressed: number | null
+  parts: number
+  index_granularity: number
+}
+
+/** What an aggregate projection would actually weigh, built and measured
+ *  rather than reasoned about. */
+export interface Weight {
+  rows: number
+  /** What one part of it costs on disk — the same figure
+   *  `system.projection_parts` reports, so the two can be compared. */
+  on_disk: number
+  uncompressed: number
+  /** Active parts of the table, because a projection is written per part.
+   *  Verified: three groups measured 1,995 bytes across five parts, and one
+   *  part of the same grouping measured 399. */
+  parts: number
+  table_bytes: number
+  /** The scratch table's definition, so the figure can be judged rather than
+   *  taken on trust. */
+  built: string
+}
+
 export interface SchemaEntry {
   database: string
   table: string
@@ -318,6 +666,26 @@ export async function callPublished(path: string, token: string): Promise<RawCal
 
 export const api = {
   config: () => request<AppConfig>('/config'),
+  jobs: () => request<import('./job').JobReport>('/jobs'),
+  optimize: (database: string, table: string, finalPass: boolean) =>
+    request<import('./job').Job>('/optimize', {
+      method: 'POST',
+      body: JSON.stringify({ database, table, final_pass: finalPass }),
+    }),
+  cancelJob: (id: string) => request<{ cancelling: string; note: string }>(`/jobs/${enc(id)}/cancel`, {
+    method: 'POST',
+  }),
+  session: () => request<Session>('/session'),
+  /** `endpoint` only where the deployment has none of its own. A pinned Flint
+   *  *refuses* the field rather than ignoring it — it would otherwise be an
+   *  open proxy behind a manifest saying it is not — so sending it always
+   *  would break every existing sign-in. */
+  login: (user: string, password: string, endpoint?: string) =>
+    request<{ user: string }>('/login', {
+      method: 'POST',
+      body: JSON.stringify(endpoint ? { user, password, endpoint } : { user, password }),
+    }),
+  logout: () => request<{ user: null }>('/logout', { method: 'POST' }),
   server: () => request<ServerInfo>('/server'),
   databases: () => request<DatabaseSummary[]>('/databases'),
   tables: (db: string) => request<TableSummary[]>(`/databases/${enc(db)}/tables`),
@@ -329,12 +697,100 @@ export const api = {
     ),
   schema: () => request<SchemaEntry[]>('/schema'),
   graph: (db: string) => request<import('./graph').SchemaGraph>(`/databases/${enc(db)}/graph`),
+  /** The same database on a time axis: tables against partitions. Its own call
+   *  rather than a field on the graph, so a role without `system.parts` loses
+   *  this view and keeps the diagram. */
+  /** The same grid one level up: every database on the server against time. The
+   *  one question the per-database views cannot be asked, since each of them is
+   *  scoped to one. */
+  serverTimeline: (grain?: import('./timeline').Grain) =>
+    request<import('./timeline').PartitionTimeline>(
+      `/server/timeline${grain && grain !== 'partition' ? `?grain=${grain}` : ''}`,
+    ),
+  timeline: (db: string, grain?: import('./timeline').Grain) =>
+    request<import('./timeline').PartitionTimeline>(
+      `/databases/${enc(db)}/timeline${grain && grain !== 'partition' ? `?grain=${grain}` : ''}`,
+    ),
+  /** Where that database's disk is, column by column. Its own call for the same
+   *  reason as the timeline: a different system table, and a different way of
+   *  being unavailable. */
+  mass: (db: string, tables?: number) =>
+    request<import('./treemap').MassReport>(
+      `/databases/${enc(db)}/mass${tables ? `?tables=${tables}` : ''}`,
+    ),
+  /** Which of that database's tables get read in the same statement. From the
+   *  query log, so it is the only one of the four readings that can be
+   *  unavailable because of how the server is configured rather than granted. */
+  affinity: (db: string, days: number) =>
+    request<import('./affinity').AffinityReport>(`/databases/${enc(db)}/affinity?days=${days}`),
+  changes: (db: string, table: string, days = 30) =>
+    request<import('./changes').ChangeReport>(
+      `/databases/${enc(db)}/tables/${enc(table)}/changes?days=${days}`,
+    ),
+  impact: (db: string, table: string) =>
+    request<import('./impact').Impact>(`/databases/${enc(db)}/tables/${enc(table)}/impact`),
+  /** What one column of a table says about another. Asked for, never automatic:
+   *  it reads every row twice. */
+  relations: (db: string, table: string) =>
+    request<import('./relations').Relations>(
+      `/databases/${enc(db)}/tables/${enc(table)}/relations`,
+    ),
+
+  drift: (db: string, table: string) =>
+    request<import('./drift').Drift>(`/databases/${enc(db)}/tables/${enc(table)}/drift`),
+
+  compare: (db: string, table: string, against: string) =>
+    request<import('./compare').Comparison>(
+      `/databases/${enc(db)}/tables/${enc(table)}/compare?with=${encodeURIComponent(against)}`,
+    ),
+
+  distribution: (db: string, table: string, column: string) =>
+    request<import('./distribution').Distribution>(
+      `/databases/${enc(db)}/tables/${enc(table)}/columns/${enc(column)}/distribution`,
+    ),
   profile: (db: string, table: string) =>
     request<import('./profile').TableProfile>(
       `/databases/${enc(db)}/tables/${enc(table)}/profile`,
     ),
+  /** Where a database's disk is, one column at a time. The question that comes
+   *  before opening any single table's review. */
+  heavy: (db: string, limit = 30) =>
+    request<Heavy>(`/databases/${enc(db)}/heavy?limit=${limit}`),
+  /** The queries that read one column, biggest reader first. What the log
+   *  cannot say — whether it was filtered on or ordered by — the reader sees for
+   *  themselves in the SQL. */
+  readers: (db: string, table: string, column: string, days = 7, limit = 5) =>
+    request<Readers>(
+      `/databases/${enc(db)}/tables/${enc(table)}/readers?column=${enc(column)}&days=${days}&limit=${limit}`,
+    ),
+  /** Weigh the codecs worth trying on a column. The candidates are the
+   *  server's choice — a codec expression reaches a CREATE TABLE. */
+  codecs: (db: string, table: string, column: string) =>
+    request<CodecOutcome>(`/databases/${enc(db)}/tables/${enc(table)}/codecs`, {
+      method: 'POST',
+      body: JSON.stringify({ column }),
+    }),
+  /** Weigh a proposed type change: the same rows written both ways, measured.
+   *  A POST because it writes a scratch table in Flint's own database. */
+  probe: (db: string, table: string, body: { column: string; to_type: string; rows?: number }) =>
+    request<ProbeOutcome>(`/databases/${enc(db)}/tables/${enc(table)}/probe`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  /** The schema review. `verify` reads every row instead of a prefix, which is
+   *  the difference between a hypothesis and a verdict — and between a free
+   *  query and a full scan, so it is never the default. */
+  review: (db: string, table: string, verify = false) =>
+    request<SchemaReview>(
+      `/databases/${enc(db)}/tables/${enc(table)}/review${verify ? '?verify=true' : ''}`,
+    ),
   history: (limit = 200) => request<HistoryResponse>(`/history?limit=${limit}`),
 
+  /** What changed, over that window and the six behind it. Hours rather than
+   *  days because "since you last looked" is a shorter unit than every other
+   *  diagnostic's, and a day asked for as `days=1` reads as a rounding. */
+  news: (hours = 24) =>
+    request<import('./news').NewsReport>(`/diagnostics/news?hours=${hours}`),
   diagnoseQueries: (days: number) =>
     request<import('./diagnose').QueryReport>(`/diagnostics/queries?days=${days}`),
   diagnoseTraffic: (days: number) =>
@@ -365,10 +821,83 @@ export const api = {
 
   /** Run a report now. Allowed under FLINT_READONLY: every section is a read,
    *  and the edition it writes is Flint's own bookkeeping. */
+  /** Submits a job and returns as soon as it is recorded: an edition is a dozen
+   *  statements, and holding the request open for all of them timed out in the
+   *  browser while the work continued on the server. */
   runReport: (id: string) =>
-    request<{ run_id: string; report: string }>(`/reports/${id}/run`, { method: 'POST' }),
+    request<import('./job').Job>(`/reports/${id}/run`, { method: 'POST' }),
 
   published: () => request<import('./publish').Published[]>('/published'),
+  /** Traffic per address, from Flint's own call log. A cache hit and a refusal
+   *  never reach ClickHouse, so `system.query_log` cannot answer this. */
+  publishedUsage: (hours: number) =>
+    request<import('./publish').UsageIndex>(`/published/usage?hours=${hours}`),
+  /** What a revision's statement returns, for whoever is writing its contract.
+   *  A `DESCRIBE`, so it reads no data. */
+  endpointColumns: (slug: string, revision?: number) =>
+    request<import('./publish').EndpointColumns>(
+      `/published/${enc(slug)}/columns${revision ? `?v=${revision}` : ''}`,
+    ),
+  endpointUsage: (slug: string, hours: number) =>
+    request<import('./publish').EndpointUsage>(
+      `/published/${enc(slug)}/usage?hours=${hours}`,
+    ),
+  /** Expose a handful of tables, one endpoint each.
+   *
+   *  The per-statement form is right for a join and wrong for the only other
+   *  thing anyone publishes: read access to some tables, for a caller with no
+   *  ClickHouse account. Anyone who *has* an account should use `POST
+   *  /api/data` and name a dataset per call instead — nothing is published and
+   *  their own grants decide what comes back. */
+  publishTables: (body: {
+    database: string
+    tables: string[]
+    public?: boolean
+    max_rows?: number
+    /** `draft` or `live`. Draft is the recommendation: fifteen addresses that
+     *  started answering the moment somebody clicked once is a lot of surface
+     *  to have appeared unread. */
+    state?: 'draft' | 'live'
+    cache_ttl?: number
+    prefix?: string
+    published_by?: string
+  }) =>
+    request<import('./publish').TablesPublished>('/published/tables', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  /** Start a new revision of an address, as a draft. The address gains a
+   *  revision; nothing a caller can reach changes until it goes live. */
+  newRevision: (slug: string) =>
+    request<{ endpoints: import('./publish').Published[] }>(
+      `/published/${enc(slug)}/revisions`,
+      { method: 'POST' },
+    ),
+  /** Move one revision along its life. Going live also puts the revision it
+   *  replaces on notice — one act, because a moment with two live revisions or
+   *  none is a moment a caller can land in. */
+  setRevisionState: (id: string, state: 'live' | 'retiring' | 'retired') =>
+    request<{ endpoints: import('./publish').Published[]; minted?: string }>(
+      `/revisions/${enc(id)}/state`,
+      { method: 'POST', body: JSON.stringify({ state }) },
+    ),
+  keys: () => request<import('./publish').ApiKey[]>('/keys'),
+  saveKey: (body: {
+    id?: string
+    name: string
+    owner?: string
+    /** The addresses it may call. Empty is every one of them. */
+    scope?: string[]
+    quota_per_day?: number
+    enabled?: boolean
+    rotate?: boolean
+  }) =>
+    request<{ keys: import('./publish').ApiKey[]; minted?: string }>('/keys', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  deleteKey: (id: string) =>
+    request<{ deleted: string }>(`/keys/${enc(id)}`, { method: 'DELETE' }),
   pipelines: (days: number) =>
     request<import('./pipeline').PipelineReport>(`/diagnostics/pipelines?days=${days}`),
   refreshView: (body: { database: string; view: string }) =>
@@ -377,16 +906,169 @@ export const api = {
       body: JSON.stringify(body),
     }),
   access: () => request<import('./access').AccessReport>('/diagnostics/access'),
+  /* What *you* may see, which is a different question from how access is
+     arranged — and answerable for a user who cannot read a single access
+     table. */
+  myGrants: () => request<import('./grants').MyGrants>('/me/grants'),
+  limits: () => request<import('./limits').LimitsReport>('/diagnostics/limits'),
+  settings: () => request<import('./settings').SettingsReport>('/diagnostics/settings'),
+  now: () => request<import('./now').NowReport>('/diagnostics/now'),
+  trace: (kind: string, minutes: number) =>
+    request<import('./trace').TraceReport>(
+      `/diagnostics/trace?kind=${encodeURIComponent(kind)}&minutes=${minutes}`,
+    ),
+  keeper: () => request<import('./keeper').KeeperReport>('/cluster/keeper'),
+  alterations: (database: string, table: string) =>
+    request<import('./alter').Offered[]>(
+      `/schema/alterations?database=${encodeURIComponent(database)}&table=${encodeURIComponent(table)}`,
+    ),
+  /** What the workload asks of one table, against what the table is sorted by.
+   *  A read: every figure is one ClickHouse already had. */
+  projectionAdvice: (database: string, table: string, days = 7) =>
+    request<Advice>(
+      `/databases/${enc(database)}/tables/${enc(table)}/projections?days=${days}`,
+    ),
+  /** Which tables in a database the workload argues about, heaviest first.
+   *  Three reads for the whole database; the per-table tab does the rest. */
+  databaseProjections: (database: string, days = 7) =>
+    request<DatabaseAdvice>(`/databases/${enc(database)}/projections?days=${days}`),
+  /** Count what a proposed key would come out at. A POST because it is a scan
+   *  of every row of those columns — a cost somebody agrees to by pressing a
+   *  button, never one that opening a page incurs. It writes nothing. */
+  measureProjection: (
+    database: string,
+    table: string,
+    body: { keys: { column: string; bucket: string | null }[]; columns: string[] },
+  ) =>
+    request<Measurement>(
+      `/databases/${enc(database)}/tables/${enc(table)}/projections/measure`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+  /** Build what an aggregate projection would hold, weigh it, and drop it. The
+   *  one call here that writes — to Flint's own workspace, never to the table. */
+  weighProjection: (
+    database: string,
+    table: string,
+    body: {
+      keys: { column: string; bucket: string | null }[]
+      aggregates: { name: string; params: number[]; args: string[] }[]
+    },
+  ) =>
+    request<Weight>(
+      `/databases/${enc(database)}/tables/${enc(table)}/projections/weigh`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+  derived: (database: string, table: string) =>
+    request<import('./derived').DerivedReport>(
+      `/schema/derived?database=${encodeURIComponent(database)}&table=${encodeURIComponent(table)}`,
+    ),
+  definition: (database: string, table: string) =>
+    request<{ ddl: string }>(
+      `/schema/definition?database=${encodeURIComponent(database)}&table=${encodeURIComponent(table)}`,
+    ),
+  create: (statement: string) =>
+    request<import('./job').Job>('/schema/create', {
+      method: 'POST',
+      body: JSON.stringify({ statement }),
+    }),
+  alter: (change: Record<string, unknown>) =>
+    request<import('./job').Job>('/schema/alter', {
+      method: 'POST',
+      body: JSON.stringify(change),
+    }),
+  storagePolicies: () => request<import('./storage').StorageReport>('/storage/policies'),
+  dictionaries: () =>
+    request<import('./dictionaries').DictionaryReport>('/dictionaries'),
+  reloadDictionary: (database: string, name: string) =>
+    request<import('./job').Job>('/dictionaries/reload', {
+      method: 'POST',
+      body: JSON.stringify({ database, name }),
+    }),
+  systemAct: (command: string) =>
+    request<import('./job').Job>('/system/act', {
+      method: 'POST',
+      body: JSON.stringify({ command }),
+    }),
+  govern: (change: Record<string, unknown>) =>
+    request<import('./job').Job>('/access/govern', {
+      method: 'POST',
+      body: JSON.stringify(change),
+    }),
+  accessAct: (change: Record<string, unknown>) =>
+    request<import('./job').Job>('/access/act', {
+      method: 'POST',
+      body: JSON.stringify(change),
+    }),
   replication: () =>
     request<import('./replication').ReplicationReport>('/diagnostics/replication'),
+  topology: () => request<import('./cluster').Topology>('/cluster/topology'),
+  series: (hours: number) =>
+    request<import('./health').SeriesReport>(`/health/series?hours=${hours}`),
+  backups: () => request<import('./backups').BackupReport>('/backups'),
+  backupAction: (database: string, table: string, file: string, action: string) =>
+    request<import('./job').Job>('/backups/act', {
+      method: 'POST',
+      body: JSON.stringify({ database, table, file, action }),
+    }),
+  schemaObjects: (limit = 400) =>
+    request<import('./schema').SchemaReport>(`/schema/objects?limit=${limit}`),
+  objectAction: (database: string, table: string, action: string) =>
+    request<import('./job').Job>('/schema/object', {
+      method: 'POST',
+      body: JSON.stringify({ database, table, action }),
+    }),
+  detachedParts: () => request<import('./parts').DetachedReport>('/parts/detached'),
+  partitionAction: (database: string, table: string, partitionId: string, action: string) =>
+    request<import('./job').Job>('/parts/partition', {
+      method: 'POST',
+      body: JSON.stringify({ database, table, partition_id: partitionId, action }),
+    }),
+  detachedPartAction: (database: string, table: string, part: string, action: string) =>
+    request<import('./job').Job>('/parts/detached/act', {
+      method: 'POST',
+      body: JSON.stringify({ database, table, part, action }),
+    }),
+  merges: (hours: number) =>
+    request<import('./health').MergeReport>(`/health/merges?hours=${hours}`),
+  healthErrors: (hours: number) =>
+    request<import('./health').ErrorReport>(`/health/errors?hours=${hours}`),
+  serverLog: (level: string, limit = 200) =>
+    request<import('./health').LogReport>(`/health/log?level=${level}&limit=${limit}`),
+  replicationQueue: (limit = 40) =>
+    request<import('./cluster').QueueReport>(`/cluster/replication-queue?limit=${limit}`),
+  replicaAction: (database: string, table: string, action: string) =>
+    request<import('./job').Job>('/cluster/replica', {
+      method: 'POST',
+      body: JSON.stringify({ database, table, action }),
+    }),
+  ddlQueue: (limit = 40) =>
+    request<import('./cluster').DdlReport>(`/cluster/ddl-queue?limit=${limit}`),
   killQuery: (queryId: string) =>
     request<{ asked: string; status: string; matched: boolean }>('/diagnostics/kill', {
       method: 'POST',
       body: JSON.stringify({ query_id: queryId }),
     }),
 
+  audit: (days: number, limit: number) =>
+    request<import('./audit').AuditReport>(
+      `/diagnostics/audit?days=${days}&limit=${limit}`,
+    ),
   apiUsage: (days: number) =>
     request<import('./diagnose').UsageReport>(`/diagnostics/api-usage?days=${days}`),
+  /** Ask a dataset a question. The server writes the SQL, so the browser does
+   *  not have to have a second opinion about what the question means. */
+  dataset: (body: import('./dsl').DslQuery) =>
+    request<import('./dsl').DslAnswer>('/data', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  /** The same question, built and handed back unrun — what a builder shows
+   *  while somebody is still assembling it. */
+  datasetSql: (body: import('./dsl').DslQuery) =>
+    request<{ dataset: string; sql: string }>('/data', {
+      method: 'POST',
+      body: JSON.stringify({ ...body, explain: true }),
+    }),
   savePublished: (body: {
     id?: string
     name: string
@@ -395,11 +1077,31 @@ export const api = {
     database: string
     defaults: string
     token?: string
+    /** Mint a fresh token even on an edit. Explicit, because a hashed token
+     *  means every edit looks like one that left the field empty. */
+    rotate?: boolean
     public: boolean
     enabled: boolean
     max_rows: number
+    expires_at?: string
+    run_as?: string
+    /** Absent keeps what the endpoint had; `''` is a deliberate choice of the
+     *  server's own zone. The two are different on purpose — `run_as` spells
+     *  them the same way and so cannot be cleared once set. */
+    timezone?: string
+    /** The sentence a caller reads. Absent keeps. */
+    description?: string
+    /** Seconds an answer may be served from memory. Absent keeps. */
+    cache_ttl?: number
+    /** The revision's promises, as JSON. Absent keeps; `''` is a deliberate
+     *  return to promising only what the placeholders say. Refused on a live
+     *  or retiring revision — that is what a new revision is for. */
+    contract?: string
+    /** Where a *new* endpoint starts its life. Ignored on an edit: a state is
+     *  moved by its own button and nothing else. */
+    state?: 'draft' | 'live'
   }) =>
-    request<import('./publish').Published[]>('/published', {
+    request<{ endpoints: import('./publish').Published[]; minted?: string }>('/published', {
       method: 'POST',
       body: JSON.stringify(body),
     }),
@@ -413,12 +1115,14 @@ export const api = {
       headers: token ? { 'X-Flint-Token': token } : {},
     }),
 
+  timezones: () => request<string[]>('/timezones'),
   reports: () => request<import('./report').Report[]>('/reports'),
   saveReport: (body: {
     id?: string
     name: string
     spec: string
     schedule: string
+    timezone: string
     webhook: string
     enabled: boolean
   }) => request<import('./report').Report[]>('/reports', { method: 'POST', body: JSON.stringify(body) }),
@@ -436,7 +1140,16 @@ export const api = {
       `/alert-events?limit=${limit}${alertId ? `&alert_id=${enc(alertId)}` : ''}`,
     ),
 
-  run: (body: { sql: string; database?: string; query_id?: string; max_rows?: number }) =>
+  run: (body: {
+    sql: string
+    database?: string
+    query_id?: string
+    max_rows?: number
+    /** Settings this one statement carries. Only the console sends these, and
+     *  the route refuses any name Flint attaches itself — see
+     *  `routes::query::vet_settings`. */
+    settings?: Record<string, string>
+  }) =>
     request<QueryResult>('/query', { method: 'POST', body: JSON.stringify(body) }),
 
   dashboards: () => request<Dashboard[]>('/dashboards'),

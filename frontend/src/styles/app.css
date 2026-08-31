@@ -94,9 +94,14 @@
 .chrome__space:hover {
   color: var(--text-primary);
 }
+/* The space you are in, and the section you are in, were both saying so in the
+   accent — two marks for one fact, a hand's width apart. The coarser of the two
+   gives it up: full ink against secondary, under a rule in that same ink, is
+   enough to read as current, and it leaves the filled pill beside it as the one
+   place the eye is told to look. */
 .chrome__space.active {
   color: var(--text-primary);
-  border-bottom-color: var(--accent);
+  border-bottom-color: var(--text-primary);
 }
 
 .chrome__sections {
@@ -131,9 +136,14 @@
 .chrome__link:hover {
   color: var(--text-primary);
 }
+/* Inverted rather than accented. The palette Flint is drawn to spends the spark
+   once per view, on the thing you are being asked to do — and a filled green
+   pill sitting a hand's width from the page's primary button was spending it
+   twice, on the louder of the two, for the one that is not an action at all.
+   Ink on ink says "here" at least as plainly and says nothing else. */
 .chrome__link.active {
-  color: var(--accent-ink);
-  background: var(--accent);
+  color: var(--rail);
+  background: var(--chalk);
 }
 
 .chrome__spacer {
@@ -165,15 +175,53 @@
 /* The facts give way one at a time as the bar narrows, least useful first: the
  * uptime, then the version, then the user. The host stays longest — it is the
  * one thing on this bar you cannot work out from the page you are looking at.
- * All of it is on the Diagnose page in full. */
-@media (max-width: 1320px) {
+ * All of it is on the Diagnose page in full.
+ *
+ * Re-measured 2026-08-25, in a browser, sweeping 1600px down to 1000px in
+ * twenty-pixel steps and reading the document's own overflow at each: every
+ * rung was about 150px late, because the nav has gained destinations since the
+ * thresholds were first taken and the facts were being kept in a bar that no
+ * longer had room for them. The effect was a page that scrolled sideways at
+ * every laptop width from 1000px to 1460px — visible only in a browser, and
+ * only if you looked at the horizontal scrollbar rather than at the page.
+ *
+ * Re-measured again when Data gained `Home`, the same way, in five-pixel steps.
+ * One destination is about fifty pixels, and every rung moved by roughly that —
+ * which is the standing lesson here: these four numbers are a property of the
+ * nav, so adding a section to `lib/spaces` means measuring them again. Data is
+ * now the fullest bar of the two and sets all four; Infrastructure fits in
+ * 40–60px less and so gives its facts up a little earlier than it must, the
+ * same harmless direction a deployment with `FLINT_INFRASTRUCTURE=false` errs
+ * in.
+ *
+ * Re-measured a third time, in one-pixel steps, after the repo's own browser
+ * check began reporting fifteen pixels of sideways scroll on *every* page at
+ * 1500px. The cause is worth writing down, because it is not what the two
+ * earlier measurements assumed: **the attention badges are part of the width.**
+ * A badge is 17px, and the bar carries up to four of them — one on each space,
+ * one on Alerts, one on Reports — so the same build is 33px wider on a server
+ * with things to report than on a quiet one. The thresholds had been taken on a
+ * quiet server, which is why they were right in development and late in use.
+ *
+ * Re-measured a fourth time when Infrastructure gained its own `Home` — the
+ * board had been reachable only by clicking the space's name, so a page inside
+ * the space had no tab back out to it. That put Infrastructure at nine
+ * destinations against Data's eight, and with the longer labels it is now the
+ * fullest bar of the two by 33px at every rung. It sets all four; Data gives
+ * its facts up that much early, the same harmless direction.
+ *
+ * So the figures below are the widths at which each state stopped fitting on
+ * the *fullest* bar a deployment can show: both spaces, every destination, and
+ * a badge on everything that can carry one. A server with nothing to report
+ * gives its facts up a little early, which is the harmless direction. */
+@media (max-width: 1626px) {
   .chrome__fact--uptime {
     display: none;
   }
 }
 /* Version and user go together: at this width the pair no longer fits beside
  * the host without one of them being clipped. */
-@media (max-width: 1270px) {
+@media (max-width: 1576px) {
   .chrome__fact--version,
   .chrome__fact--user {
     display: none;
@@ -181,14 +229,17 @@
 }
 /* Below this even the host cannot be shown without pushing the nav off the bar,
  * and the nav is what the bar is for. All of it is on the Diagnose page. */
-@media (max-width: 1120px) {
+@media (max-width: 1429px) {
   .chrome__facts {
     display: none;
   }
 }
-/* Narrower than any laptop: the eight destinations no longer fit on one line,
- * so the bar takes a second one rather than cutting the last of them off. */
-@media (max-width: 940px) {
+/* Below this the destinations no longer fit on one line even with the facts
+ * gone, so the bar takes a second one rather than cutting the last of them off.
+ * The rule only *allows* the second line — a bar whose contents still fit keeps
+ * to one — so the threshold is the width at which wrapping first becomes
+ * necessary rather than the width at which it always happens. */
+@media (max-width: 1306px) {
   .chrome {
     height: auto;
     flex-wrap: wrap;
@@ -197,8 +248,55 @@
     padding-bottom: var(--s2);
   }
 }
+/* And below this the *first* wrapped line no longer fits either: the brand, the
+ * two space names and the pill of destinations come to 1029px on
+ * Infrastructure's nine, and `.chrome__nav` holds the last two as one flex item
+ * that cannot break. So it is allowed to — the spaces keep their line and the
+ * pill takes the next — which is what put a 1024px window, the commonest narrow
+ * one there is, back inside the viewport. */
+@media (max-width: 1028px) {
+  .chrome__nav {
+    flex-wrap: wrap;
+    row-gap: var(--s2);
+  }
+}
+/* And where it has actually broken, the rule between them goes. It divides two
+ * things side by side; at the end of a line it divides nothing and is only a
+ * mark — the same reason the facts strip carries its separators on the facts
+ * rather than between them.
+ *
+ * Its own threshold rather than the one above, measured the same way: the nav
+ * takes a second line at 1023px on Infrastructure and 990px on Data, and
+ * between there and 1028px it still fits on one, where the rule is doing its
+ * job and should stay. */
+@media (max-width: 1022px) {
+  .chrome__navsep {
+    display: none;
+  }
+}
+/* And at the bottom, the pill of destinations does not fit on a line by itself:
+ * Infrastructure's nine come to 769px, so below about 792px there is nowhere
+ * left for the bar to give. It wraps inside the pill rather than scrolling the
+ * page sideways — the house rule is that wide content scrolls inside its own
+ * box, and a nav is the one thing that must not, because a destination scrolled
+ * out of sight is a destination nobody knows is there.
+ *
+ * Wrapped, the pill is no longer a pill: a two-line capsule reads as a mistake,
+ * so it takes the ordinary radius and behaves as the panel it has become. This
+ * floor moved 50px up when Infrastructure gained `Home` — it was 742px before
+ * — which is what put it in reach of being measured at all. */
+@media (max-width: 791px) {
+  .chrome__sections {
+    flex-wrap: wrap;
+    row-gap: 3px;
+    border-radius: var(--radius-md);
+  }
+}
+/* The text step, not the fill: `--alarm` is 3.3:1 as a label on this bar. The
+   fact only turns red when something is wrong, which is exactly the moment it
+   has to be readable. */
 .chrome__fact--warn {
-  color: var(--alarm);
+  color: var(--alarm-text);
 }
 
 .chrome__sep {
@@ -218,6 +316,88 @@
 .chrome__theme:hover {
   color: var(--chalk);
   background: var(--slab-raised);
+}
+
+/* The stateless note. A pill, because it is a fact about the deployment and it
+ * sits with the other one; a popover, because the fact is useless without the
+ * line that changes it and that line does not fit in a bar. Quiet colours
+ * throughout — this is a mode, not an alarm, and `--warning` here would say
+ * something is wrong with a Flint that is working as configured. */
+.stateless {
+  position: relative;
+  flex: none;
+}
+
+.stateless__pill {
+  gap: 5px;
+  border: 1px dashed var(--line-strong);
+  background: transparent;
+  color: var(--chalk-dim);
+  cursor: pointer;
+  transition: color var(--motion-fast) var(--ease),
+    border-color var(--motion-fast) var(--ease);
+}
+.stateless__pill:hover,
+.stateless__pill[aria-expanded='true'] {
+  color: var(--chalk);
+  border-color: var(--chalk-faint);
+}
+
+/* Hollow, and the only ring in the bar: what it marks is an absence. */
+.stateless__dot {
+  width: 6px;
+  height: 6px;
+  border: 1px solid currentcolor;
+  border-radius: var(--radius-pill);
+}
+
+.stateless__panel {
+  position: absolute;
+  top: calc(100% + var(--s2));
+  right: 0;
+  z-index: 20;
+  width: 320px;
+  padding: var(--s4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--slab);
+  box-shadow: var(--shadow-2);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.stateless__title {
+  font-size: var(--size-head);
+  font-weight: 650;
+  color: var(--chalk);
+  margin-bottom: var(--s2);
+}
+
+.stateless__note {
+  font-size: var(--size-body);
+  line-height: 1.5;
+  color: var(--chalk-dim);
+}
+.stateless__note + .stateless__note {
+  margin-top: var(--s2);
+}
+
+.stateless__lede {
+  margin-top: var(--s3);
+  font-size: var(--size-body);
+  color: var(--chalk);
+}
+
+.stateless__env {
+  margin: var(--s2) 0;
+  padding: var(--s2) var(--s3);
+  border-radius: var(--radius-sm);
+  background: var(--slab-sunk);
+  border: 1px solid var(--line);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+  overflow-x: auto;
 }
 
 /* ═══ Explorer rail ══════════════════════════════════════════════════════
@@ -448,6 +628,46 @@
   border-radius: 50%;
   background: var(--k-dictionary);
 }
+/* The legend's copy of a folding engine's rail: the same broken bar, stood on
+   end and shrunk, so the mark in the legend and the mark on the node are
+   visibly the same mark. Neutral ink — it is about behaviour, and behaviour has
+   no kind. */
+.glyph--folds {
+  width: 3px;
+  height: 9px;
+  border-radius: 1px;
+  background: repeating-linear-gradient(
+    180deg,
+    var(--chalk-faint) 0 3px,
+    transparent 3px 5px
+  );
+}
+
+/* The legend's copy of a carrying edge: the same dots, laid flat and still, so
+   what is moving on the diagram and what is named at its foot are visibly the
+   same mark. Accent ink, because the dots are accent ink. */
+.glyph--flow {
+  width: 12px;
+  height: 2px;
+  border-radius: 0;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--accent) 0 2px,
+    transparent 2px 5px
+  );
+}
+/* And of a severed one: a line with a piece missing, in the alarm ink it is
+   drawn in. */
+.glyph--severed {
+  width: 12px;
+  height: 2px;
+  border-radius: 0;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--alarm) 0 4px,
+    transparent 4px 7px
+  );
+}
 
 .rail__scroll {
   flex: 1;
@@ -548,6 +768,177 @@
 }
 .rail__foot:hover .rail__footarrow {
   transform: translateX(3px);
+}
+
+/* ── The rail beside the alerts ─────────────────────────────────────────────
+   The explorer's rail followed the reader onto the alerts page, where a list of
+   tables answers no question anybody has. This one is the same frame — same
+   width, same ground, same border — carrying a filter instead of a tree, so
+   crossing between the two pages does not move the furniture. */
+.rail--alerts {
+  gap: var(--s4);
+  padding-bottom: var(--s4);
+  overflow-y: auto;
+}
+
+.rail__head {
+  padding: var(--s4) var(--s4) 0;
+}
+
+.rail__title {
+  margin: 0;
+  font-size: var(--size-head);
+  font-weight: 600;
+  color: var(--chalk);
+}
+
+.rail__sub {
+  margin: 2px 0 0;
+  font-size: var(--size-data);
+  color: var(--chalk-faint);
+}
+
+.rail__block {
+  padding: 0 var(--s4);
+}
+
+.rail__label {
+  margin: 0 0 var(--s2);
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+.railset {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 0 var(--s3);
+  list-style: none;
+}
+
+.railset__row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  width: 100%;
+  padding: 5px var(--s2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  text-align: left;
+  font-size: var(--size-data);
+  color: var(--chalk-dim);
+  cursor: pointer;
+  transition:
+    background var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
+}
+
+.railset__row:hover {
+  background: var(--slab-hover);
+  color: var(--chalk);
+}
+
+/* The selected filter is stated by the ground it sits on rather than by a
+   colour of its own: the row already carries a standing colour on its dot, and
+   two colours arguing on one row is how a filter stops reading as a filter. */
+.railset__row.is-on {
+  background: var(--slab-raised);
+  color: var(--chalk);
+  font-weight: 500;
+}
+
+.railset__name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Tabular figures so the column of counts is a column and not a ragged edge. */
+.railset__count {
+  font-variant-numeric: tabular-nums;
+  font-size: var(--size-data);
+  color: var(--chalk-faint);
+}
+
+.railset__row.is-on .railset__count {
+  color: var(--chalk-dim);
+}
+
+/* The standing, as a dot before the name. Firing takes the alarm, a check that
+   errored takes the warning — Flint failing to *evaluate* a rule is a different
+   fact from the rule being true — and the quiet three take no colour at all,
+   because an indicator that is always lit is not an indicator.
+
+   The two colours are the ones the page's own chips use (`.flag--firing`,
+   `.flag--error`), not a second opinion: a rail dot that disagrees with the chip
+   beside the alert it counts is two answers to one question. */
+.railset__row::before {
+  content: '';
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--line-strong);
+  transform: translateY(-1px);
+}
+
+.railset__row--firing::before {
+  background: var(--alarm);
+}
+
+.railset__row--error::before {
+  background: var(--warning);
+}
+
+.railset__row--ok::before {
+  background: var(--success);
+}
+
+/* Paused is the fifth colour: an alert switched off is not fine and not broken,
+   and neither of the other four can say so. Everything, and an alert that has
+   simply never run, stay uncoloured — nothing has happened to them. */
+.railset__row--paused::before {
+  background: var(--cold);
+}
+
+.railset__row--all::before,
+.railset__row--idle::before {
+  background: var(--line-strong);
+}
+
+.railset--plain {
+  padding: 0;
+}
+
+.railset__dest {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s2);
+  padding: 3px 0;
+  font-size: var(--size-data);
+  color: var(--chalk-dim);
+  min-width: 0;
+}
+
+.railset--plain .railset__name {
+  min-width: 0;
+}
+
+.railset__state {
+  flex: none;
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  color: var(--chalk-faint);
+}
+
+.railset__state--failing {
+  color: var(--alarm-text);
 }
 
 /* ═══ Page scaffolding ═══════════════════════════════════════════════════ */
@@ -671,6 +1062,10 @@
   border-radius: var(--radius-pill);
   font-size: 12px;
   font-weight: 500;
+  /* A segmented control never wraps. A two-word label broke across two lines the
+     first time one appeared beside a long sentence — `A week` over two rows in a
+     26px pill, which reads as a rendering fault rather than as a choice. */
+  white-space: nowrap;
   color: var(--text-secondary);
   transition: color var(--motion-fast) var(--ease),
     background var(--motion-fast) var(--ease);
@@ -682,6 +1077,15 @@
   color: var(--text-primary);
   background: var(--bg-surface);
   box-shadow: var(--shadow-card);
+}
+/* A direction that cannot be taken. It keeps its label and its tooltip — the
+ * sentence on it is the explanation — and stops looking pressable. */
+.segmented__item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.segmented__item:disabled:hover {
+  color: var(--text-secondary);
 }
 
 /* The name and the headline figures are one band, closed by a hairline; the
@@ -727,8 +1131,17 @@
   letter-spacing: -0.03em;
   color: var(--chalk);
 }
-.metrics__value--accent {
-  color: var(--accent);
+/* A figure with a verdict, in the product's own three tones. There is no fourth
+   rule for "the important one": the value is already 1.5rem at 600 against a
+   label in small caps, and a colour on top of that said the same thing twice —
+   in the one colour that is supposed to mean "you can touch this". */
+.metrics__value--watch {
+  color: var(--warning);
+}
+
+.metrics__value--delay,
+.metrics__value--throw {
+  color: var(--alarm-text);
 }
 
 .metrics__unit {
@@ -1409,6 +1822,35 @@
   color: var(--chalk);
   background: var(--slab-hover);
 }
+/* The one legend entry that is not a filter: it names an encoding rather than
+   a set of objects, so it does not offer to hide anything. */
+.lgd--folds {
+  cursor: default;
+  color: var(--chalk-faint);
+}
+.lgd--folds:hover {
+  color: var(--chalk-dim);
+  background: none;
+}
+
+/* Neither is the flow pair: they name an encoding and a count, and there is
+   nothing to filter down to. `--severed` keeps the alarm ink of the edges it
+   counts — it is the one entry in this legend a reader may have to act on. */
+.lgd--flow,
+.lgd--severed {
+  cursor: default;
+}
+.lgd--flow:hover,
+.lgd--severed:hover {
+  background: none;
+}
+.lgd--severed {
+  color: var(--danger-text);
+}
+.lgd--severed:hover {
+  color: var(--danger-text);
+}
+
 /* Switched off: still counted, still clickable, plainly not drawn. */
 .lgd.is-off {
   color: var(--chalk-faint);
@@ -1421,6 +1863,17 @@
 .lgd .glyph {
   width: 7px;
   height: 7px;
+}
+/* The rail mark is a bar, not a dot: it keeps its shape at legend size. */
+.lgd .glyph--folds {
+  width: 3px;
+  height: 9px;
+}
+/* The flow marks are lines, not dots: they keep their length at legend size. */
+.lgd .glyph--flow,
+.lgd .glyph--severed {
+  width: 12px;
+  height: 2px;
 }
 
 .canvas__zoom {
@@ -1491,6 +1944,25 @@
 }
 
 /* The kind stripe down the leading edge: the diagram's colour key. */
+/* The rail carries two facts at once, and they are kept in different channels
+   on purpose. Its *colour* is the object's kind — table, view, materialized
+   view, dictionary — and nothing else may use that palette. Its *pattern* is
+   what the engine does with rows: see `engineBehaviour`. Colour answers "what
+   is this", pattern answers "and how does it behave", and neither has to be
+   read through the other. */
+.gnode {
+  --gnode-ink: var(--k-table);
+}
+.gnode--view {
+  --gnode-ink: var(--k-view);
+}
+.gnode--materialized_view {
+  --gnode-ink: var(--k-matview);
+}
+.gnode--dictionary {
+  --gnode-ink: var(--k-dictionary);
+}
+
 .gnode::before {
   content: '';
   position: absolute;
@@ -1498,16 +1970,25 @@
   top: 0;
   bottom: 0;
   width: 3px;
-  background: var(--k-table);
+  background: var(--gnode-ink);
 }
-.gnode--view::before {
-  background: var(--k-view);
+
+/* Folds several rows into one as parts merge — Replacing, Summing,
+   Aggregating, Collapsing. Drawn as a rail cut into segments, because that is
+   the shape of the thing: what arrives in pieces leaves as fewer. */
+.gnode--folds::before {
+  background: repeating-linear-gradient(
+    180deg,
+    var(--gnode-ink) 0 6px,
+    transparent 6px 10px
+  );
 }
-.gnode--materialized_view::before {
-  background: var(--k-matview);
-}
-.gnode--dictionary::before {
-  background: var(--k-dictionary);
+
+/* Stores nothing here — Distributed, Kafka, Buffer, a view. The rail is washed
+   out rather than absent: the node is still of its kind, it simply has no rows
+   of its own to stand on. */
+.gnode--passes::before {
+  background: color-mix(in srgb, var(--gnode-ink) 48%, transparent);
 }
 
 .gnode:hover,
@@ -1522,6 +2003,14 @@
 .gnode.is-focused {
   border-color: var(--spark);
   box-shadow: var(--shadow-2), 0 0 0 3px var(--spark-wash), var(--lip);
+}
+
+/* Where you came from, on a path drawn from an object's own page. A standing
+ * ring rather than the hover treatment: hovering has to stay legible on top of
+ * it, so this reads through the accent's wash and leaves the lift to hover. */
+.gnode.is-here {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-1), 0 0 0 2px var(--accent-weak), var(--lip);
 }
 
 .gnode.is-dim {
@@ -1565,6 +2054,19 @@
   white-space: nowrap;
 }
 
+/* `Replacing` in `ReplacingMergeTree`. Every table on the diagram ends in the
+   same nine letters, so the qualifier is the only part worth reading first —
+   the family stays beside it in the quieter ink, and the full name is still
+   there to be read. */
+.gnode__enginekey {
+  font-weight: 600;
+  color: var(--chalk-dim);
+}
+
+.gnode__enginefam {
+  color: var(--chalk-faint);
+}
+
 .gnode__facts {
   display: flex;
   align-items: center;
@@ -1606,25 +2108,60 @@
   stroke: none;
 }
 
-/* The one ambient motion in the product: data moving along the pipes. It is
- * true to the subject — a materialized view really is a live pipeline — and it
- * is the reason the schema feels awake rather than printed. */
+/* The one ambient motion in the product, and the only thing on the page that
+ * moves without being asked — so it had better be saying something. It is: a
+ * dot on an edge is rows that actually went through that pipe inside the
+ * window, read out of `system.query_views_log` (see `lib/flow.ts`). An edge
+ * with no dots on it moved nothing, and an edge that never had a chance to —
+ * a plain view's SELECT, a dictionary's source — has none by construction.
+ *
+ * The spacing carries the volume and the speed is constant, because two curves
+ * of different lengths cannot be compared by how fast something crosses them,
+ * and a fast dot reads as urgency rather than as quantity. `--gap` comes from
+ * the reading; the pace is `--flow-speed`, one physics for every pipe. */
 .gedge__flow {
+  --dot: 2;
+  /* The fallback lives in the `var()` rather than in a declaration here: a
+     `--gap` of its own on this element would *beat* the one the reading sets on
+     the group above it, and every pipe would be drawn at the same spacing —
+     which is the bug this whole reading exists to remove. */
+  --period: calc(var(--dot) + var(--gap, 23));
   fill: none;
   stroke: var(--accent);
   stroke-width: 2.25;
   stroke-linecap: round;
-  stroke-dasharray: 2 23;
+  stroke-dasharray: calc(var(--dot) * 1px) calc(var(--gap, 23) * 1px);
   opacity: 0.75;
-  animation: flow var(--loop-flow) linear infinite;
+  animation: flow calc(var(--period) / var(--flow-speed) * 1s) linear infinite;
 }
-.gedge--loads .gedge__flow {
-  stroke-dasharray: 2 40;
-  animation-duration: calc(var(--loop-flow) * 2);
-  opacity: 0.3;
+@keyframes flow {
+  to {
+    stroke-dashoffset: calc(var(--period) * -1px);
+  }
+}
+/* Past the scale: drawn at the densest spacing it can be drawn at, and
+   brightened so it reads as a pipe running off the top of the scale rather
+   than as the top of it. The legend counts these. */
+.gedge.is-past .gedge__flow {
+  opacity: 1;
+  stroke: var(--accent-2);
 }
 .gedge--writes .gedge__line {
   stroke-width: 2;
+}
+
+/* Severed: the view cannot run at all. The only edge state that changes the
+   line itself, because it is the only one a reader has to act on — and the gap
+   in the stroke is the point, a pipe with a piece missing. Both of the view's
+   edges get it, the source's included: a dropped target fails the insert one
+   hop before the view is reached. */
+.gedge--broken .gedge__line {
+  stroke: var(--alarm);
+  stroke-dasharray: 5 4;
+  opacity: 0.85;
+}
+.gedge--broken .gedge__head {
+  fill: var(--alarm);
 }
 
 .gedge.is-lit .gedge__line {
@@ -1633,13 +2170,14 @@
 .gedge.is-lit .gedge__head {
   fill: var(--spark);
 }
+/* Tracing a lineage brightens the dots; it does not speed them up. The pace is
+   the scale's unit — a hover that moved it would make the same pipe read as
+   two different volumes. */
 .gedge.is-lit .gedge__flow {
   opacity: 1;
-  animation-duration: var(--loop-shimmer);
 }
-
-.canvas.is-still .gedge__flow {
-  display: none;
+.gedge.is-lit.gedge--broken .gedge__line {
+  stroke: var(--alarm);
 }
 
 .gedge.is-dim {
@@ -1647,20 +2185,6 @@
 }
 .gedge.is-dim .gedge__flow {
   opacity: 0;
-}
-
-@keyframes flow {
-  to {
-    stroke-dashoffset: -25;
-  }
-}
-.gedge--loads .gedge__flow {
-  animation-name: flowLong;
-}
-@keyframes flowLong {
-  to {
-    stroke-dashoffset: -42;
-  }
 }
 
 /* ═══ Shape strip: the clauses that decide how a table reads ═════════════ */
@@ -1811,6 +2335,79 @@
   overflow-x: auto;
 }
 
+/* ── The peek: what is inside the object you selected in the diagram ────── */
+
+/* It stands where the object list stood, so it borrows the list's frame
+   exactly — a panel that changed shape as well as contents would read as the
+   page jumping rather than as one thing being swapped for another. */
+.peek__what {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-width: 0;
+}
+
+.peek__name {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  font-weight: 600;
+  color: var(--chalk);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.peek__db {
+  flex: none;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+/* The same two weights the diagram sets the engine in, for the same reason:
+   `Replacing` is the word that distinguishes this table from the one above
+   it. */
+.peek__engine {
+  flex: none;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.peek__enginekey {
+  font-weight: 600;
+  color: var(--chalk-dim);
+}
+
+.peek__figures {
+  display: flex;
+  gap: var(--s3);
+  flex: none;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-dim);
+}
+
+/* Tall enough to show that rows have shapes — a dozen of them, so a wide
+   column and a null-heavy one look different at a glance — and short enough
+   that the diagram it belongs to stays on screen above it. The grid is
+   virtualised and fills whatever it is given, so this height is the whole
+   decision. */
+.peek__grid {
+  height: 340px;
+  padding: var(--s3) var(--s4) 0;
+}
+
+.peek__note {
+  padding: var(--s4);
+}
+
+.peek__foot {
+  margin: 0;
+  padding: var(--s2) var(--s4) var(--s3);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
 /* ── The shared grammar of Flint's two kinds of table ───────────────────────
    The reference tables (`.tbl`) and the results grid (`.grid`) are different
    machines and cannot share a component: one is a `<table>` of forty rich rows
@@ -1907,11 +2504,15 @@
   justify-content: flex-end;
 }
 
+/* The sorted column's direction. The header it sits in already says it is the
+   sorted one — `.tblsort.is-on` takes the full ink and 600 — so the arrow only
+   has to say *which way*, and it does not need the one colour that means "you
+   can touch this" to do it. */
 .tblsort__arrow {
   width: 8px;
   font-size: 10px;
   line-height: 1;
-  color: var(--spark);
+  color: var(--chalk-dim);
 }
 
 .tbl--n {
@@ -1974,9 +2575,13 @@
   min-width: 108px;
 }
 
+/* Quiet by colour, not by opacity. The 0.7 here cost this two full stops — 4.52
+   became 2.89 on a raised row — and an em-dash standing in for a value somebody
+   is looking for is text that has to be read. The muted tier is already the
+   quiet one; dimming it further was saying the same thing twice and breaking it
+   the second time. */
 .dash {
   color: var(--text-muted);
-  opacity: 0.7;
 }
 
 /* A true zero, as opposed to a value that was never reported. Quiet, but there
@@ -1991,6 +2596,25 @@
 }
 .link:hover {
   color: var(--accent);
+}
+
+/* A button that reads as a link. Undoing a fold is an action on this page, not
+   navigation to another, so the element stays a button and only the appearance
+   is borrowed — the keyboard and the screen reader get the truth. */
+.linkish {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--spark);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 35%, transparent);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.linkish:hover {
+  text-decoration-color: currentColor;
 }
 
 .type {
@@ -2079,6 +2703,18 @@
 .stratum__fill {
   background: var(--bar);
   transition: background var(--motion-fast) var(--ease-out);
+}
+
+/* A bar that carries a verdict. Only the two loud levels take a colour: a bar
+ * that is always tinted teaches nobody anything, and `ok` is the answer most
+ * bars have most of the time. */
+.stratum__fill--watch {
+  background: var(--warning);
+}
+
+.stratum__fill--delay,
+.stratum__fill--throw {
+  background: var(--alarm);
 }
 
 .stratum--empty {
@@ -2509,6 +3145,29 @@ tr:hover .stratum__fill {
   color: var(--chalk-dim);
 }
 
+/* A panel waiting out an outage. No border, no colour, no button: the strip at
+   the top of the window is saying all of that once, and a page of these has to
+   read as one thing missing rather than as twelve things broken. */
+.note--waiting {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin: 0;
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+.note__wait {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--chalk-faint);
+  animation: pulse var(--loop-breathe) var(--ease-inout) infinite;
+}
+
 .note__head {
   margin-bottom: var(--s2);
 }
@@ -2586,6 +3245,160 @@ tr:hover .stratum__fill {
   }
 }
 
+/* ═══ Out of reach ═══════════════════════════════════════════════════════
+ *
+ * One strip for the whole window, and a whole window for a cold start. What it
+ * replaced was every panel on the page drawing its own red card with its own
+ * copy of the same status line — see `lib/reach` for why that is one fact and
+ * not several. The strip is tinted rather than filled: it is a state the
+ * product is in, not a wall to be got past, and the page underneath is still
+ * worth reading.
+ */
+
+.outage {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  flex: none;
+  padding: var(--s2) var(--s4);
+  border-bottom: 1px solid color-mix(in srgb, var(--alarm) 34%, var(--line));
+  background: color-mix(in srgb, var(--alarm) 9%, var(--rail));
+  font-size: var(--size-body);
+  animation: fadeIn var(--motion-base) var(--ease) both;
+}
+
+/* The one thing on the strip that moves. It is the difference between a page
+   that has stopped and a page that is still trying — at `--loop-breathe`,
+   which is the slowest of the loops, because a fast blink beside an error
+   reads as an alarm going off. */
+.outage__pulse {
+  align-self: center;
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--alarm);
+  animation: pulse var(--loop-breathe) var(--ease-inout) infinite;
+}
+
+.outage__title {
+  font-weight: 650;
+  color: var(--chalk);
+}
+
+.outage__for {
+  flex: none;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-dim);
+}
+
+.outage__hint {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--chalk-dim);
+}
+
+.outage__spacer {
+  flex: 1;
+}
+
+.outage__next {
+  flex: none;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.outage .btn {
+  align-self: center;
+  flex: none;
+}
+
+/* Narrow: the sentence is the first thing to go. The headline, the clock and
+   the check survive, because those three are what anybody does anything
+   with. */
+@media (max-width: 900px) {
+  .outage__hint {
+    display: none;
+  }
+}
+
+/* The cold start. Shaped like the sign-in card on purpose — same place on the
+   screen, same width — because it stands where that screen used to stand for
+   the same reader, and the point is that this one is not asking them for
+   anything. */
+.offline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+  padding: var(--s6) var(--s4);
+  background: var(--ground);
+}
+
+.offline__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  width: 100%;
+  max-width: 420px;
+  padding: var(--s6);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--slab);
+  box-shadow: var(--shadow-1);
+}
+
+.offline__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  color: var(--spark);
+}
+
+.offline__word {
+  font-size: 1.0625rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--chalk);
+}
+
+.offline__title {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin: var(--s2) 0 0;
+  font-size: 1.375rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: var(--chalk);
+}
+
+.offline__sub {
+  margin: 0;
+  font-size: var(--size-body);
+  line-height: 1.55;
+  color: var(--chalk-dim);
+}
+
+.offline__for {
+  margin: 0;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.offline__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin-top: var(--s2);
+}
+
 /* ═══ Results grid ═══════════════════════════════════════════════════════ */
 
 /* The grid is drawn rather than laid out. Both axes are windowed, so every cell
@@ -2603,13 +3416,20 @@ tr:hover .stratum__fill {
   flex: 1;
   height: 100%;
   min-height: 0;
+  /* Without this the grid's own bar sets a min-content width — a row of
+     toggles and a hint, about 1,065px of it — and the whole shell refuses to
+     shrink, spilling over the analyses panel beside it. */
+  min-width: 0;
   gap: var(--s2);
 }
 
 .gridshell__bar {
   display: flex;
   align-items: baseline;
-  gap: var(--s3);
+  /* Wraps, so a narrower grid loses a line to the bar rather than losing the
+     switches off the right-hand edge. */
+  flex-wrap: wrap;
+  gap: var(--s1) var(--s3);
   flex: none;
   min-height: 15px;
   font-size: var(--size-label);
@@ -2835,6 +3655,9 @@ tr:hover .stratum__fill {
   gap: var(--s2);
   flex: 1;
   min-height: 0;
+  /* The column menu hangs from here rather than from the header it belongs to:
+     the header lives inside the scroller, which would clip it. */
+  position: relative;
 }
 
 .grid {
@@ -3005,8 +3828,16 @@ tr:hover .stratum__fill {
   white-space: nowrap;
 }
 
+/* The type gives way, never the name: an `Enum8` writes its whole value list
+ * here — 673 pixels of it, measured — and a header that shows the type of a
+ * column it does not name is a header nobody can read. */
 .grid__coltype {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: var(--size-label);
 }
 
@@ -3164,32 +3995,45 @@ tr:hover .stratum__fill {
   border-top: 1px solid var(--line);
 }
 
-/* ═══ Query builder ══════════════════════════════════════════════════════
- * A configuration panel beside the work, as in Dashfile: the form on the left
- * follows the shape of a SELECT, and the statement it produces is always on
- * screen so nobody has to trust it blindly. */
+/* ═══ The form ═══════════════════════════════════════════════════════════
+ * The query page's other face, and the reason it is a switch rather than a
+ * second page: this occupies exactly the band CodeMirror occupies, above the
+ * same grip, the same statistics and the same results.
+ *
+ * Laid out across rather than down, in the order a SELECT is written — dataset,
+ * columns, filters, filters on the totals, sort. Each group is a column that
+ * scrolls on its own, so a table with ninety columns cannot push the limit
+ * field off the bottom; the band scrolls sideways when there are more groups
+ * than fit, which is the one direction anything here is allowed to scroll in.
+ * The page itself never does. */
 
-.builder {
+.buildband {
   display: flex;
+  align-items: stretch;
   height: 100%;
   min-height: 0;
-}
-
-.builder__panel {
-  flex: 0 0 320px;
-  overflow-y: auto;
-  padding: var(--s4);
-  border-right: 1px solid var(--border);
-  background: var(--bg-sidebar);
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .bgroup {
-  padding-bottom: var(--s4);
-  margin-bottom: var(--s4);
-  border-bottom: 1px solid var(--divider);
+  flex: 0 0 264px;
+  min-width: 0;
+  overflow-y: auto;
+  padding: var(--s3);
+  border-right: 1px solid var(--divider);
+}
+/* The groups that hold a list rather than two fields get the room, and give it
+ * back as the window narrows. */
+.bgroup--wide {
+  flex: 1 1 300px;
+  min-width: 248px;
+}
+.bgroup--narrow {
+  flex: 0 0 200px;
 }
 .bgroup:last-child {
-  border-bottom: none;
+  border-right: none;
 }
 
 .bgroup__label {
@@ -3199,6 +4043,12 @@ tr:hover .stratum__fill {
   letter-spacing: var(--track-label);
   text-transform: uppercase;
   color: var(--text-muted);
+}
+
+/* A second heading in the same column — Limit under Sort, the zone under that.
+ * They are one section's worth of question each, not one column's worth. */
+.bgroup__label--again {
+  margin-top: var(--s4);
 }
 
 .bhint {
@@ -3399,80 +4249,6 @@ tr:hover .stratum__fill {
   white-space: nowrap;
 }
 
-.builder__work {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.builder__sql {
-  flex: none;
-  border-bottom: 1px solid var(--border);
-}
-
-.builder__sqlbar {
-  display: flex;
-  align-items: center;
-  gap: var(--s2);
-  padding: var(--s2) var(--s3);
-}
-
-.builder__sqllabel {
-  font-size: var(--size-label);
-  font-weight: 600;
-  letter-spacing: var(--track-label);
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-
-/* The query in words, between its label and its SQL: the same statement said
- * twice, once in the language that catches a wrong grouping. */
-.builder__sentence {
-  margin: 0;
-  padding: var(--s2) var(--s4) 0;
-  font-size: var(--size-body);
-  line-height: 1.55;
-  color: var(--chalk-dim);
-}
-
-.builder__saved {
-  margin-left: var(--s2);
-  font-size: var(--size-label);
-  letter-spacing: var(--track-label);
-  text-transform: uppercase;
-  color: var(--success);
-}
-.builder__saved--bad {
-  color: var(--alarm);
-  text-transform: none;
-  letter-spacing: 0;
-}
-
-.builder__code {
-  max-height: 22vh;
-  overflow-y: auto;
-  padding: 0 var(--s3) var(--s3);
-  color: var(--text-primary);
-}
-
-.builder__results {
-  flex: 1;
-  min-height: 0;
-  padding: var(--s3);
-  overflow: hidden;
-}
-.builder__results .note {
-  max-width: 68ch;
-}
-
-@media (max-width: 1180px) {
-  .builder__panel {
-    flex-basis: 272px;
-  }
-}
-
 .rview {
   display: flex;
   flex-direction: column;
@@ -3493,6 +4269,39 @@ tr:hover .stratum__fill {
   color: var(--text-muted);
 }
 
+/* Download: the sentence and the three formats, on one line with the rest of
+   the bar. The sentence is muted because it is a caveat rather than a label —
+   what it says is worth reading once, before the first click, and not every
+   time afterwards. */
+.dl {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+/* The cost of the preview and the size of the download, on one line: both
+   answer "how much is this", and a reader comparing them should not have to
+   look in two places. Wraps rather than squeezing, because on a narrow window
+   the sentence matters more than the row. */
+.explore__notebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  flex-wrap: wrap;
+}
+
+.dl__says {
+  font-size: var(--size-label);
+  color: var(--text-muted);
+  /* A long note must not push the buttons off the bar; the buttons are the
+     thing you came for. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .rview__body {
   flex: 1;
   min-height: 0;
@@ -3507,7 +4316,12 @@ tr:hover .stratum__fill {
   max-width: none;
 }
 
-.dash {
+/* `dashgrid`, not `dash`. Two components had claimed the same class name — this
+   one and the em-dash placeholder up in the tables — and CSS obliged them both:
+   every dashboard rendered at 70% opacity in the muted grey meant for a missing
+   figure, and every em-dash became a block-level grid. Neither rule looked wrong
+   where it was written, and nothing but a browser could have said so. */
+.dashgrid {
   display: grid;
   gap: var(--s4);
   margin-top: var(--s5);
@@ -3558,6 +4372,15 @@ tr:hover .stratum__fill {
 .tile__width {
   height: 22px;
   font-size: var(--size-label);
+}
+
+/* The download, on its own line under the tile's header. Not in the header
+   itself: the title and the database already share that row, and a third thing
+   would push a long title to an ellipsis on a narrow tile. Above the body,
+   because the body is where a tile stops being bounded. */
+.tile__take {
+  padding: 0 var(--s3) var(--s2);
+  border-bottom: 1px solid var(--border);
 }
 
 .tile__body {
@@ -3970,8 +4793,12 @@ tr:hover .stratum__fill {
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
 }
+/* Selected, said the same way the nav says it: the tab already lifts onto the
+   surface and takes the full ink, so the rule beneath it only has to close the
+   shape. The accent is spent once per view, on the thing you are being asked to
+   do — here that is Run, a hand's width to the right. */
 .tabstrip__tab.is-active {
-  border-bottom-color: var(--spark);
+  border-bottom-color: var(--chalk);
   background: var(--slab);
 }
 
@@ -3991,6 +4818,16 @@ tr:hover .stratum__fill {
 }
 .tabstrip__tab.is-active .tabstrip__pick {
   color: var(--chalk);
+}
+
+.tabstrip__mode {
+  margin-right: 5px;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text-muted);
+}
+.tabstrip__tab.is-active .tabstrip__mode {
+  color: var(--accent);
 }
 
 .tabstrip__running {
@@ -4021,6 +4858,11 @@ tr:hover .stratum__fill {
   background: var(--slab);
   border-bottom: 1px solid var(--line);
 }
+/* Same band, different ground: the form is furniture and reads as the rail
+ * does, while the editor is a surface you write on. */
+.editor__code--build {
+  background: var(--bg-sidebar);
+}
 .editor__code > div,
 .editor__code .cm-editor {
   height: 100%;
@@ -4049,6 +4891,100 @@ tr:hover .stratum__fill {
 .editor__grip:hover::after,
 .editor__grip:focus-visible::after {
   background: var(--accent);
+}
+
+/* What the form is about to send, in the slot where a statement shows its own
+ * clauses as chips. Not editable, and deliberately so: this text is rewritten
+ * on every change to the form above it, so an edit here would be lost without a
+ * word. The way to take it over is the switch, which keeps it. */
+.builtstrip {
+  flex: none;
+  /* Enough for the sentence and the first lines of the statement, and it
+   * scrolls for the rest. The statement has to be on screen; it does not have
+   * to be the tallest thing on it, and a six-line SELECT that pushed the chart
+   * below the fold was exactly the trade nobody wants. */
+  max-height: 150px;
+  overflow-y: auto;
+  padding: var(--s2) var(--s3);
+  border-bottom: 1px solid var(--line);
+  background: var(--rail);
+}
+/* Folded, it is one line: the question in words, and the way back to the
+ * statement. */
+.builtstrip.is-folded {
+  max-height: none;
+  overflow: visible;
+}
+.builtstrip.is-folded .builtstrip__says {
+  margin-bottom: 0;
+}
+
+.builtstrip__says {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  margin: 0 0 var(--s2);
+  font-size: var(--size-body);
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+.builtstrip__says .label {
+  flex: none;
+}
+
+.builtstrip__sentence {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The fold, at the end of the sentence rather than over the statement: it is
+ * the statement's own control, and it has to be reachable when the statement is
+ * not there. */
+.builtstrip__fold {
+  flex: none;
+  height: 22px;
+  padding: 0 var(--s2);
+  border-radius: var(--radius-sm);
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  color: var(--text-muted);
+  transition: color var(--motion-fast) var(--ease), background var(--motion-fast) var(--ease);
+}
+.builtstrip__fold:hover {
+  color: var(--text-primary);
+  background: var(--fill);
+}
+
+.builtstrip__sql {
+  margin: 0;
+  padding: 0;
+  background: none;
+  line-height: 1.45;
+  color: var(--text-primary);
+  transition: opacity var(--motion-fast) var(--ease);
+}
+/* While the next statement is being rendered, the one on screen is the previous
+ * question's. Dimmed rather than blanked: a panel that empties on every
+ * keystroke is a panel nobody can read. */
+.builtstrip__sql.is-stale {
+  opacity: 0.55;
+}
+
+.builtstrip__note {
+  margin: var(--s1) 0 0;
+  font-size: var(--size-label);
+}
+
+/* A gesture the form could not carry, said where the figures are. */
+.editor__refused {
+  flex: none;
+  margin: 0;
+  padding: var(--s2) var(--s3);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--warning);
+  background: var(--warning-weak);
 }
 
 /* While a query is in flight an ember travels this strip. Nothing else in the
@@ -4081,7 +5017,7 @@ tr:hover .stratum__fill {
 }
 
 .stats__fact--warn {
-  color: var(--alarm);
+  color: var(--alarm-text);
 }
 
 .stats--running::after {
@@ -4304,7 +5240,7 @@ tr:hover .stratum__fill {
 }
 
 .histrow__failed {
-  color: var(--alarm);
+  color: var(--alarm-text);
 }
 
 /* ═══ Narrow viewports ═══════════════════════════════════════════════════
@@ -4525,12 +5461,46 @@ tr:hover .stratum__fill {
   text-align: left;
   white-space: normal;
 }
+/* `.says` is 34ch because it was written to sit beside a row — an annotation
+   in the margin of a table, where a long measure would fight the columns. A
+   warning that is a *paragraph* is a different thing and needs a readable
+   measure; without this it wraps into a narrow column beside a full-width form
+   and reads as a rendering fault. */
+.says--wide {
+  max-width: 62ch;
+}
+
 .says--watch,
 .says--delay {
   color: var(--warning);
 }
 .says--throw {
   color: var(--danger-text);
+}
+
+/* A `says` that is a way out of the row rather than a third sentence about it.
+   The verdict above it is a finding; this is an offer, and without something to
+   tell them apart the two read as one paragraph and nobody discovers the link.
+
+   The underline does that work and the accent does not. This was the accent
+   first, and the repo's own "one spark per view" check caught it: the palette
+   spends the accent once per page, on the thing you are being asked to do, and
+   a table where every qualifying row lights up draws a green ladder down one
+   column. So it follows `.link` — the accent on hover only — with an underline
+   at rest, because at 11px inside a table nothing else says "clickable". */
+.says--ask {
+  color: var(--chalk);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 32%, transparent);
+  text-underline-offset: 3px;
+  transition:
+    color var(--motion-fast) var(--ease-out),
+    text-decoration-color var(--motion-fast) var(--ease-out);
+}
+
+.says--ask:hover {
+  color: var(--spark);
+  text-decoration-color: currentColor;
 }
 
 .flag {
@@ -4551,9 +5521,77 @@ tr:hover .stratum__fill {
   background: var(--danger-weak);
   color: var(--danger-text);
 }
+/* A verdict that is fine, and quiet about it. `Says` next door renders nothing
+   at all for `ok`; a chip cannot always do that — it holds a column open — so it
+   goes as quiet as a chip can. Green here would light every row of a healthy
+   page, and an indicator that is always lit is not an indicator.
+   `--good` below is the other thing "ok" can mean: not the resting state, but
+   news of a change into it. */
 .flag--ok {
   background: var(--fill);
   color: var(--text-secondary);
+}
+
+/* Something went right, and that is news: an alert that came back, a call that
+   answered 200. Both follow a moment of doubt, which is what earns the colour. */
+.flag--good {
+  background: var(--success-weak);
+  color: var(--success-text);
+}
+
+/* ── What is on this page ───────────────────────────────────────────────────
+   Furniture, and it should read as furniture: one quiet line between two rules,
+   the titles in their own words rather than in abbreviations nobody agreed to.
+   It wraps rather than scrolls, because a list of sections that hides some of
+   its sections would be worse than no list. */
+.onpage {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s2) var(--s3);
+  margin-top: var(--s4);
+  padding: var(--s2) 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.onpage__label {
+  flex: none;
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+.onpage__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1) var(--s3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.onpage__link {
+  font-size: var(--size-data);
+  color: var(--chalk-dim);
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 3px;
+  transition:
+    color var(--motion-fast) var(--ease-out),
+    text-decoration-color var(--motion-fast) var(--ease-out);
+}
+
+.onpage__link:hover {
+  color: var(--chalk);
+  text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
+}
+
+/* Room above a section arrived at by its anchor, so its title does not land
+   flush against the top of the scroller. */
+.diag[id] {
+  scroll-margin-top: var(--s4);
 }
 
 .diag__shutout {
@@ -4799,10 +5837,14 @@ tr:hover .stratum__fill {
   background: var(--fill);
   color: var(--text-secondary);
 }
-.flag--ok {
-  background: var(--success-weak);
-  color: var(--success-text);
+/* Paused had been wearing the idle chip, which says "nothing has happened yet"
+   about an alert somebody deliberately switched off. Two different facts, and
+   the one that is a decision now has the colour for a decision. */
+.flag--paused {
+  background: var(--cold-weak);
+  color: var(--cold);
 }
+
 
 /* ── Reports ───────────────────────────────────────────────────────────────
    A dashboard shows now; a report keeps then. So the editions are as prominent
@@ -4975,7 +6017,13 @@ tr:hover .stratum__fill {
   white-space: pre;
 }
 
+/* The panel that shows a token once. Its two halves — the secret and the
+   sentence explaining that this is the only time it is readable — ran together
+   into one unreadable string until this stacked them. */
 .pub__token {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
   margin-top: var(--s2);
   padding: var(--s2) var(--s3);
   overflow-x: auto;
@@ -5683,67 +6731,11 @@ tr:hover .stratum__fill {
    A chain, not a diagram: on an object's own page the question is sequential —
    where do these rows come from and where do they end up — and a chain is also
    honest about depth in a way a picture is not. */
+ /* The whole path through one object. The drawing is the canvas's own; what
+  * is left here is the sentence under it that the drawing cannot say — that the
+  * path may continue past an object whose database was never loaded. */
 .lpath {
   padding: var(--s2) 0;
-}
-
-.lpath__lead {
-  font-size: var(--size-data);
-  color: var(--text-secondary);
-}
-
-.lpath__hop {
-  display: flex;
-  align-items: baseline;
-  gap: var(--s3);
-  padding: var(--s2) 0;
-}
-
-.lpath__depth {
-  flex: none;
-  width: 7ch;
-  text-align: right;
-  color: var(--text-muted);
-}
-
-.lpath__steps {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--s2);
-}
-
-.lpath__step {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 9px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  background: var(--slab-raised);
-  font-family: var(--font-mono);
-  font-size: var(--size-data);
-  color: var(--text-primary);
-}
-.lpath__step:hover {
-  border-color: var(--accent);
-}
-
-/* Where you are, on the axis the rows travel down. */
-.lpath__self {
-  display: flex;
-  align-items: center;
-  gap: var(--s3);
-  margin: var(--s2) 0;
-  padding: var(--s2) var(--s3);
-  border-left: 2px solid var(--accent);
-  background: var(--accent-weak);
-}
-
-.lpath__here {
-  font-family: var(--font-mono);
-  font-size: var(--size-body);
-  font-weight: 600;
-  color: var(--text-primary);
 }
 
 .lpath__note {
@@ -5961,4 +6953,6016 @@ tr:hover .stratum__fill {
   font-size: var(--size-body);
   font-weight: 600;
   color: var(--text-primary);
+}
+
+/* ═══ Signing in ══════════════════════════════════════════════════════════ */
+
+/* The whole viewport, because there is no app behind it: every route needs a
+ * session, so a card floating over a blurred dashboard would be showing
+ * something Flint cannot actually serve. */
+.signin {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+  padding: var(--s6) var(--s4);
+  background: var(--ground);
+}
+
+.signin__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  width: 100%;
+  max-width: 380px;
+  padding: var(--s6);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-card);
+}
+
+.signin__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  color: var(--spark);
+}
+
+.signin__word {
+  font-size: 1.0625rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+.signin__title {
+  margin: var(--s2) 0 0;
+  font-size: 1.5rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+.signin__sub {
+  margin: 0;
+  font-size: var(--size-body);
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.signin__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.signin__hint {
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+.signin__go {
+  margin-top: var(--s2);
+  justify-content: center;
+  height: 36px;
+}
+
+/* A refusal is the expected outcome of a form like this, so it is coloured as
+ * information rather than as an alarm — and a *server* failure is marked apart
+ * from it, because "wrong password" and "no database there" send you to
+ * completely different places. */
+.signin__error {
+  margin: 0;
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--danger-text);
+}
+.signin__error--server {
+  color: var(--warning);
+}
+.signin__errorhint {
+  color: var(--text-muted);
+}
+
+.signin__foot {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin: var(--s2) 0 0;
+  padding-top: var(--s3);
+  border-top: 1px solid var(--line);
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+.signin__sep {
+  width: 1px;
+  height: 10px;
+  background: var(--line);
+}
+
+/* The wait before Flint knows whether it must ask who you are. */
+.boot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+  background: var(--ground);
+}
+
+.chrome__signout {
+  height: 26px;
+  padding: 0 var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--size-label);
+  transition: color var(--motion-fast) var(--ease),
+    border-color var(--motion-fast) var(--ease);
+}
+.chrome__signout:hover:not(:disabled) {
+  color: var(--text-primary);
+  border-color: var(--line-strong);
+}
+
+/* ═══ Operations ══════════════════════════════════════════════════════════ */
+
+/* A job's state, in its own vocabulary. Not the merge-tree `Level` — `delay` and
+ * `throw` mean "inserts are being slowed" and "inserts are being refused", and
+ * borrowing either for a job that failed would be a word that means something
+ * else on the same page. */
+.flag--job-busy {
+  color: var(--accent-ink);
+  background: var(--accent);
+}
+.flag--job-ok {
+  color: var(--success-text);
+  background: var(--success-weak);
+}
+.flag--job-watch {
+  color: var(--warning);
+  background: var(--warning-weak);
+}
+.flag--job-bad {
+  color: var(--danger-text);
+  background: var(--danger-weak);
+}
+
+/* What a merge would rewrite: information, not a warning — unlike the cost of a
+ * drop, which is in `--danger-text` because it is one. */
+.pacts__cost--plain {
+  color: var(--text-muted);
+}
+
+/* ═══ The ring ════════════════════════════════════════════════════════════ */
+
+/* Shards across, replicas down inside each one — the shape of the thing rather
+ * than a table of it. A table can say the same facts, but nobody can see from a
+ * table that one shard has two replicas and its neighbour has one, which is the
+ * question this drawing exists to answer at a glance. */
+.ring {
+  margin-top: var(--s4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+
+.ring__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  padding: var(--s3) var(--s4);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-surface-2);
+}
+
+.ring__name {
+  font-family: var(--font-data);
+  font-size: var(--size-body);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.ring__count {
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+.ring__shards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s4);
+  padding: var(--s4);
+}
+
+.shard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  min-width: 180px;
+}
+
+.shard__num {
+  font-size: var(--size-label);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.shard__replicas {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* One endpoint. The local one is marked because every other page in
+ * Infrastructure is about that machine and no other. */
+.rnode {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 6px var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--text-primary);
+}
+
+.rnode--here {
+  border-color: var(--accent);
+}
+
+.rnode--watch {
+  border-color: var(--warning);
+}
+
+.rnode--bad {
+  border-color: var(--danger);
+}
+
+.rnode__port,
+.rnode__here,
+.rnode__says {
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+/* "this server" — a you-are-here on the cluster diagram, and so ink rather than
+   accent, like the nav pill and the open editor tab. It only appears on a real
+   cluster, which is why the spark guard cannot catch it on a single node. */
+.rnode__here {
+  color: var(--chalk);
+}
+
+.rnode__says {
+  color: var(--warning);
+}
+
+/* The controls on a replica row. `Restart replica` is pushed away from the
+ * routine three: re-initialising a replica from Keeper is what you do when
+ * something is already wrong, and it should not sit shoulder to shoulder with
+ * "Sync". */
+.racts {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-wrap: wrap;
+  margin-top: var(--s3);
+  padding-top: var(--s3);
+  border-top: 1px solid var(--line);
+}
+
+.racts__gap {
+  flex: 1;
+  min-width: var(--s4);
+}
+
+.racts__error {
+  font-size: var(--size-label);
+  color: var(--danger-text);
+  max-width: 46ch;
+}
+
+/* ═══ Over time ═══════════════════════════════════════════════════════════ */
+
+/* One metric: its name and where it is now on a line, the shape underneath, and
+ * a sentence saying which question it answers. No axis and no legend — the moment
+ * a sparkline needs either it should have been a chart on a page of its own. */
+.spark {
+  margin-top: var(--s4);
+}
+
+.spark__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s3);
+}
+
+.spark__label {
+  font-size: var(--size-body);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.spark__now {
+  font-family: var(--font-data);
+  font-size: var(--size-head);
+  color: var(--text-primary);
+}
+
+.spark__svg {
+  display: block;
+  width: 100%;
+  height: 34px;
+  margin-top: 6px;
+  overflow: visible;
+}
+
+.spark__line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+/* The ceiling a metric is measured against, where it has a real one. Dashed so
+ * it reads as a limit rather than as data. */
+.spark__limit {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.spark__says {
+  margin: var(--s2) 0 0;
+  max-width: 90ch;
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.spark__peak {
+  color: var(--text-secondary);
+}
+
+.spark__gaps {
+  color: var(--warning);
+}
+
+/* ═══ The server's log ════════════════════════════════════════════════════ */
+
+/* Two hundred lines in their own frame rather than two hundred lines of page.
+ * A tail is read by scanning the top of it and scrolling if the answer is not
+ * there — pushing everything below the fold to make room for the rest is the
+ * opposite of that. */
+.tlog {
+  margin-top: var(--s3);
+  max-height: 60vh;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  overflow: auto;
+}
+
+.tlog__line {
+  display: grid;
+  grid-template-columns: 152px 84px 190px 1fr;
+  gap: var(--s3);
+  padding: 4px var(--s3);
+  border-bottom: 1px solid var(--line);
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+.tlog__line:last-child {
+  border-bottom: 0;
+}
+
+.tlog__at,
+.tlog__logger {
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tlog__level {
+  text-transform: lowercase;
+}
+
+/* Clamped, because a ClickHouse log message is not a line.
+ *
+ * An authentication failure carries three paragraphs about resetting a cloud
+ * password; a `Trace` line can carry a whole query plan. Left to wrap, one row
+ * was 809 pixels tall and the section 134,000 — measured, not guessed — which is
+ * not a tail, it is a wall. Three lines and the rest on hover: the point of a
+ * tail is that it can be scanned, and the full text is still there for the one
+ * line that matters. */
+.tlog__msg {
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Only the levels worth a colour. An error is red, a warning is amber, and
+ * everything else is text — a log where every line is coloured is a log with no
+ * signal in it. */
+.tlog__line--error .tlog__level,
+.tlog__line--fatal .tlog__level,
+.tlog__line--critical .tlog__level {
+  color: var(--danger-text);
+}
+
+.tlog__line--warning .tlog__level {
+  color: var(--warning);
+}
+
+/* The error line, in the colour errors get everywhere else in Flint. */
+.spark__line--bad {
+  stroke: var(--danger);
+}
+
+/* ══ The Query page, once the grid can edit the query ══════════════════════
+ *
+ * Three surfaces were added together and they share one idea: a gesture that
+ * changes the SQL has to be visible as a change to the SQL. The strip states
+ * the clauses as removable chips, the column menu says which of its two kinds
+ * of hiding it does, and the analyses panel labels every figure with the rows
+ * it is out of. Nothing here invents a colour or a duration — see the tokens
+ * contract in `tokens.css`. */
+
+/* ── The clause strip ─────────────────────────────────────────────────── */
+
+.qstrip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s1) var(--s2);
+  flex: none;
+  padding: var(--s2) var(--s3);
+  background: var(--slab);
+  border-bottom: 1px solid var(--line);
+}
+
+.qstrip--closed {
+  padding: var(--s2) var(--s3);
+}
+
+.qstrip__note {
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.qstrip__key {
+  color: var(--chalk-faint);
+  /* Uppercase and tracked like every other key in the app, from `.label`. */
+}
+
+.qstrip__from {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+
+.qstrip__pick {
+  position: relative;
+}
+
+.qstrip__limit {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin-left: auto;
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+/* Stated, not removable: a DISTINCT or a WITH TOTALS changes what a row *is*,
+ * and an × beside it would offer a change nobody browsing filters intended. */
+.qstrip__flag {
+  padding: 1px var(--s2);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-pill);
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-dim);
+}
+
+.qstrip__skipped {
+  flex: none;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.qchip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  max-width: 34ch;
+  padding: 1px var(--s1) 1px var(--s2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: var(--slab-raised);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+
+.qchip__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* A chip quotes the statement, so it obeys the editor's rule: JetBrains Mono
+     renders `>=` as `≥`, and a filter that says something the SQL does not is
+     the one thing this strip must not do. */
+  font-variant-ligatures: none;
+}
+
+.qchip__x {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-pill);
+  line-height: 1;
+  color: var(--chalk-faint);
+  transition:
+    color var(--motion-fast) var(--ease),
+    background var(--motion-fast) var(--ease);
+}
+.qchip__x:hover {
+  color: var(--alarm);
+  background: var(--slab-hover);
+}
+
+.qchip--button {
+  padding: 1px var(--s2);
+  cursor: pointer;
+}
+.qchip--button:hover {
+  border-color: var(--spark-line);
+}
+.qchip--button.is-on {
+  border-color: var(--spark-line);
+  background: var(--spark-wash);
+  color: var(--accent-strong);
+}
+
+.selpick {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + var(--s1));
+  left: 0;
+  width: 260px;
+  padding: var(--s2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--slab-raised);
+  box-shadow: var(--shadow-3);
+  animation: popIn var(--motion-fast) var(--ease) both;
+}
+
+.selpick__list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.selpick__item {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 3px var(--s1);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.selpick__item:hover {
+  background: var(--slab-hover);
+}
+
+.selpick__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+
+/* ── The statement changed, the rows did not ──────────────────────────── */
+
+.stats__changed {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  color: var(--warning);
+}
+
+.stats__why {
+  color: var(--chalk-faint);
+}
+
+/* ── The grid's per-column menu ───────────────────────────────────────── */
+
+.grid__more {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  opacity: 0;
+  color: var(--chalk-faint);
+  transition:
+    opacity var(--motion-fast) var(--ease),
+    color var(--motion-fast) var(--ease);
+}
+.grid__more svg {
+  width: 12px;
+  height: 12px;
+  display: block;
+}
+.grid__headcell:hover .grid__more,
+.grid__more:focus-visible,
+.grid__more.is-on {
+  opacity: 1;
+}
+.grid__more:hover,
+.grid__more.is-on {
+  color: var(--spark);
+}
+
+/* Fixed to the screen rather than to the grid: the result area clips, and on a
+ * short answer this menu is taller than the box it hangs in. See `menuAt` in
+ * `ResultsGrid` — the same reasoning the diagram's node menu already carries. */
+.colmenu {
+  position: fixed;
+  z-index: 24;
+  padding: var(--s2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--slab-raised);
+  box-shadow: var(--shadow-3);
+  animation: popIn var(--motion-fast) var(--ease) both;
+}
+
+.colmenu__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding-bottom: var(--s2);
+  border-bottom: 1px solid var(--divider);
+}
+
+.colmenu__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+
+/* As in the analyses panel: an Enum8's type is a three-hundred-character value
+ * list, and the column's name is what has to survive. */
+.colmenu__type {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+}
+
+.colmenu__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: var(--s2) 0;
+}
+
+.colmenu__row {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  justify-content: space-between;
+}
+
+.colmenu__value {
+  height: 28px;
+  padding: 0 var(--s2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--slab);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+
+.colmenu__go {
+  justify-content: center;
+}
+
+.colmenu__acts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  padding-top: var(--s2);
+  border-top: 1px solid var(--divider);
+}
+
+.colmenu__act {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: var(--s1) var(--s2);
+  border-radius: var(--radius-sm);
+  text-align: left;
+  font-size: var(--size-body);
+  color: var(--chalk);
+}
+.colmenu__act:hover {
+  background: var(--slab-hover);
+}
+
+.colmenu__hint {
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+/* ── Filter to the cell under the caret ───────────────────────────────── */
+
+.gridshell__chips {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-width: 0;
+}
+
+.gridshell__chipkey {
+  color: var(--chalk-faint);
+}
+
+.gridshell__chip {
+  max-width: 28ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 1px var(--s2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: var(--slab-raised);
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-dim);
+  white-space: nowrap;
+  transition:
+    color var(--motion-fast) var(--ease),
+    border-color var(--motion-fast) var(--ease);
+}
+.gridshell__chip:hover {
+  color: var(--accent-strong);
+  border-color: var(--spark-line);
+}
+
+/* ── The result and its analyses, side by side ────────────────────────── */
+
+.rview__spacer {
+  flex: 1;
+}
+
+.rview__main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.rview__body.is-split {
+  display: flex;
+  gap: var(--s3);
+  overflow: hidden;
+}
+
+.analysis {
+  flex: none;
+  width: 300px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-left: var(--s3);
+  border-left: 1px solid var(--line);
+}
+
+.analysis__head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding-bottom: var(--s2);
+  background: var(--ground);
+}
+
+.analysis__title {
+  margin: 0;
+  font-size: var(--size-head);
+  font-weight: 600;
+  color: var(--chalk);
+}
+
+.analysis__scope {
+  margin: 0;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.analysis__notes {
+  margin: 0 0 var(--s3);
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}
+
+.analysis__note {
+  font-size: var(--size-label);
+  color: var(--chalk-dim);
+}
+.analysis__note.is-warn {
+  color: var(--warning);
+}
+
+.analysis__notecol {
+  margin-right: var(--s1);
+  font-family: var(--font-data);
+  color: var(--chalk);
+}
+
+.analysis__cols {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  padding-bottom: var(--s4);
+}
+
+.acol {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  padding-bottom: var(--s3);
+  border-bottom: 1px solid var(--divider);
+}
+.acol:last-child {
+  border-bottom: none;
+}
+
+.acol__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-width: 0;
+}
+
+.acol__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+
+/* An Enum8's type is its whole value list — three hundred characters of it —
+ * and unconstrained it pushed the column's own name out of the row entirely.
+ * The name is what identifies the card, so the type is what gives way. */
+.acol__type {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 48%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+}
+
+.acol__facts {
+  margin: 0;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+/* A shape, not a measurement: 22 pixels tall, no axes, and the figures
+ * underneath are where a number gets read. */
+.acol__spark {
+  width: 100%;
+  height: 22px;
+  display: block;
+  opacity: 0.72;
+}
+
+.acol__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1) var(--s3);
+  margin: 0;
+}
+
+.acol__stat {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s1);
+}
+
+.acol__statkey {
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+.acol__statval {
+  margin: 0;
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+
+.acol__span {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1) var(--s2);
+  margin: 0;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-dim);
+}
+
+.acol__spanlen {
+  color: var(--chalk-faint);
+}
+
+.acol__top {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* The bar is a background behind the value, the same trick the grid's data
+ * bars use: the text stays selectable and exactly where it was. */
+.acol__val {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+  width: 100%;
+  padding: 1px var(--s1);
+  border-radius: var(--radius-sm);
+  background-image: linear-gradient(to right, var(--bar-cell) var(--share, 0%), transparent 0);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk-dim);
+  text-align: left;
+}
+
+button.acol__val {
+  cursor: pointer;
+}
+button.acol__val:hover {
+  color: var(--accent-strong);
+  background-color: var(--slab-hover);
+}
+
+.acol__valtext {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.acol__valn {
+  flex: none;
+  color: var(--chalk-faint);
+}
+
+.acol__more {
+  padding: 1px var(--s1);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+/* ── The rail, while a query is being written ─────────────────────────── */
+
+/* The base row is a fixed 28px tall, which is right for a list of names and
+ * wrong the moment one of them can unfold: the column list overflowed the box
+ * and sat *under* the rows below it, which then swallowed its clicks. Height is
+ * the content's here, and the hover belongs to the line rather than to the whole
+ * unfolded block. */
+.objnode--writing {
+  display: block;
+  height: auto;
+  padding: 0 var(--s2) 0 var(--s2);
+}
+.objnode--writing:hover {
+  background: none;
+  color: var(--chalk-dim);
+}
+
+.objnode__line {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  height: 28px;
+  padding: 0 var(--s2) 0 var(--s1);
+  border-radius: var(--radius-sm);
+}
+.objnode__line:hover {
+  background: var(--slab-hover);
+}
+
+.objnode__twist {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--chalk-faint);
+}
+.objnode__twist svg {
+  width: 10px;
+  height: 10px;
+  display: block;
+  margin: auto;
+  transition: transform var(--motion-fast) var(--ease);
+}
+.objnode--writing.is-open .objnode__twist svg {
+  transform: rotate(90deg);
+}
+.objnode__twist:hover {
+  color: var(--chalk);
+}
+
+.objnode__write {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  color: inherit;
+}
+
+/* Only on hover: the arrow is the second thing anybody wants here, and a
+ * column of arrows down a 155-row rail is noise. */
+.objnode__open {
+  flex: none;
+  opacity: 0;
+  padding: 0 var(--s1);
+  color: var(--chalk-faint);
+  transition:
+    opacity var(--motion-fast) var(--ease),
+    color var(--motion-fast) var(--ease);
+}
+.objnode__line:hover .objnode__open,
+.objnode__open:focus-visible {
+  opacity: 1;
+}
+.objnode__open:hover {
+  color: var(--spark);
+}
+
+.objcols {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: var(--s1) 0 var(--s2) var(--s4);
+  padding-left: var(--s2);
+  border-left: 1px solid var(--divider);
+}
+
+.objcol {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 2px var(--s1);
+  border-radius: var(--radius-sm);
+  text-align: left;
+}
+.objcol:hover {
+  background: var(--slab-hover);
+}
+
+.objcol__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk-dim);
+}
+.objcol:hover .objcol__name {
+  color: var(--chalk);
+}
+
+/* The name is what gets clicked, so the type gives way first: in a 264px rail a
+ * `LowCardinality(Nullable(String))` left the column called `a…`. */
+.objcol__type {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+}
+
+/* The analyses panel stacks under the values on a narrow window, and keeps the
+ * values on top: they are what was asked for. */
+@media (max-width: 1180px) {
+  .rview__body.is-split {
+    flex-direction: column;
+  }
+
+  .analysis {
+    width: auto;
+    max-height: 40%;
+    padding-left: 0;
+    border-left: none;
+    border-top: 1px solid var(--line);
+  }
+}
+
+/* An EXPLAIN is the one result on this page that is not the query's own answer,
+ * and which pass produced it changes how to read it. The note says so above the
+ * text rather than inside it: a caveat set in the same monospace as the SQL
+ * reads as part of the SQL. */
+.planview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  height: 100%;
+  min-height: 0;
+}
+
+.planview__note {
+  flex: none;
+  max-width: 80ch;
+  margin: 0;
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--chalk-dim);
+}
+
+.planview .plan {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* Detached parts: the controls, and what deleting one costs. */
+.dparts__acts,
+.dparts__confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  justify-content: flex-end;
+}
+
+.dparts__cost {
+  font-size: var(--size-label);
+  color: var(--danger-text);
+  white-space: nowrap;
+}
+
+.dparts__error {
+  font-size: var(--size-label);
+  color: var(--danger-text);
+  max-width: 40ch;
+}
+
+/* Partition controls: one strip, one mode. Two independent groups in this cell
+ * wrapped it to three lines and knocked the row out of alignment. */
+.pacts {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.pacts__cost {
+  font-size: var(--size-label);
+  color: var(--danger-text);
+  white-space: nowrap;
+}
+
+.pacts__error {
+  font-size: var(--size-label);
+  color: var(--danger-text);
+  max-width: 38ch;
+}
+
+/* "If this went away": the verdict, then the two lists with what separates them
+ * stated between them. */
+.impact__line {
+  margin: var(--s2) 0 0;
+  font-size: var(--size-body);
+  color: var(--text-primary);
+}
+
+.impact__kind {
+  margin: var(--s3) 0 var(--s2);
+  max-width: 88ch;
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.impact__what {
+  margin-left: var(--s2);
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+/* ══ Schema review ═════════════════════════════════════════════════════════
+ *
+ * A page of advice about somebody's schema has one job before it has any
+ * others: not to overstate. So the claim comes first (hypothesis or verdict),
+ * every card carries the numbers it rests on, and the caution sits *under* the
+ * DDL — last thing read before deciding. */
+
+.review {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+}
+
+.review__head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s4);
+  flex-wrap: wrap;
+}
+
+.review__scope {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.review__claim {
+  margin: 0;
+  font-size: var(--size-body);
+  color: var(--chalk);
+}
+
+.review__facts {
+  margin: 0;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.review__stake {
+  margin: 0;
+  font-size: var(--size-body);
+  color: var(--chalk-dim);
+}
+
+/* Which kinds of finding are listed. Sits in the head beside the claim it
+ * narrows, and reads as a control rather than as a finding: pill-shaped, quiet
+ * until something is actually hidden, at which point it has to say so. */
+.review__picker {
+  position: relative;
+  flex: none;
+}
+
+.review__filter {
+  padding: 2px var(--s2);
+  border-radius: var(--radius-pill);
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+  transition: color var(--motion-fast) var(--ease), background var(--motion-fast) var(--ease);
+}
+.review__filter:hover {
+  color: var(--chalk);
+  background: var(--slab-hover);
+}
+.review__filter.is-on {
+  color: var(--accent-strong);
+  background: var(--spark-wash);
+}
+
+.kindpick {
+  position: absolute;
+  z-index: 20;
+  /* Hung from the right, unlike the grid's column picker: this button sits at
+   * the right of the head, and anchored left it reached past the panel. */
+  top: calc(100% + var(--s1));
+  right: 0;
+  width: 300px;
+  padding: var(--s2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--slab-raised);
+  box-shadow: var(--shadow-3);
+  animation: popIn var(--motion-fast) var(--ease) both;
+}
+
+.kindpick__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  padding: var(--s1) var(--s2) var(--s2);
+  border-bottom: 1px solid var(--divider);
+}
+
+.kindpick__count {
+  flex: 1;
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+/* The way back, in the popover's head and again in the note that appears when
+ * every kind is switched off — the same affordance, so it is the same rule. */
+.kindpick__all,
+.review__showall {
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--spark);
+}
+.kindpick__all:hover,
+.review__showall:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.kindpick__list {
+  display: flex;
+  flex-direction: column;
+  padding-top: var(--s1);
+}
+
+.kindpick__item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+  padding: var(--s1) var(--s2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.kindpick__item:hover {
+  background: var(--slab-hover);
+}
+
+.kindpick__item input {
+  /* Aligned to the label's first line rather than to the pair, so the gloss
+   * hanging under it does not drag the box into the gap between rows. */
+  margin-top: 2px;
+}
+
+.kindpick__name {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--size-body);
+  color: var(--chalk);
+}
+
+.kindpick__gloss {
+  display: block;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.kindpick__tally {
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+/* The caveat that stops the figure above it being read as a saving. Its own
+ * line, quiet, and never omitted. */
+.review__caveat {
+  display: block;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.btn__aside {
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: inherit;
+  opacity: 0.75;
+}
+
+.pill--caution {
+  color: var(--warning);
+  background: var(--warning-weak);
+}
+
+/* The cost of a mutation, said once. */
+.review__cost {
+  margin: 0;
+  max-width: 78ch;
+  font-size: var(--size-label);
+  color: var(--warning);
+}
+
+.review__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rfind {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: var(--s3);
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--slab);
+}
+
+/* The left edge carries the kind, so a column of cards is scannable without
+ * reading a single pill. */
+.rfind--save {
+  border-left-color: var(--spark);
+}
+.rfind--fix {
+  border-left-color: var(--warning);
+}
+
+.rfind__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-wrap: wrap;
+}
+
+.rfind__col {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  font-weight: 600;
+  color: var(--chalk);
+}
+
+.rfind__headline {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk-dim);
+  /* A type is characters, not ligatures — the same rule the editor keeps. */
+  font-variant-ligatures: none;
+}
+
+.rfind__bytes {
+  flex: none;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.rfind__evidence {
+  margin: 0;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk);
+}
+
+.rfind__why {
+  margin: 0;
+  max-width: 78ch;
+  font-size: var(--size-body);
+  line-height: 1.55;
+  color: var(--chalk-dim);
+}
+
+.rfind__ddl {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+}
+
+.rfind__ddl .code {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+
+.rfind__caution {
+  margin: 0;
+  max-width: 78ch;
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--warning);
+}
+
+.rfind__caution--soft {
+  color: var(--chalk-faint);
+}
+
+/* Object controls, and the impact that stands in front of a drop. Wider than the
+ * other confirmations because it carries names, not just a figure — the whole
+ * point is that the reader sees what breaks before the button. */
+.oacts {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.oacts--wide {
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.oacts__impact {
+  text-align: right;
+}
+
+.oacts__cost {
+  font-size: var(--size-label);
+  color: var(--danger-text);
+}
+
+.oacts__names {
+  margin: 2px 0 0;
+  max-width: 52ch;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+/* The inferred half, set apart from the declared one: it is a reading of SQL, not
+ * the server's own record. */
+.oacts__names--soft {
+  color: var(--text-muted);
+}
+
+.oacts__error {
+  font-size: var(--size-label);
+  color: var(--danger-text);
+  max-width: 36ch;
+}
+
+/* The confirmation, in a row of its own across the table.
+ *
+ * It began in the action cell and the list of dependents was clipped — the one
+ * thing it exists to show was the one thing you could not read. Full width, text
+ * that wraps, buttons on the right. */
+.oacts__panelrow > td {
+  background: var(--bg-surface-2);
+}
+
+.oconfirm {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s4);
+  padding: var(--s2) 0;
+}
+
+.oconfirm__what {
+  flex: 1;
+  min-width: 0;
+}
+
+.oconfirm__cost {
+  margin: 0;
+  font-size: var(--size-body);
+  color: var(--danger-text);
+}
+
+.oconfirm__names {
+  margin: 4px 0 0;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+/* The inferred half, set apart: a reading of SQL, not the server's record. */
+.oconfirm__names--soft {
+  color: var(--text-muted);
+}
+
+.oconfirm__how {
+  font-family: var(--font-sans);
+}
+
+.oconfirm__acts {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex: none;
+}
+
+.oconfirm__error {
+  font-size: var(--size-label);
+  color: var(--danger-text);
+  max-width: 30ch;
+}
+
+/* ═══ The partition grid ═══════════════════════════════════════════════════
+ * The database on its other axis. One row per table, one column per partition,
+ * the weight of each cell drawn — a TTL's cut-off, a backfill and a hole where
+ * an ingest failed are all shapes here and invisible in every total.
+ *
+ * The grid scrolls inside its own frame: a database of daily partitions is
+ * wider than any page, and the one thing that must never happen is the page
+ * itself scrolling sideways. The table's first column is sticky, because a row
+ * whose name has scrolled away is a row of squares nobody can attribute. */
+
+.ptime {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.ptime__bar,
+.paff__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+}
+
+/* The two ways through history, kept together and next to the count they act
+ * on: a control for moving a window belongs beside the sentence that says which
+ * window you are on. */
+.ptime__nav {
+  display: flex;
+  gap: var(--s1);
+  flex: none;
+}
+
+.ptime__nav .btn {
+  height: 26px;
+  padding: 0 var(--s3);
+  font-size: 12px;
+}
+
+.ptime__text,
+.paff__text {
+  margin: 0;
+  font-size: var(--size-body);
+  color: var(--text-primary);
+}
+
+.ptime__rest,
+.paff__rest {
+  color: var(--text-secondary);
+}
+
+.ptime__legend,
+.ptime__caption,
+.paff__legend,
+.paff__caption {
+  margin: 0;
+  font-size: var(--size-label);
+  line-height: 1.6;
+  color: var(--text-secondary);
+  max-width: 92ch;
+}
+
+/* What was left out, set apart from what the columns mean: one is a caveat
+ * about the picture, the other is how to read it. */
+.ptime__left,
+.paff__left {
+  color: var(--text-muted);
+}
+
+/* The frame is the grid's own width, not the page's: a five-column grid stretched
+ * across a wide screen puts 500px of empty slab beside it and reads as a table
+ * that failed to load its remaining columns. */
+.ptime__scroll,
+.paff__scroll {
+  /* `fit-content`, not `max-content`. Both give a five-column grid a frame its
+     own width rather than the page's — which is the point, since 500px of empty
+     slab beside a small grid reads as a table that failed to load the rest. But
+     `max-content` *asks* for the whole content width, and in a column flex
+     container that grows the parent instead of clamping: with twenty-odd columns
+     the co-access matrix made the page itself scroll 54px sideways, which is the
+     one thing this frame exists to prevent. `fit-content` is min(max-content,
+     available), which is the actual intent. `min-width: 0` keeps the flex item
+     from insisting on its content width by another route. */
+  width: fit-content;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* And `contain: paint`, without which `overflow-x: auto` clamps the box and
+     *not* the document: a table wider than the frame still counted toward the
+     page's scrollable width, so the whole page scrolled 54px sideways while the
+     frame itself was the right size and scrolled correctly inside it. Measured,
+     not guessed — the window really moved, on the matrix at twenty-odd columns
+     and latently on the partition grid at a daily scale, where the table is
+     several thousand pixels wide. Containment makes the box the end of the
+     line for its own geometry, which is what the frame was for. */
+  contain: paint;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--slab);
+}
+
+.ptime__table,
+.paff__table {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--size-label);
+}
+
+.ptime__corner,
+.ptime__row {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--slab);
+  text-align: left;
+  font-weight: 400;
+  padding: var(--s2) var(--s3);
+  min-width: 200px;
+  max-width: 260px;
+  border-right: 1px solid var(--line);
+}
+
+.ptime__corner {
+  z-index: 2;
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.ptime__corner,
+.ptime__col {
+  position: sticky;
+  top: 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.ptime__col {
+  z-index: 1;
+  background: var(--slab);
+  padding: var(--s2) 2px;
+  font-weight: 400;
+  font-family: var(--font-data);
+  color: var(--text-muted);
+  /* Every column is the same width whatever its label, because the grid is
+     read down as much as across and a ragged column ruins that. A long
+     partition name — a tuple key prints as `('eu',2026)` — is clipped rather
+     than allowed to widen its column; the full string is in the title. */
+  width: 46px;
+  max-width: 46px;
+  overflow: hidden;
+}
+
+/* Horizontal, not rotated. A month id is six characters and fits; rotating the
+ * row to save 12px a column would cost every reader the one label they scan
+ * along, and this grid is scanned along its top more than anywhere else. */
+/* The pinned column, set apart from the timeline by one rule. Not a colour and
+ * not a gap: it is still a column of the same grid, read the same way — it is
+ * only that the axis stops before it. */
+.ptime__col--pinned,
+.ptime__cell--pinned {
+  border-left: 1px solid var(--line);
+}
+
+.ptime__collabel {
+  display: block;
+  width: 42px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  letter-spacing: -0.02em;
+}
+
+.ptime__row .objlink {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ptime__rowsub {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin-top: 2px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.ptime__inner {
+  margin-left: 4px;
+}
+
+.ptime__cell,
+.paff__cell {
+  padding: 1px;
+  text-align: center;
+  line-height: 0;
+}
+
+.ptime__table tbody tr:hover .ptime__row,
+.ptime__table tbody tr:hover .ptime__cell {
+  background: var(--slab-hover);
+}
+
+/* A cell. `--fill` is the magnitude, 0..1 against the grid's scale, floored by
+ * the layout so that anything present is visible: "small" and "not there" are
+ * different answers and this grid exists to tell them apart. */
+.pmark {
+  display: inline-block;
+  width: 40px;
+  height: 22px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--cell-ink) calc(var(--fill, 0) * 100%), transparent);
+  transition: background var(--motion-fast) var(--ease);
+}
+
+/* Past the scale: full, with the accent edge the storage bars use for exactly
+ * the same statement — this one does not stop here. */
+.pmark--past {
+  box-shadow: inset -2px 0 0 0 var(--spark);
+}
+
+/* Nothing here. Drawn as an outline of nothing rather than as a pale fill,
+ * because a pale fill is what a *small* value looks like and those are the two
+ * answers this grid exists to keep apart. */
+.pmark--absent {
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--cell-absent);
+  opacity: 0.9;
+}
+
+/* Text for whoever is not looking at the picture. The grid is squares; the
+ * figures behind them have to reach a screen reader some other way. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Where a structural history stops, and why. Said in the same voice as the rest
+ * of the page rather than as a warning: a log with a TTL is not a fault. */
+.chg__none {
+  margin: var(--s3) 0 0;
+  max-width: 84ch;
+  font-size: var(--size-label);
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+/* Marks a statement that came through Flint. Quiet: most of them will not have,
+ * and a badge on the exception is more useful than one on the rule. */
+.chg__via {
+  margin-left: var(--s2);
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background: var(--fill);
+  font-family: var(--font-sans);
+  font-size: var(--size-label);
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
+.chg__sql {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  overflow-wrap: anywhere;
+}
+
+/* How many identical statements one row stands for. Quiet — the count is the
+ * exception, not the rule — and on its own line, because inline it broke the
+ * phrase in the middle: "2m / ago ×55, back to 4h ago". */
+.chg__times {
+  display: block;
+  font-size: var(--size-label);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* The measurement, once it exists: figures first, then what they do and do not
+ * license. Never a predicted saving — the ratio is measured and the projection
+ * says "at that ratio" or admits it cannot. */
+.rmeasure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.rmeasure__read {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  font-size: var(--size-body);
+  color: var(--chalk-dim);
+}
+
+.rmeasure__figs {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+
+.rmeasure__aside {
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.rmeasure__aside--warn {
+  color: var(--warning);
+}
+
+.rmeasure__refused {
+  margin: 0;
+  max-width: 78ch;
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--warning);
+}
+
+/* ═══ The mass map ═════════════════════════════════════════════════════════
+ * Where the disk is, as proportion. Blocks are tables, cells are columns, and
+ * area is bytes — so the picture is read by size before any label is.
+ *
+ * Every rectangle is absolutely positioned from a layout computed in
+ * `lib/treemap`, against a frame that is measured rather than assumed. */
+
+.mass {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.mass__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex-wrap: wrap;
+}
+
+.mass__text {
+  margin: 0;
+  font-size: var(--size-body);
+  color: var(--text-primary);
+}
+
+.mass__rest {
+  color: var(--text-secondary);
+}
+
+.mass__caption {
+  margin: 0;
+  font-size: var(--size-label);
+  line-height: 1.6;
+  color: var(--text-secondary);
+  max-width: 92ch;
+}
+
+.mass__left {
+  color: var(--text-muted);
+}
+
+/* The key names the families actually on screen. A legend listing six when the
+ * database uses three is a legend that has to be read past. */
+.mass__key {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--size-label);
+  color: var(--text-secondary);
+}
+
+.mass__keyitem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mass__swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+}
+
+.mass__frame {
+  position: relative;
+  width: 100%;
+  border-radius: var(--radius);
+  background: var(--slab-sunk);
+  overflow: hidden;
+}
+
+/* One table. The block is the button and its cells are decoration inside it:
+ * two hundred focusable rectangles is a tab order nobody can escape, and every
+ * cell in a block leads to the same page anyway. */
+.mblock {
+  position: absolute;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  overflow: hidden;
+  text-align: left;
+  /* The gap between blocks is drawn rather than laid out, so the areas stay
+     exactly proportional: a margin would take its width out of the smallest
+     rectangles first, which is where proportion matters most. */
+  box-shadow: inset -1px -1px 0 0 var(--slab-sunk), inset 1px 1px 0 0 var(--slab-sunk);
+}
+
+.mblock:hover,
+.mblock:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--spark);
+  z-index: 1;
+}
+
+/* A block with no room for its columns. Drawn as one solid cell of the neutral
+ * ink rather than left empty, and its title says why it is not divided. */
+.mblock--whole {
+  background: var(--slab-hover);
+}
+
+.mblock__name {
+  position: absolute;
+  left: 6px;
+  top: 5px;
+  max-width: calc(100% - 12px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-primary);
+  /* The label sits on top of a coloured cell, so it carries its own ground
+     rather than trusting whatever is behind it. */
+  background: color-mix(in srgb, var(--slab) 82%, transparent);
+  border-radius: 3px;
+  padding: 1px 4px;
+  pointer-events: none;
+}
+
+.mcell {
+  position: absolute;
+  overflow: hidden;
+  box-shadow: inset -1px -1px 0 0 color-mix(in srgb, var(--slab-sunk) 70%, transparent);
+}
+
+/* The fold: one cell standing for the columns too small to draw. Outlined
+ * rather than coloured, because it is several things and should not read as one
+ * column — and the overhead cell, which is not a column at all, is marked the
+ * same way for the same reason. */
+.mcell--fold,
+.mcell--overhead,
+.mcell--projection {
+  box-shadow: inset 0 0 0 1px var(--cell-absent);
+}
+
+.mcell__name {
+  position: absolute;
+  left: 5px;
+  bottom: 4px;
+  max-width: calc(100% - 10px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-data);
+  font-size: 10px;
+  color: var(--text-secondary);
+  pointer-events: none;
+}
+
+/* The restore column: a button, or the sentence saying why there is none.
+ *
+ * Deliberately not `.tbl--n`, which carries `white-space: nowrap` for figures —
+ * a sentence under that rule makes the column as wide as itself and pushes the
+ * table off the right of the screen, taking the button with it. The width is a
+ * hint to auto-layout so the prose wraps here rather than squeezing the columns
+ * that hold the data. The sentence itself is a `.says`, the house's existing
+ * idiom for prose inside a data cell: sans, left-aligned, wrapping. */
+.bk__cell {
+  width: 20ch;
+  text-align: right;
+}
+
+.bk__act {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  justify-content: flex-end;
+  white-space: nowrap;
+}
+
+/* What reads the column, beside what it costs. Quieter than the evidence it
+ * follows: it qualifies the finding rather than being one. */
+.rfind__usage {
+  margin-left: var(--s3);
+  color: var(--chalk-faint);
+}
+
+/* The queries that read a column. A disclosure rather than a panel: it answers
+ * a question the reader only sometimes has, and the SQL is long. */
+.rfind__usage {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  margin-left: var(--s3);
+  color: var(--chalk-faint);
+  font-family: inherit;
+  font-size: inherit;
+}
+.rfind__usage:hover {
+  color: var(--spark);
+}
+
+.rfind__twist {
+  font-size: 9px;
+}
+
+.rread {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: var(--s2) 0 var(--s2) var(--s3);
+  border-left: 1px solid var(--divider);
+}
+
+.rread__head {
+  margin: 0;
+  max-width: 78ch;
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--chalk-faint);
+}
+
+.rread__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rread__item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}
+
+.rread__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1) var(--s3);
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-dim);
+}
+
+.rread__when {
+  color: var(--chalk-faint);
+}
+
+/* Four lines of it, and the rest on hover — a generated statement can be a
+ * hundred kilobytes, and the shape is what identifies it. */
+.rread__sql {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  margin: 0;
+  overflow: hidden;
+  font-size: var(--size-label);
+  overflow-wrap: anywhere;
+}
+.rread__item:hover .rread__sql {
+  -webkit-line-clamp: 12;
+  overflow: auto;
+}
+
+.rread__open {
+  align-self: flex-start;
+  font-size: var(--size-label);
+  color: var(--spark);
+}
+.rread__open:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* ═══ The co-access matrix ═════════════════════════════════════════════════
+ * Which tables get read in one statement. A matrix rather than a graph on
+ * purpose: co-access is undirected and full of cycles, so the layered layout
+ * the schema diagram uses does not apply, and a force layout would throw away
+ * the ordering that makes a picture readable. A matrix has no layout to get
+ * wrong — rows and columns in one order, read along either.
+ *
+ * It borrows the partition grid's frame and sticky first column: the two are
+ * the same kind of object and should not be two kinds of thing to learn.
+ *
+ * *Borrows* literally: nine rule bodies the two grids agree on are written once,
+ * against both selectors, up in the partition grid's section — the frame, the
+ * caption, the cell padding, the scroll box. What is left below is only what this
+ * matrix does differently: wider columns, because a table name is longer than a
+ * date; a row that gives up ten pixels, because it carries no sparkline; and the
+ * ring, which is its own idea.
+ *
+ * Both names are kept rather than folded into a third: `.ptime__row` says which
+ * grid you are reading, and a shared `.gridframe__row` would say only that some
+ * grid somewhere claims it. What must not be duplicated is the *value*, which is
+ * what drifts, and a value written once behind two selectors is not duplicated. */
+
+.paff {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+
+
+
+/* The word in the legend carries the mark it names, so the sentence and the
+ * cell do not have to be matched up by memory. */
+.paff__ringword {
+  box-shadow: inset 0 0 0 1.5px var(--spark);
+  border-radius: 3px;
+  padding: 0 4px;
+}
+
+
+
+.paff__corner,
+.paff__row {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--slab);
+  text-align: left;
+  font-weight: 400;
+  padding: var(--s2) var(--s3);
+  min-width: 190px;
+  max-width: 260px;
+  border-right: 1px solid var(--line);
+}
+
+.paff__corner {
+  z-index: 2;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.paff__corner,
+.paff__col {
+  position: sticky;
+  top: 0;
+  border-bottom: 1px solid var(--line);
+}
+
+/* The column head is the same name as the row head, so it is set in the same
+ * type and clipped rather than rotated: a rotated label costs the reader more
+ * than the 20px it saves, and this matrix is read across as much as down. */
+.paff__col {
+  z-index: 1;
+  background: var(--slab);
+  padding: var(--s2) 2px;
+  font-weight: 400;
+  font-family: var(--font-data);
+  color: var(--text-muted);
+  width: 62px;
+  max-width: 62px;
+  overflow: hidden;
+}
+
+.paff__collabel {
+  display: block;
+  width: 58px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  letter-spacing: -0.02em;
+}
+
+.paff__row .objlink {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.paff__rowsub {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+
+.paff__table tbody tr:hover .paff__row,
+.paff__table tbody tr:hover .paff__cell {
+  background: var(--slab-hover);
+}
+
+/* A cell: how often the pair was named in one statement, against the busiest
+ * pair. Same ink and same floor as the partition grid — one physics for the
+ * product, and two grids that shade differently would be two things to learn. */
+.amark {
+  display: inline-block;
+  width: 56px;
+  height: 22px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--cell-ink) calc(var(--fill, 0) * 100%), transparent);
+}
+
+/* The schema already declares this pair. Ringed rather than tinted: the count
+ * is the quantity and this is a fact about it, so it must not compete with the
+ * shade that carries the number. */
+.amark--declared {
+  box-shadow: inset 0 0 0 1.5px var(--spark);
+}
+
+.amark--past {
+  border-right: 2px solid var(--spark);
+}
+
+/* Never read together. Left empty, unlike the partition grid's absent cell —
+ * and for the same reason that one is outlined. There, absence is rare and is
+ * the finding; here it is the overwhelming majority, and drawing a box around
+ * every one of a hundred and seventy of them buries the nine cells that are the
+ * answer. The row and column headers carry the structure instead. */
+.amark--never {
+  background: none;
+}
+
+/* The diagonal: a table with itself, which is not a fact about anything. Drawn
+ * as a hairline so the eye can find it and read outwards, not as a value. */
+.amark--self {
+  background: none;
+  border-top: 1px solid var(--line-strong);
+  height: 22px;
+  width: 56px;
+}
+
+/* Codecs, weighed. A short table rather than prose: four numbers compared is
+ * what the reader came for, and the smallest is first. */
+.rcodec {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.rcodec__head,
+.rcodec__note {
+  margin: 0;
+  max-width: 78ch;
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--chalk-faint);
+}
+
+.rcodec__list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rcodec__row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  padding: 2px var(--s2);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+.rcodec__row:hover {
+  background: var(--slab-hover);
+}
+
+/* The one that costs more than what the column has now. Marked, never hidden. */
+.rcodec__row.is-worse .rcodec__ratio {
+  color: var(--warning);
+}
+
+.rcodec__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-ligatures: none;
+}
+
+.rcodec__bytes {
+  flex: none;
+  min-width: 9ch;
+  text-align: right;
+}
+
+.rcodec__ratio {
+  flex: none;
+  min-width: 12ch;
+  color: var(--chalk-dim);
+}
+
+.rcodec__copy {
+  flex: none;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+.rcodec__copy:hover {
+  color: var(--spark);
+}
+
+/* Quotas, profiles and policies. */
+
+.lim__interval {
+  margin-top: var(--s3);
+}
+
+/* What a table's policies mean together, in the order the server applies them.
+ * A list rather than a paragraph: each line is one step of the composition, and
+ * the last is the one people get wrong. */
+.lim__reading {
+  margin: var(--s2) 0 var(--s3);
+  padding-left: var(--s4);
+  font-size: var(--size-label);
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.lim__else {
+  color: var(--text);
+}
+
+/* A ceiling and what has been spent against it. Same measurements as
+ * `.nullbar`, which draws the same kind of fact on the profile — one physics
+ * for the product. */
+.gauge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  justify-content: flex-end;
+}
+
+.gauge__value {
+  font-variant-numeric: tabular-nums;
+}
+
+.gauge__track {
+  width: 44px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--bar-ghost);
+  overflow: hidden;
+}
+
+/* `--bar`, the neutral fill the storage bars use, rather than the warm one the
+ * null bar uses: consumption below its ceiling is a quantity, not a concern, and
+ * a sliver of alarm colour at half a percent reads as one. The warm colours
+ * arrive with the bands that earn them. */
+.gauge__fill {
+  display: block;
+  height: 100%;
+  background: var(--bar);
+}
+
+.gauge__fill--close {
+  background: var(--warning);
+}
+
+.gauge__fill--spent {
+  background: var(--danger);
+}
+
+/* ── Changing who can do what ─────────────────────────────────────────────
+   One strip of toggles, one panel open at a time. The alternative — every
+   control visible at once — was built here once before, in a different cell:
+   two groups of controls side by side turned a 33px row into a 113px one and
+   wrapped to three lines. */
+.rbac__strip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  margin-top: var(--s2);
+  flex-wrap: wrap;
+}
+
+.rbac__panel {
+  margin-top: var(--s2);
+  padding: var(--s3);
+  background: var(--slab);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.rbac__row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--s3);
+  flex-wrap: wrap;
+}
+
+.rbac__row + .rbac__row {
+  margin-top: var(--s3);
+}
+
+.rbac__field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rbac__field input,
+.rbac__field select {
+  min-width: 14ch;
+}
+
+/* A privilege that is already there, with the way to take it away attached to
+   it: the two belong together, and a separate revoke control would have to name
+   the thing again. */
+.rbac__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 2px 2px 2px var(--s2);
+  font-family: var(--font-mono);
+  font-size: var(--size-label);
+  background: var(--bar-ghost);
+  border-radius: var(--radius-pill);
+}
+
+.rbac__create {
+  margin-top: var(--s3);
+}
+
+/* ── The configuration this server is running with ────────────────────────── */
+
+/* `compatibility` gets its own line rather than a row in a table of 46. It
+   explains more surprising behaviour than anything else on the machine, and
+   finding it by scrolling is finding it too late. */
+.cfg__loud {
+  margin: var(--s3) 0;
+  padding: var(--s3);
+  background: var(--slab);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--warning);
+  border-radius: var(--radius);
+}
+
+.cfg__find {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  margin: var(--s3) 0;
+}
+
+/* A value can be a path, a byte count, or a comma-separated list of hosts.
+   Wrapping rather than nowrap, and bounded, so one long path does not make the
+   table wider than the screen — the mistake the restore column made. */
+.cfg__value {
+  max-width: 34ch;
+  overflow-wrap: anywhere;
+}
+
+.cfg__cmds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  margin-bottom: var(--s2);
+}
+
+/* `.says` is measured for a table cell — 34ch, so a sentence beside a figure
+   wraps instead of widening the column. In a full-width panel that same measure
+   reads as a cramped column beside nothing, so prose here gets a prose measure. */
+.rbac__panel .says {
+  max-width: 68ch;
+}
+
+/* The row's own shape, beside its name. The line carries a magnitude the same
+ * way the cells do, so it is the same ink — but at a *different* scale, its own
+ * peak rather than the grid's, which the legend says in words because no drawing
+ * can say it. */
+/* On the same line as the row's figures, not under them. Its own line cost
+ * nineteen pixels a row, and this grid's whole argument is density — a hundred
+ * squares you can take in at once. */
+.ptime__spark {
+  display: block;
+  flex: none;
+  overflow: visible;
+}
+
+.ptime__sparkline {
+  fill: none;
+  stroke: var(--cell-ink);
+  stroke-width: 1.25;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.85;
+}
+
+/* A bucket alone between two holes. A polyline of one point draws nothing, and
+ * "one month, then nothing for a year" is worth seeing. */
+.ptime__sparkdot {
+  fill: var(--cell-ink);
+  opacity: 0.85;
+}
+
+/* Where the rest of the database's disk is — a way out of one table's review
+ * and into the one that matters more. Behind a click: it is a different
+ * question, and the panel is already long. */
+.review__elsewhere {
+  align-self: flex-start;
+  font-size: var(--size-label);
+  color: var(--spark);
+}
+.review__elsewhere:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.heavy {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--slab);
+}
+
+.heavy__title {
+  margin: 0;
+  font-size: var(--size-body);
+  font-weight: 600;
+  color: var(--chalk);
+}
+
+.heavy__scope {
+  margin: 0;
+  max-width: 78ch;
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--chalk-faint);
+}
+
+.heavy__list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.heavy__row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  padding: 2px var(--s1);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+}
+.heavy__row:hover {
+  background: var(--slab-hover);
+}
+
+.heavy__where {
+  flex: none;
+  min-width: 14ch;
+  color: var(--spark);
+}
+.heavy__where:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.heavy__col {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--chalk);
+}
+
+.heavy__type {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 30%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.heavy__bytes {
+  flex: none;
+  min-width: 9ch;
+  text-align: right;
+  color: var(--chalk-dim);
+}
+
+/* The plan, read back. Above the text and never instead of it: a verdict
+ * nobody can check against the thing it came from is a verdict taken on
+ * faith. The left edge carries the tone, so a column of them is scannable
+ * without reading a word. */
+.planread {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  flex: none;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.planread__v {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--s1) var(--s3);
+  max-width: 92ch;
+  padding: 2px var(--s2);
+  border-left: 2px solid var(--line-strong);
+  font-size: var(--size-body);
+  line-height: 1.5;
+  color: var(--chalk-dim);
+}
+
+.planread__v--good {
+  border-left-color: var(--spark);
+}
+.planread__v--cost {
+  border-left-color: var(--warning);
+}
+
+.planread__text {
+  flex: 1;
+  min-width: 24ch;
+}
+
+.planread__ev {
+  flex: none;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+  font-variant-ligatures: none;
+}
+
+/* The offer to explain a large read. It sits with the statistics it is about,
+ * and asking must never cost the rows on screen — which is why it fetches its
+ * own plan rather than going through the Explain menu. */
+.whystrip {
+  flex: none;
+  padding: var(--s2) var(--s3);
+  background: var(--slab);
+  border-bottom: 1px solid var(--line);
+}
+
+.whystrip__ask {
+  font-size: var(--size-label);
+  color: var(--spark);
+}
+.whystrip__ask:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.whystrip .bhint {
+  margin: 0;
+}
+
+/* The plan's verdicts inside an expanded pattern row. Indented under the SQL
+ * they explain, and clicks kept off the row so reading one does not collapse
+ * it. */
+.diag__why {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  margin-top: var(--s2);
+  cursor: default;
+}
+
+.diag__why .bhint {
+  margin: 0;
+}
+
+/* The DDL editor. A real statement, not a form: monospace, the width of the
+ * panel, and tall enough for what the server reported without a scrollbar
+ * inside a scrollbar. */
+.ddl {
+  display: block;
+  width: 100%;
+  margin: var(--s2) 0;
+  padding: var(--s2);
+  font-family: var(--font-mono);
+  font-size: var(--size-data);
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  resize: vertical;
+}
+
+/* A checkbox in a row of fields: aligned with the inputs rather than with their
+ * labels, so a row of controls reads as one line. */
+.rbac__check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  padding-bottom: 4px;
+  font-size: var(--size-label);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* ═══ Relations ════════════════════════════════════════════════════════════
+ * What one column of a table says about another. The other tabs describe the
+ * table; this one describes the rows, and says the things the DDL cannot.
+ *
+ * A list rather than a grid: there are rarely more than a dozen findings, each
+ * is a sentence, and a sentence in a table cell is a sentence nobody reads. */
+
+.rel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.rel__ask {
+  margin: 0;
+  max-width: 72ch;
+  font-size: var(--size-body);
+  color: var(--text-secondary);
+}
+
+.rel__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+}
+
+.rel__span {
+  margin: 0;
+  font-size: var(--size-body);
+  color: var(--text-primary);
+}
+
+.rel__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Each finding is bounded, because two of them run together at a glance
+ * otherwise — and the left edge carries the kind, so the eye can sort mirrors
+ * from constants without reading a word. */
+.rel__item {
+  padding: var(--s3);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--slab);
+}
+
+/* The three kinds, loudest first: a mirror is a redundancy somebody can act on
+ * today, a determination is a rule worth knowing, a constant is a fact. */
+.rel__item--mirrors {
+  border-left-color: var(--spark);
+}
+.rel__item--moves-with {
+  border-left-color: var(--spark);
+}
+.rel__item--correlates,
+.rel__item--far-values,
+.rel__item--determines {
+  border-left-color: var(--bar);
+}
+.rel__item--dominant,
+.rel__item--constant {
+  border-left-color: var(--line);
+}
+
+.rel__what {
+  margin: 0;
+  font-size: var(--size-body);
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+
+/* ── A table over time ──────────────────────────────────────────────────────
+   Sentences first, shapes under them. The findings are the answer; the sparks
+   are there so a reader can check one against the data rather than take it on
+   faith, which is why they sit in the same column and share an axis width. */
+.drift__findings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.drift__finding {
+  padding-left: var(--s3);
+  border-left: 2px solid var(--line-strong);
+  font-size: var(--size-body);
+  color: var(--chalk);
+}
+
+/* A hole in the record is the one finding that is an absence rather than a
+   change, and it is the only one that takes the alarm: every other kind here
+   reports something that is still arriving. */
+.drift__finding--gap {
+  border-left-color: var(--alarm);
+}
+
+.drift__finding--filling,
+.drift__finding--fleet {
+  border-left-color: var(--warning);
+}
+
+.drift__col {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: var(--s2);
+  border-top: 1px solid var(--line);
+}
+
+.drift__name {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  margin: 0 0 2px;
+}
+
+.drift__type {
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+/* Three columns and a fixed spark, so every row in the tab shares one axis and
+   the shapes can be read down the page as well as across. */
+.drift__row {
+  display: grid;
+  grid-template-columns: 5.5rem 320px auto;
+  align-items: center;
+  gap: var(--s3);
+}
+
+.drift__label {
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+.drift__spark {
+  width: 320px;
+  height: 26px;
+  overflow: visible;
+}
+
+.drift__line {
+  fill: none;
+  stroke: var(--chalk-dim);
+  stroke-width: 1.25;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.drift__dot {
+  fill: var(--chalk-dim);
+}
+
+/* The peak, always. `sparkline` scales each row to its own maximum, so two rows
+   of wildly different magnitude draw the same shape — without the figure beside
+   it the reader draws exactly the wrong conclusion. */
+.drift__peak {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  font-variant-numeric: tabular-nums;
+  color: var(--chalk-dim);
+}
+
+.drift__left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: var(--s2) 0 0;
+  padding: var(--s2) 0 0;
+  border-top: 1px solid var(--line);
+  list-style: none;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+/* What the dashboard-wide range reaches, above the grid it changes. Quiet, and
+   always present while a range is set: a control that moves six of nine tiles
+   and says nothing about the other three is a control nobody can trust. */
+.dashgrid__range {
+  margin: var(--s4) 0 0;
+  max-width: 90ch;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+/* ── A dashboard on a wall ──────────────────────────────────────────────────
+   Everything that *changes* the dashboard goes; everything that says what you
+   are looking at stays. Nobody edits a wall, and a stray click on a screen
+   behind a desk is a dashboard somebody else has to put back — while a chart of
+   "the last 7 days" that does not say so is a chart of nothing in particular.
+
+   The page element is the one that goes full screen, so it paints its own ground
+   and takes the room the chrome gave up: outside a fullscreen context none of
+   this applies, and the class alone changes nothing. */
+.page--wall {
+  min-height: 100vh;
+  max-width: none;
+  padding: var(--s5) var(--s6);
+  background: var(--ground);
+  overflow-y: auto;
+}
+
+.page--wall .btn,
+.page--wall .picker,
+.page--wall .tile__controls,
+.page--wall .vars__input {
+  display: none;
+}
+
+/* The one exception, because it is the way out — named rather than positional.
+   `:first-of-type` counts per element *type*, so it matched the first `<button>`
+   and the first `<a class="btn">` as well, and the link to the reports page
+   stayed on the wall beside the exit. */
+.page--wall .btn--wall {
+  display: inline-flex;
+}
+
+/* The variables stay legible without being editable: what the numbers were
+   filtered by is half of what the numbers mean. */
+.page--wall .vars__one::after {
+  content: attr(data-value);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+
+.page--wall .page__title {
+  font-size: var(--size-hero);
+}
+
+/* Controls for the `{name:Type}` the tiles declare. Above the grid with the
+   range, because both change how every tile reads and neither belongs to any
+   one of them. */
+.vars {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  margin-top: var(--s3);
+}
+
+.vars__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s3);
+}
+
+.vars__one {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.vars__name {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-dim);
+}
+
+.vars__type {
+  color: var(--chalk-faint);
+}
+
+.vars__input {
+  width: 22ch;
+  height: 30px;
+  padding: 0 var(--s2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--slab);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+
+/* What is in the way, before it becomes a broken tile: a reader looking at an
+   error where they expected data has no way to know a text box above would fix
+   it. */
+.vars__issues {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vars__issues li {
+  padding-left: var(--s3);
+  border-left: 2px solid var(--warning);
+  font-size: var(--size-label);
+  color: var(--chalk-dim);
+}
+
+/* ── Two tables, side by side ───────────────────────────────────────────────
+   The left column is what the table is now and the right is what it would
+   become, so the left is set back a step: a diff where both sides read equally
+   loud makes the reader work out which way round it is. */
+.cmp {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.cmp__pick {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.cmp__label {
+  font-size: var(--size-body);
+  color: var(--chalk-dim);
+}
+
+.cmp__select,
+.cmp__other {
+  height: 30px;
+  padding: 0 var(--s2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--slab);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+
+.cmp__other {
+  width: 20ch;
+}
+
+.cmp__idle,
+.cmp__says {
+  margin: 0;
+  max-width: 78ch;
+  font-size: var(--size-body);
+  color: var(--chalk);
+}
+
+.cmp__idle {
+  color: var(--chalk-dim);
+}
+
+/* What is in the way, each line naming one thing to fix — a verdict nobody can
+   act on is worse than a list. */
+.cmp__blockers {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cmp__blockers li {
+  padding-left: var(--s3);
+  border-left: 2px solid var(--warning);
+  font-size: var(--size-body);
+  color: var(--chalk);
+}
+
+.cmp__tbl td {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+}
+
+/* The side that is being replaced, a step quieter than the side replacing it. */
+.cmp__was {
+  color: var(--chalk-dim);
+}
+
+.cmp__how {
+  margin-left: var(--s2);
+  font-family: var(--font-sans);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.cmp__quiet {
+  font-family: var(--font-sans);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+/* A row that is gone and a row that is new are the two the eye should find
+   first; a retype and a move are differences within something that is still
+   there, and take the quieter mark. */
+.flag--cmp-removed {
+  background: var(--danger-weak);
+  color: var(--danger-text);
+}
+
+.flag--cmp-added {
+  background: var(--success-weak);
+  color: var(--success-text);
+}
+
+.flag--cmp-retyped,
+.flag--cmp-moved {
+  background: var(--warning-weak);
+  color: var(--warning);
+}
+
+.flag--cmp-same {
+  background: var(--fill);
+  color: var(--text-secondary);
+}
+
+/* ── The shape of a column ──────────────────────────────────────────────────
+   Opened under its own row in the profile. The bars are scaled to the tallest
+   of them rather than to the table, which is what makes a small column's shape
+   visible at all — and is why the figure beside them says what the full height
+   is, the same contract the sparklines keep. */
+.shape__open {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.shape__open:hover {
+  color: var(--spark);
+}
+
+.shape__row > td {
+  padding: 0 var(--s3) var(--s3);
+  background: var(--slab-raised);
+}
+
+.shape {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: var(--s3) 0 0;
+}
+
+.shape__says {
+  margin: 0;
+  max-width: 78ch;
+  /* The panel opens inside a table cell, which sets the data face. This is
+     prose. */
+  font-family: var(--font-sans);
+  font-size: var(--size-body);
+  color: var(--chalk);
+}
+
+.shape__bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 92px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.shape__bar {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  flex: 1 1 0;
+  /* Capped, or a tally of five draws five three-hundred-pixel slabs and reads
+     as a wall rather than as a shape. Sixteen bins fill the room; five do not
+     have to. */
+  max-width: 72px;
+  min-width: 0;
+  height: 100%;
+}
+
+/* A bucket holding nothing draws nothing — a hairline where there are no rows
+   would read as "a few", which is the one thing an empty bucket is not. */
+.shape__fill {
+  display: block;
+  width: 100%;
+  border-radius: 2px 2px 0 0;
+  background: var(--bar);
+}
+
+/* Values get their own colour, ranges do not: a tally is a set of things and a
+   histogram is one continuous quantity cut up. */
+.shape__bars--tally .shape__fill,
+.shape__bars--top .shape__fill {
+  background: var(--chart-2);
+}
+
+.shape__tick {
+  overflow: hidden;
+  margin-top: 3px;
+  font-family: var(--font-data);
+  font-size: 10px;
+  line-height: 1.2;
+  color: var(--chalk-faint);
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shape__note {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+/* A marked-up identifier inside a sentence — the one place the data face is
+   right in the middle of prose. */
+.ident {
+  font-family: var(--font-data);
+  font-size: 0.95em;
+  color: var(--chalk);
+}
+
+.rel__col {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--text-primary);
+}
+
+.rel__says {
+  color: var(--text-secondary);
+}
+
+/* The suggestion, set apart from the finding: one is what the rows hold and the
+ * other is an opinion about it. */
+.rel__then {
+  margin: 6px 0 0;
+  font-size: var(--size-label);
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+.rel__caption {
+  margin: 0;
+  max-width: 92ch;
+  font-size: var(--size-label);
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.rel__left {
+  color: var(--text-muted);
+}
+
+/* ═══ The Infrastructure board ═════════════════════════════════════════════
+ * One row per section: the name, and the figure that says whether to go there.
+ * Quiet is the good answer, so a settled row carries no colour at all — only
+ * the ones asking for something take an edge, and the row that could *not* be
+ * read takes one too, because not knowing is what this page exists to surface. */
+
+.board {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--slab);
+  overflow: hidden;
+}
+
+.board__row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  padding: var(--s3) var(--s4);
+  border-left: 3px solid transparent;
+  border-bottom: 1px solid var(--line);
+}
+
+.board__row:last-child {
+  border-bottom: none;
+}
+
+.board__name {
+  flex: none;
+  min-width: 9rem;
+  font-size: var(--size-body);
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.board__says {
+  font-size: var(--size-body);
+  color: var(--text-secondary);
+}
+
+/* A section still being fetched is not a section that is fine, and it is not
+ * one that failed either — it says so in its own words and takes no edge. */
+.board__row--reading .board__says {
+  color: var(--text-muted);
+}
+
+.board__row--watch {
+  border-left-color: var(--bar);
+}
+
+.board__row--delay,
+.board__row--throw {
+  border-left-color: var(--alarm);
+}
+
+/* Could not be read. The accent rather than the alarm: nothing is known to be
+ * wrong, and treating a missing grant as an incident would cry wolf on every
+ * narrowly-granted deployment. */
+.board__row--unknown {
+  border-left-color: var(--spark);
+}
+
+.board__row--unknown .board__says {
+  color: var(--text-primary);
+}
+
+/* The disks table carries a bar and the figure beside it, so its columns are
+ * proportioned for that rather than left to the browser: the bar takes the room
+ * it needs to be a proportion, and the figures line up against it. Without this
+ * the bar sat in a column of its own natural width and the table read as five
+ * loose facts rather than one shape. */
+.tbl--disks .tbl__bar {
+  width: 34%;
+  min-width: 140px;
+}
+
+.tbl--disks .tbl--n {
+  white-space: nowrap;
+}
+
+/* ═══ What changed ═════════════════════════════════════════════════════════
+ * The band a board opens with. Kin to `.board` below-right of it — same slab,
+ * same rule between rows, same left edge for urgency — and deliberately not the
+ * same component: a board row is a section and its state, where a headline is a
+ * subject, a sentence about it and the measurement behind the sentence. Three
+ * parts want three columns, and a `.board__row` given a third would have to
+ * grow one for every row that has no figure to put in it.
+ *
+ * Ranks: the alarm for something to act on, the bar's ink for something to
+ * watch, and *nothing at all* for a note. That last one is the rule the
+ * Infrastructure board already states and this band inherits — a colour that is
+ * always on says nothing, and a schema change is news without being a problem. */
+
+/* `.section` sets a top margin and no bottom one — every block after it brings
+   its own. The metric line does not: it has always followed a page header,
+   which carries its own space. So the band supplies the gap it needs rather
+   than the metric line growing one that would move it on eight other pages.
+   Collapses against the next section's larger top margin, so `/infra` is
+   unchanged. */
+.news {
+  margin-bottom: var(--s7);
+}
+
+.news__list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--slab);
+  overflow: hidden;
+}
+
+.news__row {
+  display: grid;
+  grid-template-columns: minmax(8rem, auto) 1fr auto;
+  align-items: baseline;
+  gap: var(--s3);
+  padding: var(--s3) var(--s4);
+  border-left: 3px solid transparent;
+  border-bottom: 1px solid var(--line);
+}
+
+.news__row:last-child {
+  border-bottom: none;
+}
+
+.news__row--act {
+  border-left-color: var(--alarm);
+}
+
+.news__row--watch {
+  border-left-color: var(--bar);
+}
+
+.news__subject {
+  font-size: var(--size-body);
+  font-weight: 500;
+  color: var(--text-primary);
+  /* A qualified name is the common subject here and it is the one thing on the
+     row that must stay readable whole: the sentence beside it can wrap, and a
+     table whose database has been elided is a table nobody can find. */
+  overflow-wrap: anywhere;
+}
+
+.news__says {
+  font-size: var(--size-body);
+  color: var(--text-secondary);
+}
+
+/* The measurement, held to the right where the eye can run down the column and
+   compare them. Tabular figures for the same reason the tables use them: a
+   column of numbers that do not line up is a column nobody reads down. */
+.news__figure {
+  font-size: var(--size-body);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  white-space: nowrap;
+  text-align: right;
+}
+
+/* "Nothing moved", and the reasons nothing could be judged. A sentence rather
+   than an empty panel, because on the board that opens with this band the
+   absence of news *is* the answer somebody came for. */
+.news__quiet {
+  margin: 0;
+  font-size: var(--size-body);
+  color: var(--text-secondary);
+}
+
+/* Below this the three columns stop being three: the figure loses enough room
+   that it wraps inside itself, and a measurement broken across two lines reads
+   as two measurements. Subject over sentence, figure under both. */
+@media (max-width: 700px) {
+  .news__row {
+    grid-template-columns: 1fr;
+    gap: var(--s1);
+  }
+
+  .news__figure {
+    text-align: left;
+  }
+}
+
+/* ═══ Data's home ══════════════════════════════════════════════════════════
+ * The mirror of the Infrastructure board, and deliberately not built out of it:
+ * that board answers "is anything wrong" one section at a time, where this one
+ * lists things — statements, endpoints — that mostly have nothing wrong with
+ * them. Rows here carry no standing edge for the same reason the board's quiet
+ * rows carry none: a colour that is always on says nothing. What is actually
+ * wrong is gathered into "Worth a look" at the foot, which *is* the board. */
+
+.home__cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s7);
+  align-items: start;
+}
+
+/* The two columns are read side by side or not at all: at this width the right
+ * one has lost enough room that its figures wrap mid-sentence, which costs more
+ * than the comparison is worth. */
+@media (max-width: 1100px) {
+  .home__cols {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+}
+
+/* Each block owns its own top margin through `.section`; inside the grid the
+ * first row would then start twice as far down as the metrics line above it. */
+.home__block {
+  margin-top: var(--s6);
+}
+
+.home__list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--slab);
+  overflow: hidden;
+}
+
+.home__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s4);
+  padding: var(--s3) var(--s4);
+  border-bottom: 1px solid var(--line);
+}
+
+.home__row:last-child {
+  border-bottom: none;
+}
+
+/* Name over its own provenance: two facts about one thing, so they share a
+ * block rather than sitting as two columns that happen to be adjacent. */
+.home__what {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.home__name {
+  font-size: var(--size-body);
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home__name:hover {
+  color: var(--interactive);
+}
+
+.home__when {
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+  white-space: nowrap;
+}
+
+/* Separators are their own element rather than punctuation in the text, so a
+ * fact that is dropped takes its separator with it instead of leaving a stray
+ * middot behind — the rule the chrome's facts strip already follows. */
+.home__dot {
+  margin: 0 var(--s2);
+  opacity: 0.55;
+}
+
+.home__says {
+  flex: none;
+  font-size: var(--size-body);
+  color: var(--text-secondary);
+  text-align: right;
+}
+
+/* A count of failures, inline among the figures it belongs with. `--danger-text`
+ * and not `--danger`: the fill colour does not reach 4.5:1 as small text, which
+ * the token file says in as many words. */
+.home__failed {
+  color: var(--danger-text);
+}
+
+.home__more {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  margin: var(--s3) 0 0;
+  font-size: var(--size-label);
+}
+
+.home__link {
+  color: var(--interactive);
+  font-weight: 500;
+}
+
+/* What the list above it does not show. Quieter than the link it follows: it is
+ * a qualification of that count, not a second destination. */
+.home__aside {
+  color: var(--chalk-faint);
+}
+
+.home__note {
+  margin: var(--s3) 0 0;
+  max-width: 62ch;
+  font-size: var(--size-body);
+  line-height: 1.6;
+  color: var(--chalk-dim);
+}
+
+/* ── Endpoints ────────────────────────────────────────────────────────────
+ *
+ *  Two pages, one vocabulary. The list is a dense table because the question
+ *  it answers is comparative — which of these is busy, which is on its way
+ *  out — and a grid of cards makes comparison a memory exercise. The endpoint
+ *  page is two columns because its questions are about the pair: the contract
+ *  on the left, what has actually been happening on the right. */
+
+/* `.tbl th` is written for a column header — a filled band with a rule down
+   its right edge. These tables use `th scope="row"` for the address, because
+   that is what the row is *about* and a screen reader should say it before
+   every cell; without this the first column reads as a second header running
+   down the page. */
+.eps tbody th,
+.ep__contract tbody th {
+  height: var(--table-refrow-h);
+  background: transparent;
+  border-right: none;
+  border-bottom: 1px solid var(--table-row-rule);
+  font-weight: 400;
+  color: var(--chalk);
+}
+/* `.tbl` drops the rule under its last row, and a row header that kept one
+   drew a line under a single column — which reads as a box around it. */
+.eps tbody tr:last-child th,
+.ep__contract tbody tr:last-child th {
+  border-bottom: none;
+}
+/* A row header is part of its row, so it lights up with it. */
+.eps tbody tr:hover th,
+.ep__contract tbody tr:hover th {
+  background: var(--slab-hover);
+}
+
+.eps__n {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.eps th,
+.eps td {
+  vertical-align: baseline;
+}
+.eps__path {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color var(--motion-fast) var(--ease-out);
+}
+.eps__path:hover,
+.eps__path:focus-visible {
+  border-bottom-color: var(--spark);
+}
+.eps__from code {
+  font-size: var(--size-data);
+  color: var(--chalk-dim);
+}
+/* A revision that is not the live one is still a row somebody has to be able
+   to read: dimmed, never greyed to the point of being decoration. */
+.eps tbody tr.is-muted th,
+.eps tbody tr.is-muted td {
+  color: var(--chalk-faint);
+}
+.eps tbody tr.is-muted .eps__path {
+  color: var(--chalk-dim);
+}
+.eps__foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s3);
+  margin-top: var(--s3);
+  font-size: var(--size-body);
+}
+
+.eps__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  gap: var(--s4);
+  margin-top: var(--s6);
+}
+.eps__card {
+  padding: var(--s4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--slab);
+}
+.eps__cardtitle {
+  margin: 0 0 var(--s3);
+  font-size: var(--size-head);
+  font-weight: 600;
+  color: var(--chalk);
+}
+.eps__cardbody {
+  margin: 0 0 var(--s3);
+  font-size: var(--size-body);
+  line-height: 1.55;
+  color: var(--chalk-dim);
+}
+.eps__cardbody:last-child {
+  margin-bottom: 0;
+}
+.eps__cardbody code {
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+
+/* ── One endpoint ─────────────────────────────────────────────────────── */
+
+.ep__title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  font-family: var(--font-data);
+  word-break: break-all;
+}
+.ep__method {
+  color: var(--spark);
+  font-weight: 700;
+}
+.ep__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+
+.ep__revs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  margin-bottom: var(--s5);
+}
+.ep__rev {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--s1) var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--slab);
+  color: var(--chalk-dim);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  cursor: pointer;
+  transition:
+    border-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
+}
+.ep__rev:hover {
+  border-color: var(--line-strong);
+  color: var(--chalk);
+}
+.ep__rev.is-on {
+  border-color: var(--spark);
+  color: var(--chalk);
+}
+
+.ep__cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: var(--s5);
+  align-items: start;
+}
+/* One column below the width where the right-hand panels stop being a column
+   and start being a series of very narrow boxes. */
+@media (max-width: 62rem) {
+  .ep__cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.ep__left,
+.ep__right {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+  min-inline-size: 0;
+}
+
+.ep__panel {
+  padding: var(--s4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--slab);
+}
+.ep__paneltitle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s3);
+  margin: 0 0 var(--s3);
+  font-size: var(--size-head);
+  font-weight: 600;
+  color: var(--chalk);
+}
+/* A panel's caption sits inside its heading, so without this it inherits the
+   heading's size and reads as a second title. It is an aside about the panel,
+   and it should look like one. */
+.ep__paneltitle .mono-dim {
+  font-size: var(--size-label);
+  font-weight: 400;
+  letter-spacing: var(--track-label);
+}
+
+.ep__panelfoot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s3);
+  margin: var(--s3) 0 0;
+  font-size: var(--size-body);
+  line-height: 1.55;
+  color: var(--chalk-dim);
+}
+/* The sentence a panel shows instead of a figure it does not have. Not an
+   error and not a placeholder: it is the answer. */
+.ep__none {
+  margin: 0;
+  font-size: var(--size-body);
+  line-height: 1.55;
+  color: var(--chalk-faint);
+}
+.ep__prose {
+  margin: 0;
+  font-size: var(--size-body);
+  line-height: 1.6;
+  color: var(--chalk-dim);
+}
+
+.ep__contract th {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  font-weight: 400;
+  color: var(--chalk);
+  text-align: left;
+}
+.ep__ctype {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--cold);
+  white-space: nowrap;
+}
+.ep__csays {
+  font-size: var(--size-body);
+  color: var(--chalk-dim);
+}
+.ep__cval {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk-faint);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.ep__sql {
+  margin: 0;
+  padding: var(--s3);
+  overflow-x: auto;
+  border-radius: var(--radius-sm);
+  background: var(--slab-sunk);
+  color: var(--chalk-dim);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  line-height: 1.6;
+}
+
+.ep__figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s5);
+}
+.ep__figure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}
+.ep__fignum {
+  font-family: var(--font-data);
+  font-size: var(--size-metric);
+  font-weight: 600;
+  color: var(--spark);
+  line-height: 1;
+}
+.ep__figunit {
+  margin-left: 1px;
+  font-size: var(--size-body);
+  font-weight: 400;
+  color: var(--chalk-faint);
+}
+
+.ep__keys,
+.ep__callers,
+.ep__refusals {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+.ep__key {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--s1) var(--s3);
+  font-size: var(--size-body);
+}
+.ep__keyname {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+.ep__keycount {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk-dim);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.ep__meter {
+  grid-column: 1 / -1;
+  display: block;
+  block-size: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--bar-ghost);
+  overflow: hidden;
+}
+.ep__meterfill {
+  display: block;
+  block-size: 100%;
+  /* A key that has spent 52 of 60 000 has spent something, and a bar rounded
+     to nothing says it has not. The same hairline this codebase has shipped
+     once already. */
+  min-inline-size: 2px;
+  background: var(--spark);
+  /* A bar that grows into place rather than appearing: the eye reads the
+     length, and a length that was never drawn is a length nobody compared. */
+  transition: inline-size var(--motion-slow) var(--ease-out);
+}
+/* Over its quota is not a decoration — it is the reason somebody opened this
+   panel. */
+.ep__meter.is-over .ep__meterfill {
+  background: var(--alarm);
+}
+.ep__keynote {
+  grid-column: 1 / -1;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.ep__caller {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 6rem auto;
+  align-items: center;
+  gap: var(--s3);
+  font-size: var(--size-body);
+}
+.ep__callername {
+  color: var(--chalk-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ep__callerbar {
+  display: block;
+  block-size: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--bar-ghost);
+  overflow: hidden;
+}
+.ep__callerfill {
+  display: block;
+  block-size: 100%;
+  /* A minimum width, because a caller with one call out of forty thousand is
+     still a caller: rounded to a hairline it reads as nothing at all, which
+     is the bug this codebase has actually shipped. */
+  min-inline-size: 2px;
+  background: var(--spark);
+  transition: inline-size var(--motion-slow) var(--ease-out);
+}
+.ep__callern {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk-dim);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.ep__refusal {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: baseline;
+  gap: var(--s3);
+  font-size: var(--size-body);
+}
+.ep__status {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  font-weight: 600;
+}
+/* Two bands, because they are two different conversations. A 4xx is the
+   caller's to fix and a 5xx is ours. */
+.ep__status--4 {
+  color: var(--warning);
+}
+.ep__status--5 {
+  color: var(--alarm);
+}
+/* Most reasons are one short groupable clause, by design. The exception is a
+   refusal that came from the shape parser rather than from the contract: those
+   are written for the person debugging their own query string and can run to a
+   paragraph. Clamped rather than truncated server-side, so the whole sentence
+   is still there for anyone who selects it. */
+.ep__reason {
+  color: var(--chalk-dim);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+.ep__refusaln {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A button that lives inside a panel's own sentence. Quiet, because the panel
+   is the thing being read and the button is a way out of it. */
+.btn--quiet {
+  padding: 2px var(--s2);
+  border-color: transparent;
+  background: transparent;
+  color: var(--spark);
+}
+.btn--quiet:hover {
+  border-color: var(--line);
+  background: var(--slab-hover);
+}
+
+/* ── The contract, as something to type ───────────────────────────────── */
+
+.ctr {
+  margin: var(--s4) 0;
+  padding: var(--s4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--slab-sunk);
+}
+.ctr__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s3);
+  margin-bottom: var(--s3);
+}
+.ctr__none {
+  margin: 0 0 var(--s3);
+  font-size: var(--size-body);
+  color: var(--chalk-faint);
+}
+.ctr__rules {
+  margin: 0 0 var(--s4);
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+.ctr__rule {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--s2) var(--s3);
+  padding-bottom: var(--s3);
+  border-bottom: 1px solid var(--line);
+}
+.ctr__rule:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.ctr__name {
+  min-inline-size: 7rem;
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+.ctr__type {
+  min-inline-size: 5rem;
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--cold);
+}
+.ctr__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  flex: 1 1 8rem;
+  min-inline-size: 0;
+}
+.ctr__field--wide {
+  flex: 1 1 16rem;
+}
+.ctr__field--tiny {
+  flex: 0 0 5rem;
+}
+.ctr__cols {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s3);
+}
+.ctr__foot {
+  margin: var(--s3) 0 0;
+  font-size: var(--size-body);
+  line-height: 1.55;
+  color: var(--chalk-faint);
+}
+
+/* ── Keys ─────────────────────────────────────────────────────────────── */
+
+.keys {
+  margin-top: var(--s6);
+  padding-top: var(--s4);
+  border-top: 1px solid var(--line);
+}
+.keys__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s3);
+  margin: 0 0 var(--s3);
+  font-size: var(--size-head);
+  font-weight: 600;
+}
+.keys__toggle {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--chalk);
+  font: inherit;
+  cursor: pointer;
+}
+.keys__toggle:hover {
+  color: var(--spark);
+}
+/* The disclosure triangle, which the button's own text does not carry. */
+.keys__toggle::before {
+  content: '▸';
+  display: inline-block;
+  margin-right: var(--s2);
+  color: var(--chalk-faint);
+  transition: transform var(--motion-fast) var(--ease-out);
+}
+.keys__toggle[aria-expanded='true']::before {
+  transform: rotate(90deg);
+}
+.keys__lead {
+  margin: 0 0 var(--s4);
+  max-inline-size: 62ch;
+  font-size: var(--size-body);
+  line-height: 1.6;
+  color: var(--chalk-dim);
+}
+.keys__list {
+  margin: 0 0 var(--s4);
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+.keys__row {
+  padding: var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--slab);
+}
+/* A disabled key is still a key somebody has to be able to read. */
+.keys__row.is-off {
+  opacity: 0.7;
+}
+.keys__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+}
+.keys__name {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+.keys__says {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s3);
+  margin: var(--s2) 0 0;
+  font-size: var(--size-body);
+}
+.keys__form {
+  margin-top: var(--s3);
+}
+.keys__scope {
+  margin: var(--s3) 0;
+}
+.keys__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  margin: var(--s2) 0;
+}
+.keys__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  padding: var(--s1) var(--s2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--slab-sunk);
+  font-size: var(--size-data);
+  cursor: pointer;
+}
+.keys__chip:hover {
+  border-color: var(--line-strong);
+}
+.keys__chip code {
+  font-family: var(--font-data);
+  color: var(--chalk-dim);
+}
+.keys__chip:has(input:checked) {
+  border-color: var(--spark);
+}
+.keys__chip:has(input:checked) code {
+  color: var(--chalk);
+}
+
+/* ── Exposing tables ──────────────────────────────────────────────────────
+ *
+ *  A list to tick, and it is deliberately dense: the whole point of this panel
+ *  is that fifteen tables are one act, and a form that made each row a card
+ *  would put nine of them below the fold and undo the saving. */
+
+.expose__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+  margin: var(--s4) 0 var(--s2);
+}
+.expose__list {
+  margin: 0 0 var(--s4);
+  padding: 0;
+  list-style: none;
+  max-block-size: 22rem;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--slab-sunk);
+}
+.expose__row {
+  display: grid;
+  grid-template-columns: auto minmax(8rem, 1fr) 6rem 6rem 6rem minmax(0, 1.4fr);
+  align-items: baseline;
+  gap: var(--s3);
+  padding: var(--s2) var(--s3);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--size-body);
+  cursor: pointer;
+}
+.expose__list li:last-child .expose__row {
+  border-bottom: none;
+}
+.expose__row:hover {
+  background: var(--slab-hover);
+}
+.expose__name {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.expose__kind {
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+.expose__rows,
+.expose__bytes {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk-dim);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.expose__sort {
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The one screen in the product that holds several secrets at once, and the
+   only moment any of them can be read. Selectable, monospaced, one per line —
+   shaped to be dragged into a password manager rather than admired. */
+.expose__tokens {
+  margin: 0 0 var(--s4);
+  padding: var(--s3);
+  overflow-x: auto;
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-sm);
+  background: var(--slab-sunk);
+  color: var(--chalk);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  line-height: 1.7;
+  user-select: all;
+}
+.expose__done,
+.expose__skipped {
+  margin: 0 0 var(--s4);
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  font-size: var(--size-body);
+}
+.expose__done li,
+.expose__skipped li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s3);
+}
+.expose__done code,
+.expose__skipped code {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+
+/* ── The database-wide review ─────────────────────────────────────────────
+ *
+ * One column, one proposed type, and every table that has it. The layout is the
+ * argument: the group is what you read, the members are what you tick, and the
+ * SQL at the foot is what leaves the page. So the group heading carries the
+ * decision, the member rows carry the evidence each tick actually rests on, and
+ * nothing about a member — its size, whether it was sampled, whether its key
+ * would make the server refuse — is folded away where a reader ticking five
+ * boxes at once would not see it. */
+.sweep {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+}
+
+.sweep__pick {
+  display: grid;
+  grid-template-columns: auto minmax(12ch, 22ch) 1fr auto;
+  align-items: center;
+  gap: var(--s3);
+}
+
+.sweep__label {
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+.sweep__pattern {
+  height: 28px;
+  padding: 0 var(--s2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--slab-sunk);
+  color: var(--chalk);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  transition: border-color var(--motion-fast) var(--ease);
+}
+.sweep__pattern:focus-visible {
+  border-color: var(--spark);
+  outline: none;
+}
+
+.sweep__matched {
+  margin: 0;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.sweep__go {
+  grid-column: 4;
+}
+
+/* A pattern catches names without being watched, so what it caught is one fold
+ * away rather than a number to be trusted. */
+.sweep__names {
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+.sweep__names > summary {
+  cursor: pointer;
+  color: var(--chalk-dim);
+}
+.sweep__names ul {
+  margin: var(--s2) 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1) var(--s3);
+  font-family: var(--font-data);
+}
+.sweep__names li.is-past {
+  color: var(--chalk-ghost);
+}
+.sweep__past {
+  color: var(--chalk-ghost);
+}
+
+.sweep__progress,
+.sweep__stake {
+  margin: 0;
+  font-size: var(--size-body);
+  color: var(--chalk-dim);
+}
+
+/* The stake and the kind filter on one line: the control belongs beside the
+ * count it narrows, not above the list where it would read as a heading. */
+.sweep__bar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: var(--s4);
+}
+
+.sweep__bar .sweep__stake {
+  flex: 1;
+  min-width: 0;
+}
+
+.sweep__caveat {
+  display: block;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.sweep__groups {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.sweep__group {
+  padding: var(--s3);
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--slab);
+}
+/* Severity on the left edge only: it orders the reading, it does not colour the
+ * whole card, and a page of cards each shouting its own colour is a page where
+ * nothing stands out. */
+.sweep__group--save {
+  border-left-color: var(--spark);
+}
+.sweep__group--fix {
+  border-left-color: var(--warning);
+}
+
+.sweep__ghead {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+}
+
+.sweep__gtick,
+.sweep__mtick {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  cursor: pointer;
+}
+
+.sweep__column {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+
+.sweep__headline {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk-dim);
+}
+
+.sweep__spread,
+.sweep__kind {
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+.sweep__bytes {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+
+.sweep__why,
+.sweep__claim {
+  margin: var(--s2) 0 0;
+  font-size: var(--size-label);
+  line-height: 1.55;
+  color: var(--chalk-faint);
+}
+
+.sweep__members {
+  margin: var(--s3) 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}
+
+.sweep__member {
+  display: grid;
+  /* The claim gets a column wide enough for "every row" on one line: it is the
+   * difference between a hypothesis and a verdict, and wrapping it made the two
+   * states differ in height as well as in wording. */
+  grid-template-columns: minmax(18ch, 1fr) minmax(0, 2fr) auto 9ch auto;
+  align-items: baseline;
+  gap: var(--s3);
+  padding: var(--s1) var(--s2);
+  border-radius: var(--radius-sm);
+  font-size: var(--size-label);
+  transition: background var(--motion-fast) var(--ease);
+}
+.sweep__member:hover {
+  background: var(--slab-hover);
+}
+/* The server would refuse this one. Dimmed and unticked rather than hidden: the
+ * reader is entitled to know the column has the same problem here, and that
+ * this table is the one where the fix is a rebuild. */
+.sweep__member.is-refused {
+  opacity: 0.55;
+}
+
+/* Only rendered when the group's members do not all start from the same type,
+ * which is when "which of these is the Int32" becomes a question the row has to
+ * answer for itself. Inside the evidence rather than in a cell of its own, so
+ * the row keeps the same grid whether or not the members disagree. */
+.sweep__mfrom {
+  color: var(--chalk-dim);
+  font-weight: 500;
+}
+
+.sweep__mevidence {
+  font-family: var(--font-data);
+  color: var(--chalk-faint);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* What a group says once, above its tables: the sentence they all agreed on. */
+.sweep__gusage,
+.sweep__gcaution {
+  margin: var(--s2) 0 0;
+  font-size: var(--size-label);
+  line-height: 1.5;
+}
+.sweep__gusage {
+  color: var(--chalk-faint);
+}
+.sweep__gcaution {
+  color: var(--warning);
+}
+
+/* And what only one table says, on its own row and across its full width, so a
+ * disagreement between members reads as a disagreement rather than as text
+ * squeezed into an evidence column. */
+.sweep__musage {
+  grid-column: 1 / -1;
+  color: var(--chalk-faint);
+  line-height: 1.5;
+}
+
+.sweep__mbytes {
+  font-family: var(--font-data);
+  color: var(--chalk-dim);
+  text-align: right;
+}
+
+/* Sample or verdict, on every row, because it is the one thing about a member
+ * that a grouped page could most easily let disappear. */
+.sweep__mclaim {
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-ghost);
+}
+.sweep__mclaim.is-verified {
+  color: var(--spark);
+}
+
+.sweep__mcaution {
+  grid-column: 1 / -1;
+  color: var(--warning);
+  line-height: 1.5;
+}
+
+.sweep__out {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: var(--s3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--slab-raised);
+}
+
+.sweep__outhead {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+}
+
+.sweep__outtitle {
+  margin: 0;
+  font-size: var(--size-head);
+  color: var(--chalk);
+}
+
+.sweep__outfacts {
+  margin: 0;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.sweep__sql {
+  margin: 0;
+  padding: var(--s3);
+  border-radius: var(--radius-sm);
+  background: var(--slab-sunk);
+  color: var(--chalk);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  line-height: 1.6;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+
+/* ── The projection advisor ──────────────────────────────────────────────────
+ *
+ * A column of arguments, each one built the same way: what the workload did,
+ * what it cost, what would follow, what it would not answer. The visual weight
+ * follows that order rather than the order of interest — the button is not the
+ * loudest thing on the card, because a projection is a permanent cost and the
+ * evidence has to be read before it.
+ *
+ * Two colours carry meaning here and no others. The left edge separates a
+ * pre-aggregated proposal from a re-sorted one, since a column of cards is
+ * scanned before it is read; and the caveat is warning-coloured because every
+ * one of them is a reason the proposal might not work as written.
+ */
+.padv {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+}
+
+.padv__head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s4);
+  flex-wrap: wrap;
+}
+
+.padv__scope {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.padv__claim {
+  margin: 0;
+  max-width: 78ch;
+  font-size: var(--size-body);
+  line-height: 1.55;
+  color: var(--chalk);
+}
+
+.padv__facts {
+  margin: 0;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+/* The window the workload is read over. A segmented control rather than a
+ * select: there are three of them, and which one is active is the fact worth
+ * seeing without opening anything. */
+.padv__window {
+  flex: none;
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+.padv__win {
+  padding: var(--s1) var(--s3);
+  border: 0;
+  background: transparent;
+  color: var(--chalk-faint);
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
+}
+
+.padv__win:hover {
+  background: var(--slab-hover);
+  color: var(--chalk-dim);
+}
+
+/* `--accent-strong` and not `--spark`, which is the step the schema review's own
+   filter chips take for the same reason: a selected segment is *state*, not the
+   thing you are being asked to do, and the palette spends the accent itself once
+   per page. It reads as accented either way. */
+.padv__win.is-on {
+  background: var(--spark-wash);
+  color: var(--accent-strong);
+}
+
+.padv__tally {
+  margin: 0;
+  max-width: 86ch;
+  font-size: var(--size-body);
+  line-height: 1.55;
+  color: var(--chalk-dim);
+}
+
+.padv__subtitle {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  margin: 0 0 var(--s2);
+  font-size: var(--size-head);
+  color: var(--chalk);
+}
+
+.padv__note {
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.padv__have {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+/* Declared and holding nothing. Not an error — the statement succeeded — so it
+ * is not the alarm colour; it is the one state on this page where a figure
+ * would be actively misleading, so it is words. */
+.padv__inert {
+  color: var(--warning);
+}
+
+.padv__unused {
+  color: var(--chalk-faint);
+}
+
+.padv__hint {
+  margin: 0;
+  max-width: 78ch;
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--chalk-faint);
+}
+
+.padv__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.padv__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: var(--s3);
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--slab);
+}
+
+.padv__card--aggregate {
+  border-left-color: var(--k-matview);
+}
+
+.padv__card--sort {
+  border-left-color: var(--k-table);
+}
+
+/* Not the alarm colour for either. Neither of these is broken — one statement
+   succeeded and the other is doing exactly what it was told — and a column of
+   red over a schema somebody thought about reads as an accusation. */
+.padv__card--inert,
+.padv__card--unused {
+  border-left-color: var(--warning);
+}
+
+.padv__cardhead {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-wrap: wrap;
+}
+
+.padv__key {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  font-weight: 600;
+  color: var(--chalk);
+  font-variant-ligatures: none;
+}
+
+.padv__spent {
+  flex: none;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.padv__evidence {
+  margin: 0;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk);
+}
+
+.padv__why,
+.padv__limits {
+  margin: 0;
+  max-width: 78ch;
+  font-size: var(--size-body);
+  line-height: 1.55;
+  color: var(--chalk-dim);
+}
+
+.padv__limits {
+  color: var(--chalk-faint);
+}
+
+.padv__covered {
+  margin: 0;
+  max-width: 78ch;
+  font-size: var(--size-body);
+  line-height: 1.55;
+  color: var(--chalk-dim);
+}
+
+.padv__caveat {
+  margin: 0;
+  max-width: 78ch;
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--warning);
+}
+
+.padv__measure {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s2);
+  padding-top: var(--s1);
+}
+
+/* The button is not the loudest thing on the card, and a full-width accent bar
+ * is exactly that. The evidence above it is what should be read first — a
+ * projection is a permanent cost, and the control that proposes measuring one
+ * has no business out-shouting the reason to. */
+.padv__measure > .btn {
+  align-self: flex-start;
+}
+
+.padv__also {
+  margin: 0;
+  max-width: 78ch;
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--chalk-faint);
+}
+
+/* Inside the fold the cards are already qualified by the summary above them,
+ * so they step back rather than repeating the point in colour. */
+.padv__list--thin {
+  margin-top: var(--s2);
+}
+
+.padv__list--thin .padv__card {
+  border-left-color: var(--line);
+}
+
+.padv__reading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  margin: 0;
+  max-width: 78ch;
+  font-size: var(--size-body);
+  line-height: 1.5;
+  color: var(--chalk);
+}
+
+.padv__headline {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  flex-wrap: wrap;
+}
+
+.padv__figs {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+
+.padv__aside {
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--chalk-faint);
+}
+
+/* The second, optional price. Inline with the asides it sits among, because it
+   is a continuation of the reading rather than a new section — and quiet,
+   because the measurement above it has already answered the question most
+   readers came with. */
+.padv__weigh {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--s2);
+  flex-wrap: wrap;
+  margin-top: var(--s1);
+}
+
+.padv__aside--warn {
+  color: var(--warning);
+}
+
+.padv__built > summary {
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+  cursor: pointer;
+}
+
+.padv__built > summary:hover {
+  color: var(--chalk-dim);
+}
+
+.padv__built .code {
+  margin-top: var(--s1);
+}
+
+.padv__ddl {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+}
+
+.padv__ddl .code {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+
+.padv__second {
+  margin: 0;
+  max-width: 78ch;
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--chalk-faint);
+}
+
+.padv__inline {
+  font-family: var(--font-data);
+  font-variant-ligatures: none;
+}
+
+.padv__act {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-wrap: wrap;
+}
+
+.padv__actnote {
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.padv__toggle {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--chalk-faint);
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  cursor: pointer;
+  transition: color var(--motion-fast) var(--ease-out);
+}
+
+.padv__toggle:hover {
+  color: var(--spark);
+}
+
+.padv__twist {
+  font-size: 0.6rem;
+}
+
+.padv__shapes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.padv__shape {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  padding: var(--s2) 0 0;
+  border-top: 1px solid var(--line);
+}
+
+.padv__shapefacts {
+  margin: 0;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.padv__whynot {
+  color: var(--warning);
+}
+
+.padv__open {
+  align-self: flex-start;
+  font-size: var(--size-label);
+}
+
+/* ═══ Console ═════════════════════════════════════════════════════════════
+   A prompt on ClickHouse, on every page. The drawer is `position: fixed` and
+   never unmounted — see `components/Console` for why — so the shell reserves
+   its height through `--console-h` rather than by containing it. Nothing on a
+   page ever ends up underneath it. */
+
+.shell__body {
+  padding-bottom: var(--console-h, 0);
+  transition: padding-bottom var(--motion-panel) var(--ease);
+}
+
+/* ── The launcher ─────────────────────────────────────────────────────────
+   A pill that reads as a caret until you approach it, then says its own name
+   and the key that saves the click. Bottom left, out of the way of everything
+   this product puts on the right. */
+
+.cfab {
+  position: fixed;
+  bottom: var(--s5);
+  left: var(--s5);
+  z-index: 60;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  height: 38px;
+  padding: 0 var(--s4);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: var(--slab-raised);
+  box-shadow: var(--shadow-pop);
+  color: var(--chalk-dim);
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  cursor: pointer;
+  transition:
+    transform var(--motion-panel) var(--ease),
+    opacity var(--motion-base) var(--ease),
+    border-color var(--motion-fast) var(--ease),
+    color var(--motion-fast) var(--ease);
+}
+
+.cfab:hover,
+.cfab:focus-visible {
+  color: var(--chalk);
+  border-color: var(--spark-line);
+}
+
+.cfab:hover .cfab__glyph,
+.cfab:focus-visible .cfab__glyph {
+  color: var(--spark);
+}
+
+/* Gone while the drawer is up — it is the same object, and two of it on screen
+   is one too many. Down and slightly smaller rather than a plain fade, so the
+   eye follows it into the panel that replaced it. */
+.cfab.is-away {
+  transform: translateY(160%) scale(0.9);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Quiet at rest, and that is a rule rather than a taste: the accent marks the
+   one thing a page wants you to do, and a floating button that lights it on
+   every page in the product would be arguing with each page's own primary
+   action. It lights when you approach it, which is when it *is* the thing you
+   are about to do. */
+.cfab__glyph {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--chalk-dim);
+  font-size: var(--size-body);
+  line-height: 1;
+  transition: color var(--motion-fast) var(--ease);
+}
+
+/* The cursor that says this is a place to type. The one blinking thing in the
+   product, and it earns it. */
+.cfab__bar {
+  width: 6px;
+  height: 2px;
+  background: currentcolor;
+  animation: cfab-blink var(--loop-blink) step-end infinite;
+}
+
+@keyframes cfab-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* The name and the key are the reward for approaching, not furniture that sits
+   there. Collapsed to nothing until then — `max-width` rather than `display`
+   so there is something to animate. */
+.cfab__label,
+.cfab__key {
+  max-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  opacity: 0;
+  transition:
+    max-width var(--motion-panel) var(--ease),
+    opacity var(--motion-fast) var(--ease);
+}
+
+.cfab:hover .cfab__label,
+.cfab:focus-visible .cfab__label {
+  max-width: 6rem;
+  opacity: 1;
+}
+
+.cfab:hover .cfab__key,
+.cfab:focus-visible .cfab__key {
+  max-width: 3rem;
+  opacity: 1;
+}
+
+.cfab__key {
+  padding: 1px var(--s2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--chalk-faint);
+  font-family: inherit;
+  font-size: var(--size-label);
+}
+
+/* A statement is running behind a hidden console. The one thing the launcher
+   has to be able to say without being opened. */
+.cfab__pip {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--slab-raised);
+  border-radius: 50%;
+  background: var(--warning);
+  animation: cons-breathe var(--loop-breathe) var(--ease-inout) infinite;
+}
+
+@keyframes cons-breathe {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* ── The drawer ───────────────────────────────────────────────────────────── */
+
+.cons {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 70;
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  border-top: 1px solid var(--line-strong);
+  background: var(--slab);
+  box-shadow: var(--shadow-pop);
+  transform: translateY(100%);
+  /* Hidden, not unmounted, and not merely transparent: `visibility` takes it
+     out of the hit-testing and the accessibility tree while every piece of its
+     state — the transcript, the draft, the query in flight — stays exactly
+     where it was. The zero-length delay is what holds it visible for the
+     length of the slide out. */
+  visibility: hidden;
+  transition:
+    transform var(--motion-panel) var(--ease),
+    visibility 0s linear var(--motion-panel);
+}
+
+.cons.is-open {
+  transform: none;
+  visibility: visible;
+  transition:
+    transform var(--motion-panel) var(--ease),
+    visibility 0s;
+}
+
+.cons__grip {
+  position: relative;
+  height: 8px;
+  flex: none;
+  margin-top: -4px;
+  cursor: ns-resize;
+}
+
+/* The handle only appears once there is a reason to think about it. */
+.cons__grip::after {
+  position: absolute;
+  top: 3px;
+  left: 50%;
+  width: 36px;
+  height: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--line-strong);
+  content: '';
+  opacity: 0;
+  transform: translateX(-50%);
+  transition: opacity var(--motion-fast) var(--ease);
+}
+
+.cons__grip:hover::after,
+.cons__grip:focus-visible::after {
+  background: var(--spark);
+  opacity: 1;
+}
+
+.cons__bar {
+  display: flex;
+  height: 34px;
+  flex: none;
+  align-items: center;
+  gap: var(--s3);
+  padding: 0 var(--s4);
+  border-bottom: 1px solid var(--line);
+  color: var(--chalk-dim);
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+}
+
+.cons__dot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--success);
+}
+
+.cons__dot[data-state='busy'] {
+  background: var(--warning);
+  animation: cons-breathe var(--loop-breathe) var(--ease-inout) infinite;
+}
+
+.cons__who {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--chalk);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cons__at {
+  color: var(--chalk-faint);
+}
+
+.cons__db select {
+  min-width: 0;
+  max-width: 14rem;
+  padding: 2px var(--s2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--slab-raised);
+  color: var(--chalk);
+  font-family: inherit;
+  font-size: inherit;
+}
+
+.cons__unpin {
+  padding: 0 var(--s2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--chalk-faint);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: inherit;
+}
+
+.cons__unpin:hover {
+  border-color: var(--line);
+  color: var(--chalk);
+}
+
+/* What the console is carrying, said on the bar because it changes the meaning
+   of every statement below it. */
+.cons__chip {
+  padding: 1px var(--s2);
+  border: 1px solid var(--spark-line);
+  border-radius: var(--radius-pill);
+  background: var(--spark-wash);
+  color: var(--chalk);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--size-label);
+  white-space: nowrap;
+}
+
+.cons__chip:hover {
+  border-color: var(--spark);
+}
+
+.cons__gap {
+  flex: 1;
+}
+
+/* What the last statement cost, said once, quietly, and announced to a screen
+   reader that cannot watch the table appear. */
+.cons__live {
+  margin: 0;
+  overflow: hidden;
+  color: var(--chalk-faint);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cons__act {
+  padding: 2px var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--chalk-dim);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: inherit;
+}
+
+.cons__act:hover:not(:disabled) {
+  border-color: var(--spark-line);
+  color: var(--chalk);
+}
+
+/* Still legible. A disabled control is exempt from WCAG's contrast rule and is
+   not exempt from being read: "Clear" that you cannot make out is a button
+   whose state you cannot tell from its absence. Quieter than the enabled one by
+   a step, not by disappearing. */
+.cons__act:disabled {
+  color: var(--chalk-faint);
+  cursor: default;
+}
+
+.cons__act--icon {
+  padding: 2px var(--s2);
+}
+
+/* ── The transcript ───────────────────────────────────────────────────────── */
+
+.cons__log {
+  flex: 1;
+  min-height: 0;
+  padding: var(--s3) var(--s4);
+  overflow: auto;
+  color: var(--chalk);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  font-variant-ligatures: none;
+  line-height: 1.6;
+}
+
+.cons__empty,
+.cons__dropped {
+  margin: 0 0 var(--s3);
+  color: var(--chalk-faint);
+}
+
+.cons__empty code {
+  color: var(--chalk-dim);
+}
+
+.cons__entry {
+  padding: var(--s2) 0;
+}
+
+.cons__entry + .cons__entry {
+  border-top: 1px solid var(--divider);
+}
+
+.cons__said {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+}
+
+/* Without this the tools — `flex: none` and pinned right — squeeze the
+   statement to about one character wide, and a `SELECT 1` comes down the left
+   edge one letter per line. */
+.cons__sql {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.cons__cue {
+  flex: none;
+  color: var(--chalk-faint);
+  white-space: nowrap;
+}
+
+.cons__caret {
+  color: var(--spark);
+}
+
+/* The statement, and a way of getting it back. A button rather than a `<pre>`
+   because putting it back in the prompt is the thing people do most with the
+   line above the one they are typing. */
+.cons__sql {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--chalk);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.cons__sql:hover {
+  color: var(--spark);
+}
+
+/* Always there, at the far right, with the hover tools appearing to its left.
+   Quiet, but not below the contrast floor — a timestamp nobody can read is
+   furniture. */
+.cons__when {
+  flex: none;
+  color: var(--chalk-faint);
+  font-size: var(--size-label);
+  font-variant-numeric: tabular-nums;
+}
+
+.cons__tools {
+  display: flex;
+  flex: none;
+  margin-left: auto;
+  gap: var(--s2);
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease);
+}
+
+/* `:focus-within` matters as much as the hover: these buttons stay in the tab
+   order whether or not a mouse ever comes near them. */
+.cons__entry:hover .cons__tools,
+.cons__entry:focus-within .cons__tools {
+  opacity: 1;
+}
+
+.cons__tools button {
+  padding: 0 var(--s2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--slab-raised);
+  color: var(--chalk-faint);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--size-label);
+  white-space: nowrap;
+}
+
+.cons__tools button:hover {
+  border-color: var(--spark-line);
+  color: var(--chalk);
+}
+
+/* ── A printed result ─────────────────────────────────────────────────────
+   `clickhouse-client`'s own box, because that is the shape everybody reaching
+   for a prompt already reads. It scrolls sideways rather than dropping columns:
+   a console is the one surface in Flint where the answer is the whole row. */
+
+.cons__table {
+  margin-top: var(--s2);
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.cons__row {
+  width: max-content;
+}
+
+.cons__rule {
+  color: var(--chalk-faint);
+}
+
+.cons__head {
+  color: var(--chalk-dim);
+  font-weight: 500;
+}
+
+.cons__cell.is-null,
+.cons__cell.is-empty {
+  color: var(--chalk-faint);
+  font-style: italic;
+}
+
+.cons__stat {
+  margin: var(--s2) 0 0;
+  color: var(--chalk-faint);
+  font-size: var(--size-label);
+}
+
+/* The cap gets its own line and its own colour. It is the sentence that must
+   not be skimmed past. */
+.cons__capped {
+  display: block;
+  color: var(--warning);
+}
+
+.cons__error {
+  margin: var(--s2) 0 0;
+  color: var(--alarm-text);
+}
+
+.cons__errorHead,
+.cons__errorRest {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+/* Named when a statement fails while the console is carrying settings. The
+   second failure of a poisoned console looks nothing like its cause, so the
+   cause is put next to it. */
+.cons__blame {
+  margin: var(--s1) 0 0;
+  color: var(--chalk-faint);
+}
+
+.cons__blame code {
+  color: var(--chalk-dim);
+}
+
+/* The grammar, once somebody has asked for it. Quieter than the sentence above
+   it, because it is the part that is usually not the answer. */
+.cons__errorRest {
+  margin-top: var(--s1);
+  color: var(--chalk-faint);
+}
+
+.cons__note {
+  margin: 0;
+  color: var(--chalk-dim);
+  white-space: pre-wrap;
+}
+
+.cons__entry--note {
+  color: var(--chalk-dim);
+}
+
+.cons__running {
+  display: flex;
+  align-items: center;
+  margin: var(--s2) 0 0;
+  gap: var(--s2);
+  color: var(--chalk-faint);
+}
+
+.cons__ticker {
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--spark-line);
+  border-radius: 50%;
+  border-top-color: var(--spark);
+  animation: cons-spin var(--loop-spin) linear infinite;
+}
+
+@keyframes cons-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+.cons__linkish {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--spark);
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+}
+
+/* ── The prompt ───────────────────────────────────────────────────────────── */
+
+.cons__prompt {
+  display: flex;
+  flex: none;
+  align-items: flex-start;
+  gap: var(--s2);
+  padding: var(--s3) var(--s4);
+  border-top: 1px solid var(--line);
+  background: var(--slab-sunk);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  line-height: 1.6;
+}
+
+.cons__input {
+  min-width: 0;
+  flex: 1;
+}
+
+.cons__stop {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--s2);
+  padding: 0 var(--s3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--slab-raised);
+  color: var(--chalk-dim);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--size-label);
+}
+
+.cons__stop:hover {
+  border-color: var(--alarm);
+  color: var(--alarm-text);
+}
+
+.cons__stop kbd {
+  color: var(--chalk-faint);
+  font-family: inherit;
+}
+
+/* Narrow windows, and screens with no pointer at all.
+   The bar loses its furniture before it loses its controls: at 420px the
+   account and the server version pushed `Clear` and the hide button clean off
+   the right edge, which left no way to put the console away except the
+   keyboard. And hover-revealed tools are not a thing a touch screen has, so
+   there they are simply shown — wrapped onto their own line under the
+   statement rather than competing with it for width. */
+@media (max-width: 720px) {
+  .cons__who,
+  .cfab__key {
+    display: none;
+  }
+
+  .cons__said {
+    flex-wrap: wrap;
+  }
+
+  /* The picker is the widest thing on the bar and the one that can afford to
+     ellipsise: a database name you can half-read beside a control you cannot
+     reach at all is the wrong trade. */
+  .cons__db select {
+    max-width: 8rem;
+  }
+}
+
+@media (hover: none), (max-width: 720px) {
+  .cons__tools {
+    opacity: 1;
+  }
+}
+
+/* What the tables do not agree about. Above the findings rather than among
+ * them, because it is not one: nothing follows from it automatically, and a
+ * card with no tick on it sitting in a column of cards with ticks would read as
+ * a finding somebody forgot to make actionable. */
+.sweep__split {
+  padding: var(--s3);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+}
+
+.sweep__splittitle {
+  margin: 0;
+  font-size: var(--size-body);
+  color: var(--chalk);
+}
+
+.sweep__splitwhy {
+  margin: var(--s1) 0 0;
+  font-size: var(--size-label);
+  line-height: 1.55;
+  color: var(--chalk-faint);
+}
+
+.sweep__splits {
+  margin: var(--s2) 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}
+
+.sweep__splitrow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  font-size: var(--size-label);
+}
+
+.sweep__splitside {
+  font-family: var(--font-data);
+  color: var(--chalk-dim);
+}
+
+/* One change, on its way to where structure may be written. Quiet: the SQL
+ * block at the foot is the hand-over this page is built around, and a link
+ * shouting on every row would argue otherwise. */
+.sweep__malter {
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+  white-space: nowrap;
+  transition: color var(--motion-fast) var(--ease);
+}
+.sweep__malter:hover,
+.sweep__malter:focus-visible {
+  color: var(--spark);
+}
+
+/* What verifying moved under a tick that was already made. Above the SQL and in
+ * the warning colour, because it is the one thing on this page that changes a
+ * statement the reader believes they have already read. */
+.sweep__moved {
+  margin: 0;
+  padding: var(--s2) var(--s3);
+  border-left: 2px solid var(--warning);
+  border-radius: var(--radius-sm);
+  background: var(--warning-weak);
+  font-size: var(--size-label);
+  line-height: 1.55;
+  color: var(--chalk);
+}
+
+/* A disagreement between tables that are variants of one another — where one of
+ * them is simply wrong, rather than two unrelated tables sharing a common noun.
+ * Marked rather than merely sorted first, because the list is read by scanning
+ * and a position in an order is not a label. */
+.sweep__drift {
+  padding: 1px var(--s2);
+  border-radius: var(--radius-pill);
+  background: var(--warning-weak);
+  color: var(--warning);
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+}
+
+
+/* ── Which of a database's tables the workload argues about ──────────────────
+ *
+ * A table of readings rather than a set of cards: the point of this page is the
+ * comparison between rows, and a card per table would put a scroll between two
+ * figures somebody is trying to weigh against each other.
+ */
+.dbproj {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.dbproj__lead {
+  margin: 0;
+  max-width: 86ch;
+  font-size: var(--size-body);
+  line-height: 1.55;
+  color: var(--chalk-dim);
+}
+
+.dbproj__caveat {
+  margin: 0 0 var(--s2);
+  max-width: 86ch;
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--chalk-faint);
+}
+
+/* "All of it" is the reading this page exists to surface, so it is the one
+   figure in the column that is not grey. Warning-coloured and not alarm: a
+   table read end to end is a fact about a workload, not a fault. */
+.dbproj__whole {
+  color: var(--warning);
 }

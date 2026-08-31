@@ -1,14 +1,20 @@
-/** The whole path an object sits on, as a chain rather than a diagram.
+/** How far the path an object sits on reaches, in each direction.
  *
- *  The diagram answers "how does this schema fit together". On an object's own
- *  page the question is narrower and more sequential: where do these rows come
- *  from, and where do they end up. That reads as a chain — one hop per row —
- *  and a chain is also honest about depth in a way a picture is not.
+ *  The path itself is *drawn* — `lineageSubgraph` picks the objects out and the
+ *  schema canvas draws them, the same canvas the database page uses, so the two
+ *  cannot disagree about what a path is. This measures it.
+ *
+ *  It was the drawing too, once: a chain of rows, one hop each, on the argument
+ *  that a chain is honest about depth in a way a picture is not. Half of that
+ *  was right. Depth is exactly what a diagram of six boxes does not tell you at
+ *  a glance — so it survives here, in the caption above the picture — and the
+ *  rest of the chain was a worse diagram than the diagram.
  *
  *  Built from the graph the page already has, which is scoped to one database
  *  plus the neighbours it references. So a path can *stop* at an object from
  *  elsewhere whose own sources were never fetched, and that is said rather than
- *  presented as the end of the line. */
+ *  presented as the end of the line — see `incomplete`, which is the other
+ *  thing here the drawing cannot say. */
 
 import { nodeId, lineageSubgraph, type GraphNode, type SchemaGraph } from './graph'
 

@@ -144,9 +144,12 @@ export interface Sources {
 }
 
 export const PAGES: Entry[] = [
+  { kind: 'page', label: 'Home', to: '/home' },
   { kind: 'page', label: 'Explore', to: '/' },
-  { kind: 'page', label: 'Build', to: '/build' },
   { kind: 'page', label: 'Query', to: '/query' },
+  /* The form is a mode of the query page rather than a page of its own, and
+     `Build` is still what people type to look for it. */
+  { kind: 'page', label: 'Build', to: '/query?mode=build' },
   { kind: 'page', label: 'Dashboards', to: '/dash' },
   { kind: 'page', label: 'Diagnose', to: '/diagnose' },
   { kind: 'page', label: 'Alerts', to: '/alerts' },

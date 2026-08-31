@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { bytes, count, duration, exact, partsLabel, ratio, shortTime, splitTail } from './format'
+import { bytes, count, duration, exact, partsLabel, ratio, shortTime, splitTail, stretch } from './format'
 
 describe('bytes', () => {
   it('scales to binary units', () => {
@@ -113,5 +113,17 @@ describe('partsLabel', () => {
 
   it('rounds once merges are plainly behind', () => {
     expect(partsLabel(4000, 40)).toBe('active parts · 100 per partition')
+  })
+})
+
+describe('stretch', () => {
+  it('reads a span of data at the coarseness it deserves', () => {
+    expect(stretch(0.4)).toBe('<1 s')
+    expect(stretch(45)).toBe('45 s')
+    expect(stretch(600)).toBe('10 min')
+    expect(stretch(12_000)).toBe('3 h 20 min')
+    expect(stretch(7200)).toBe('2 h')
+    expect(stretch(90_000)).toBe('1 d 1 h')
+    expect(stretch(172_800)).toBe('2 d')
   })
 })

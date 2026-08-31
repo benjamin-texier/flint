@@ -33,6 +33,18 @@ export interface Section {
   label: string
   /** The `to` that concerns point at, when this section carries a badge. */
   badge?: string
+  /** What the deployment must have for this section to exist. `'workspace'`
+   *  means the page has nothing to show and nothing to write without
+   *  `FLINT_WORKSPACE_DATABASE` — see `spacesFor`. */
+  needs?: 'workspace'
+  /** Whether this section holds only its own path, rather than everything
+   *  underneath it.
+   *
+   *  For the one section whose `to` is a prefix of its siblings': `/infra` is a
+   *  page in its own right *and* the stem of `/infra/health`, so the ordinary
+   *  prefix rule would give it every Infrastructure page and light `Home` on all
+   *  eight of them. See `activeSection`. */
+  exact?: boolean
 }
 
 export interface Space {
@@ -45,54 +57,80 @@ export interface Space {
 
 /** Data's sections, in the order somebody asks for them.
  *
- *  The three ways *in* to the data stay adjacent — Explore browses the schema,
- *  Query writes the SQL, Build asks without writing any — because separating
- *  them made a reader cross a divider to find the other half of one idea. Then
- *  what Flint keeps, then what it watches. Alerts before Reports: an alert that
- *  has fired is more urgent than a report that is due.
+ *  `Home` first, and it is the one section that is about Flint rather than
+ *  about ClickHouse: what this workspace has been made to answer. Infrastructure
+ *  has had a board behind its own name since `/infra` stopped redirecting to
+ *  Health; Data's name landed on a database, which answers "what is on this
+ *  server" and never "what is this workspace for". See `lib/workspace` for why
+ *  it is not — and must not become — an inventory of the server.
  *
- *  The labels are verbs rather than the nouns of the product brief. `Build` is a
- *  query builder, not a gallery — calling it "Charts" would send someone
- *  looking for a page that does not exist, since charts come out of both Query
- *  and Build. */
+ *  The two ways *in* to the data stay adjacent — Explore browses the schema,
+ *  Query asks it something — because separating them made a reader cross a
+ *  divider to find the other half of one idea. Then what Flint keeps, then what
+ *  it watches. Alerts before Reports: an alert that has fired is more urgent
+ *  than a report that is due.
+ *
+ *  `Build` was a third entry here and is not one any more. It was never a
+ *  different product from Query: same database, same run, same results, same
+ *  charts — only a different surface to compose on, and two nav entries for one
+ *  page meant every affordance had to be built twice and half of them only ever
+ *  were once. It is a switch inside Query now, per tab, and `/build` still
+ *  resolves for the bookmarks. The labels are verbs rather than the nouns of the
+ *  product brief. */
 const DATA: Space = {
   id: 'data',
   label: 'Data',
-  home: '/',
+  home: '/home',
   sections: [
+    { id: 'home', to: '/home', label: 'Home', needs: 'workspace' },
     { id: 'explore', to: '/', label: 'Explore' },
     { id: 'query', to: '/query', label: 'Query' },
-    { id: 'build', to: '/build', label: 'Build' },
-    { id: 'dash', to: '/dash', label: 'Dashboards' },
-    { id: 'alerts', to: '/alerts', label: 'Alerts', badge: '/alerts' },
-    { id: 'reports', to: '/reports', label: 'Reports', badge: '/reports' },
-    { id: 'apis', to: '/apis', label: 'APIs' },
+    { id: 'dash', to: '/dash', label: 'Dashboards', needs: 'workspace' },
+    { id: 'alerts', to: '/alerts', label: 'Alerts', badge: '/alerts', needs: 'workspace' },
+    { id: 'reports', to: '/reports', label: 'Reports', badge: '/reports', needs: 'workspace' },
+    { id: 'apis', to: '/apis', label: 'APIs', needs: 'workspace' },
     { id: 'diagnose', to: '/diagnose', label: 'Diagnostics' },
   ],
 }
 
-/** Infrastructure's sections — the four that exist.
+/** Infrastructure's sections.
  *
- *  Backups, Versions, Configuration, Schema and Audit are planned and absent,
+ *  `Home` first, then the eight that exist. Versions is planned and absent,
  *  and absent means absent: a navigation entry leading to "not built yet" is a
  *  promise made in the wrong place. See ROADMAP.md.
  *
- *  `Replication` rather than `Clusters`, because `system.replicas` is what Flint
- *  reads today. It becomes Clusters when there is a topology to draw. */
+ *  `Clusters` rather than `Replication`, now that there is a topology to draw:
+ *  the section holds the ring from `system.clusters`, this replica's own queue,
+ *  and the distributed DDL ledger, with the per-table replica health inside it.
+ *  The old `/infra/replication` path still resolves — it is in bookmarks and in
+ *  already-delivered alert webhooks. */
 const INFRA: Space = {
   id: 'infra',
   label: 'Infrastructure',
-  home: '/infra/health',
+  // The board, not the busiest page. Clicking the space's own name should
+  // answer "is anything wrong", and Health answers "what is it doing" — which is
+  // the next question, not the first.
+  home: '/infra',
   sections: [
+    /* The board, and the only way back to it from a page inside the space —
+       until this existed, `/infra` was reachable by clicking the space's own
+       name and by nothing else, so an operator who had gone into Health had no
+       tab that took them back out to "is anything wrong". Data's `Home` made
+       the asymmetry visible; it was there before it. */
+    { id: 'home', to: '/infra', label: 'Home', exact: true },
     { id: 'health', to: '/infra/health', label: 'Health' },
     { id: 'pipelines', to: '/infra/pipelines', label: 'Pipelines' },
     {
-      id: 'replication',
-      to: '/infra/replication',
-      label: 'Replication',
-      badge: '/infra/replication',
+      id: 'cluster',
+      to: '/infra/cluster',
+      label: 'Clusters',
+      badge: '/infra/cluster',
     },
+    { id: 'schema', to: '/infra/schema', label: 'Schema' },
+    { id: 'backups', to: '/infra/backups', label: 'Backups' },
     { id: 'access', to: '/infra/access', label: 'Access' },
+    { id: 'config', to: '/infra/config', label: 'Config' },
+    { id: 'audit', to: '/infra/audit', label: 'Audit' },
   ],
 }
 
@@ -101,14 +139,59 @@ export function spaceOf(pathname: string): SpaceId {
   return pathname === '/infra' || pathname.startsWith('/infra/') ? 'infra' : 'data'
 }
 
-/** The spaces this deployment has.
+/** The spaces this deployment has, with the sections it can actually serve.
  *
  *  Infrastructure can be switched off whole, which is the point of it being a
  *  space: a team that only ever queries turns it off and never learns the other
  *  half is there. Undefined config means the answer has not arrived yet — show
- *  Data alone rather than flashing a section that may be about to vanish. */
-export function spacesFor(config: { infrastructure?: boolean } | undefined): Space[] {
-  return config?.infrastructure ? [DATA, INFRA] : [DATA]
+ *  Data alone rather than flashing a section that may be about to vanish.
+ *
+ *  Five of Data's sections need somewhere to write. Home, Dashboards, Alerts,
+ *  Reports and APIs are all *things Flint keeps*, and a Flint started without
+ *  `FLINT_WORKSPACE_DATABASE` keeps nothing — by design, not by failure. Four of
+ *  them used to be in the bar on such a deployment and each one opened on an
+ *  error, which reads as four broken pages rather than one deliberate mode. So
+ *  they are absent instead, and the bar carries a single note saying why (see
+ *  `Chrome`) — the same rule Infrastructure already follows: a capability the
+ *  deployment does not have is not offered and then refused.
+ *
+ *  Their routes stay: a bookmark or a pasted link still resolves, onto a page
+ *  that explains the one line of configuration that brings it back. */
+export function spacesFor(
+  config: { infrastructure?: boolean; workspace?: string | null } | undefined,
+): Space[] {
+  const data = dataFor(config)
+  return config?.infrastructure ? [data, INFRA] : [data]
+}
+
+/** Data, with only the sections this deployment can serve.
+ *
+ *  The space's own link moves with them. `Data` points at the home, which is one
+ *  of the five — so on a stateless deployment it points at the schema instead,
+ *  the way it always did. A space name that opens the page explaining why the
+ *  page is not there would be the refusal this whole rule exists to avoid.
+ *
+ *  A copy, never the table: `spaceById` hands `DATA` itself to everyone, and
+ *  filtering in place would drop the five sections for the rest of the session
+ *  the first time a stateless answer arrived. */
+export function dataFor(config: { workspace?: string | null } | undefined): Space {
+  if (keeps(config)) return DATA
+  return {
+    ...DATA,
+    home: '/',
+    sections: DATA.sections.filter((s) => s.needs !== 'workspace'),
+  }
+}
+
+/** Whether this deployment keeps anything at all.
+ *
+ *  One reading of `config.workspace` for the whole frontend: pages gate their
+ *  requests on it rather than firing them and rendering the refusal, which is
+ *  what put an error box under every one of those pages' own explanations.
+ *  Undefined config counts as stateless — the queries wait one tick for the
+ *  answer instead of guessing at it. */
+export function keeps(config: { workspace?: string | null } | undefined): boolean {
+  return Boolean(config?.workspace)
 }
 
 export function spaceById(id: SpaceId): Space {
@@ -121,10 +204,19 @@ export function spaceById(id: SpaceId): Space {
  *  database, the server page — because those are all ways of browsing the
  *  schema. Infrastructure has no such catch-all: every one of its pages is a
  *  section, so an unrecognised `/infra/...` path lights nothing rather than
- *  lighting the first thing. */
+ *  lighting the first thing.
+ *
+ *  A section marked `exact` holds only its own path. That is Infrastructure's
+ *  `Home`, whose `/infra` is the stem of every sibling: under the plain prefix
+ *  rule it would claim all eight of them, and the bar would light `Home` while
+ *  the reader was looking at Health. It also keeps the no-catch-all rule intact
+ *  — `/infra/versions` still lights nothing rather than falling back to the
+ *  board, because a path nobody recognises is not the board. */
 export function activeSection(pathname: string): string | undefined {
   const space = spaceById(spaceOf(pathname))
-  const hit = space.sections.find((s) => s.to !== '/' && pathname.startsWith(s.to))
+  const hit = space.sections.find((s) =>
+    s.exact ? pathname === s.to : s.to !== '/' && pathname.startsWith(s.to),
+  )
   if (hit) return hit.id
   return space.id === 'data' ? 'explore' : undefined
 }

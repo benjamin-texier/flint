@@ -11,19 +11,37 @@ axum = { version = "0.8", features = ["macros", "http2"] }
 clap = { version = "4.5", features = ["derive", "env"] }
 dashmap = "6.2"
 mime_guess = "2.0"
-reqwest = { version = "0.13", default-features = false, features = ["json", "query", "rustls", "gzip", "charset", "http2"] }
+# `stream` is for exports and nothing else. Every other read is a bounded page
+# that Flint parses; a download is a file whose whole point is being larger than
+# a page, and buffering it here would put the user's table in Flint's memory on
+# the way to their disk.
+reqwest = { version = "0.13", default-features = false, features = ["json", "query", "rustls", "gzip", "charset", "http2", "stream"] }
 rust-embed = { version = "8.12", features = ["interpolate-folder-path"] }
 rustls = { version = "0.23", default-features = false, features = ["aws-lc-rs", "std", "tls12", "logging"] }
 rustls-pemfile = "2.2.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
+# Already in the tree through rustls; a direct dependency adds no build and no
+# supply chain, and a published token has to be hashed somewhere that is not
+# ClickHouse — a token sent to the server to be hashed is a token in a query.
+sha2 = "0.11"
 thiserror = "2.0"
 tokio = { version = "1.53", features = ["full"] }
 tower-http = { version = "0.7", features = ["cors", "trace", "compression-gzip"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# Already in the tree through reqwest. A direct dependency because an endpoint a
+# *browser* named has to be taken apart before it is dialled, and hand-parsing
+# the thing a security check depends on is how the check gets it wrong.
+url = "2.5"
 uuid = { version = "1.20", features = ["v4", "serde"] }
 webpki-roots = "1.0.9"
+
+[dev-dependencies]
+# Only to drive the router in tests: `oneshot` sends one request through the
+# whole stack, which is the only way to prove the authentication gate is
+# actually on a route rather than merely written down beside it.
+tower = { version = "0.5", features = ["util"] }
 
 [profile.release]
 opt-level = 3

@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import { api } from '../lib/api'
 import { KIND_LABEL, buildEntries, search, type Hit } from '../lib/palette'
+import { keeps } from '../lib/spaces'
 
 /** One place to type a name and get to the thing.
  *
@@ -18,21 +19,32 @@ export function Palette({ open, onClose }: { open: boolean; onClose: () => void 
 
   const enabled = open
   const schema = useQuery({ queryKey: ['schema'], queryFn: () => api.schema(), enabled })
+  /* Five of the six corpora are things Flint keeps, and a Flint without a
+     workspace keeps none of them: opening the palette there used to fire five
+     requests for five refusals, which the palette then rendered as an empty
+     corpus anyway. The schema is the one that is always there. */
+  const config = useQuery({ queryKey: ['config'], queryFn: () => api.config() })
+  const kept = enabled && keeps(config.data)
   const saved = useQuery({
     queryKey: ['saved-queries'],
     queryFn: () => api.savedQueries(),
-    enabled,
+    enabled: kept,
     retry: false,
   })
   const dashboards = useQuery({
     queryKey: ['dashboards'],
     queryFn: () => api.dashboards(),
-    enabled,
+    enabled: kept,
     retry: false,
   })
-  const reports = useQuery({ queryKey: ['reports'], queryFn: () => api.reports(), enabled, retry: false })
-  const alerts = useQuery({ queryKey: ['alerts'], queryFn: () => api.alerts(), enabled, retry: false })
-  const apis = useQuery({ queryKey: ['published'], queryFn: () => api.published(), enabled, retry: false })
+  const reports = useQuery({ queryKey: ['reports'], queryFn: () => api.reports(), enabled: kept, retry: false })
+  const alerts = useQuery({ queryKey: ['alerts'], queryFn: () => api.alerts(), enabled: kept, retry: false })
+  const apis = useQuery({
+    queryKey: ['published'],
+    queryFn: () => api.published(),
+    enabled: kept,
+    retry: false,
+  })
 
   const entries = useMemo(
     () =>

@@ -14,11 +14,19 @@ use clap::{Parser, ValueEnum};
 pub enum Tier {
     /// Reads only. `readonly=2` on every statement.
     Read,
-    /// Rows may be written: insert, import, truncate, mutate.
+    /// Rows may be written: insert, import, mutate.
     Data,
-    /// Structure may be written: create, alter, drop, indexes, partitions.
+    /// Structure may be written *where nothing is destroyed*: create, alter,
+    /// rename, detach, freeze, optimize.
     Ddl,
-    /// The server may be operated: `SYSTEM` commands, access, backups.
+    /// The server may be operated, and data may be destroyed: `SYSTEM` commands,
+    /// access, backups, truncate, drop.
+    ///
+    /// The line between this and `Ddl` is data loss, and it is not the line this
+    /// enum first drew — that one put `DROP TABLE` beside `CREATE` because both
+    /// are structure. It did not survive the work: a deployment that wants people
+    /// reshaping schemas without being able to delete anything is a real
+    /// deployment, and the first line could not express it.
     Admin,
 }
 
@@ -52,13 +60,39 @@ pub struct Config {
     #[arg(long, env = "FLINT_PORT", default_value_t = 8080)]
     pub port: u16,
 
-    /// ClickHouse HTTP endpoint
-    #[arg(
-        long,
-        env = "FLINT_CLICKHOUSE_URL",
-        default_value = "http://localhost:8123"
-    )]
-    pub clickhouse_url: String,
+    /// ClickHouse HTTP endpoint.
+    ///
+    /// Unset means **unpinned**: Flint boots with no server of its own and the
+    /// browser names one at sign-in. That is a real mode, not a degraded one —
+    /// `docker run flint` with no environment at all opens on a form asking
+    /// where to connect — but it is a narrower Flint, and the narrowing is
+    /// structural rather than a policy: everything Flint does on a schedule
+    /// (alerts, reports, jobs) runs with nobody's browser open, so it cannot
+    /// borrow a target from a session. Hence [`Config::check`] refuses a
+    /// workspace here, and an unpinned Flint is stateless by construction.
+    ///
+    /// It also implies signing in, because the session is the only thing that
+    /// can carry a target. See `src/main.rs`, which sets that rather than
+    /// asking for it twice.
+    #[arg(long, env = "FLINT_CLICKHOUSE_URL")]
+    pub clickhouse_url: Option<String>,
+
+    /// Servers a browser may point an unpinned Flint at. Empty means any.
+    ///
+    /// `host`, `host:port` or `scheme://host:port`, comma-separated. What is
+    /// absent does not constrain: `clickhouse` permits that host on any port
+    /// over either scheme, and anything narrower is written out. See
+    /// `src/target.rs` for the matching, and for what vetting a host as
+    /// *written* cannot promise.
+    ///
+    /// Empty is the default because requiring this would take away the mode's
+    /// whole point — an unpinned Flint that needs a variable set is a pinned
+    /// one with extra steps. The boot log says the fence is down, and an
+    /// unpinned Flint that anyone can reach should set this.
+    ///
+    /// Ignored while Flint is pinned, where nobody but the manifest has a say.
+    #[arg(long, env = "FLINT_TARGETS", value_delimiter = ',')]
+    pub targets: Vec<String>,
 
     /// ClickHouse user
     #[arg(long, env = "FLINT_CLICKHOUSE_USER", default_value = "default")]
@@ -91,6 +125,64 @@ pub struct Config {
     /// upgrading.
     #[arg(long, env = "FLINT_TIER", value_enum)]
     pub tier: Option<Tier>,
+
+    /// Require everyone to sign in with their own ClickHouse credentials.
+    ///
+    /// Off by default, because Flint has always run as the account in the
+    /// manifest and turning this on for an existing deployment would lock out
+    /// everybody who has no ClickHouse user of their own.
+    ///
+    /// On, the credentials above are used only for Flint's own work — the
+    /// workspace, the alert scheduler, the health probe — and every statement a
+    /// person causes runs as that person. Which means ClickHouse's own grants
+    /// decide what they may see, and `system.query_log` records who did it. See
+    /// `src/auth.rs`.
+    /// Read through [`Config::sign_in_required`] rather than directly: an
+    /// unpinned Flint requires signing in whatever this says, and a site that
+    /// reads the raw flag is a site that gets that wrong.
+    #[arg(
+        long,
+        env = "FLINT_AUTH",
+        default_value_t = false,
+        action = clap::ArgAction::Set
+    )]
+    pub auth: bool,
+
+    /// How many hours an unused session survives before it has to sign in
+    /// again. Only meaningful with `--auth`.
+    ///
+    /// Idle rather than absolute: signing somebody out in the middle of a day's
+    /// work teaches them to keep a second tab open, which defeats the point.
+    #[arg(long, env = "FLINT_SESSION_IDLE_HOURS", default_value_t = 12)]
+    pub session_idle_hours: u64,
+
+    /// Roles a published endpoint may be made to run as. Empty means none, and
+    /// none is the default: delegation is a thing somebody turns on.
+    ///
+    /// In the manifest and never in the UI, for the reason the tier is: a
+    /// permission a user can grant themselves is not a permission. Naming a
+    /// role here is a statement that whoever can publish may hand out that
+    /// role's reach to anyone holding a token.
+    ///
+    /// It is an allow-list rather than "any role the account holds", because
+    /// the account almost certainly holds one that is not meant to be handed
+    /// out — and the failure would be silent.
+    #[arg(long, env = "FLINT_DELEGATABLE_ROLES", value_delimiter = ',')]
+    pub delegatable_roles: Vec<String>,
+
+    /// The disk Flint may write backups to, and read them from.
+    ///
+    /// Unset means Flint takes no backups, which is the default: `BACKUP … TO
+    /// Disk(…)` is refused by ClickHouse itself unless the server's own
+    /// `backups.allowed_disk` sanctions the destination, and Flint has no way to
+    /// read that setting. So the name is given here rather than guessed — and
+    /// where it is wrong, the server says so and the job records what it said.
+    ///
+    /// A backup on the same machine as the data is not a backup. That is not
+    /// Flint's decision to make, but it is worth saying once: this names a disk,
+    /// and whether that disk is somewhere else is the operator's problem.
+    #[arg(long, env = "FLINT_BACKUP_DISK")]
+    pub backup_disk: Option<String>,
 
     /// Whether the Infrastructure space exists in the UI at all.
     ///
@@ -181,6 +273,43 @@ impl Config {
     /// the other variable takes away. Failing at boot puts that in the log the
     /// first time, rather than in a support conversation about why a button is
     /// missing.
+    /// A variable set to nothing is a variable that is not set.
+    ///
+    /// `FLINT_WORKSPACE_DATABASE=` in a `.env` or a compose file is how somebody
+    /// writes "no workspace" with the line still in the file — commenting it out
+    /// and blanking it are the same intent — but it reaches clap as `Some("")`.
+    /// Flint then believed it had a workspace called nothing: `ensure` sent
+    /// `CREATE DATABASE ``` and the server answered *failed at position 31,
+    /// expected identifier*, once at boot and then every time the alert
+    /// scheduler and the report sweep ticked. Meanwhile `/api/config` reported a
+    /// workspace, so the UI offered all five of the sections that need one and
+    /// each opened on a syntax error — precisely the "present and failing"
+    /// state the whole stateless mode exists to avoid.
+    ///
+    /// [`Config::endpoint`] already fixed this for the server URL, and its
+    /// reasoning is the same; the difference is that this runs once over every
+    /// optional string, so the six places that read `workspace_database`
+    /// directly cannot each get it wrong. The other two are the same bargain:
+    /// `FLINT_BACKUP_DISK=` would put `Disk('')` in a `BACKUP` statement, and
+    /// `FLINT_CORS_ORIGIN=` an empty `Access-Control-Allow-Origin`.
+    ///
+    /// Whitespace goes with it. A value indented into a YAML block arrives with
+    /// it attached, and a database called `" flint"` is not one.
+    pub fn normalise(&mut self) {
+        fn some_if_named(value: &mut Option<String>) {
+            let named = value
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(str::to_owned);
+            *value = named;
+        }
+        some_if_named(&mut self.clickhouse_url);
+        some_if_named(&mut self.workspace_database);
+        some_if_named(&mut self.backup_disk);
+        some_if_named(&mut self.cors_origin);
+    }
+
     pub fn check(&self) -> Result<(), String> {
         if let Some(asked) = self.tier {
             if self.readonly && asked > Tier::Read {
@@ -191,6 +320,21 @@ impl Config {
                 ));
             }
         }
+        // A workspace is a database on *one* server, written by Flint's own
+        // account, on a schedule that runs whether or not anybody is signed in.
+        // Unpinned there is no such server and no such account, so this is not
+        // a setting that degrades — it is a setting that cannot mean anything,
+        // and saying so at boot beats a scheduler that fails every minute into
+        // a log nobody reads.
+        if !self.pinned() && self.workspace_database.is_some() {
+            return Err(
+                "FLINT_WORKSPACE_DATABASE names a database on the server Flint connects to, and \
+                 this Flint has no server of its own — the browser names one at sign-in. Set \
+                 FLINT_CLICKHOUSE_URL to pin it, or unset the workspace: unpinned, Flint is \
+                 stateless."
+                    .into(),
+            );
+        }
         Ok(())
     }
 
@@ -198,9 +342,50 @@ impl Config {
         format!("{}:{}", self.host, self.port)
     }
 
-    /// The endpoint without credentials, safe to show in the UI.
-    pub fn redacted_endpoint(&self) -> String {
-        self.clickhouse_url.clone()
+    /// Whether the manifest names the server, rather than the browser naming it.
+    ///
+    /// Phrased as a question about the manifest on purpose. It is the same
+    /// question as "is there a server to connect to at boot", "is there a
+    /// service account", and "can anything run on a schedule" — and reading it
+    /// off one field keeps those three from drifting apart.
+    pub fn pinned(&self) -> bool {
+        self.endpoint().is_some()
+    }
+
+    /// The server in the manifest, or `None` where it names none.
+    ///
+    /// Blank counts as absent, and that is the whole reason this is a method.
+    /// `FLINT_CLICKHOUSE_URL=` in a `.env` or a compose file is how somebody
+    /// says "no server" with the variable still written down — it reaches clap
+    /// as `Some("")`, and an empty string treated as an address is a Flint that
+    /// believes it is pinned to nowhere: every read fails on a URL that is not
+    /// one, and nobody can sign in to fix it.
+    pub fn endpoint(&self) -> Option<&str> {
+        self.clickhouse_url
+            .as_deref()
+            .map(str::trim)
+            .filter(|url| !url.is_empty())
+    }
+
+    /// Whether everyone must sign in with their own ClickHouse credentials.
+    ///
+    /// `--auth`, or unpinned. The second is a consequence rather than a policy:
+    /// the endpoint arrives with a session, so a Flint whose manifest names no
+    /// server has nothing to connect as until somebody signs in — and an open
+    /// UI that can reach nothing is worse than a form.
+    ///
+    /// A method rather than a value settled at boot, so that the invariant holds
+    /// for an `AppState` built anywhere — including in a test, which is where a
+    /// gate gets quietly built without one.
+    pub fn sign_in_required(&self) -> bool {
+        self.auth || !self.pinned()
+    }
+
+    /// The endpoint as the UI is told it. `None` unpinned: there is no endpoint
+    /// until somebody names one, and the answer is that rather than an empty
+    /// string dressed up as an address.
+    pub fn redacted_endpoint(&self) -> Option<&str> {
+        self.endpoint()
     }
 }
 
@@ -248,6 +433,100 @@ mod tests {
         // Read-only *and* `read` is the same thing said twice, not a conflict.
         assert!(config(true, Some(Tier::Read)).check().is_ok());
         assert!(config(false, Some(Tier::Admin)).check().is_ok());
+    }
+
+    #[test]
+    fn an_unpinned_flint_requires_signing_in_whatever_the_flag_says() {
+        // Not a default that can be overridden: there is nothing else to
+        // connect as, so `FLINT_AUTH=false` cannot mean "let everyone in".
+        let mut c = config(false, None);
+        c.clickhouse_url = None;
+        c.auth = false;
+        assert!(c.sign_in_required());
+
+        // Pinned, the flag is the whole answer — which is every deployment
+        // that existed before unpinned mode did.
+        c.clickhouse_url = Some("http://ch:8123".into());
+        assert!(!c.sign_in_required());
+        c.auth = true;
+        assert!(c.sign_in_required());
+    }
+
+    #[test]
+    fn an_unset_endpoint_is_unpinned_and_shows_no_address() {
+        let mut c = config(false, None);
+        c.clickhouse_url = None;
+        assert!(!c.pinned());
+        // Dropped, not blanked: the UI is told there is no endpoint rather than
+        // handed an empty string to render as one.
+        assert_eq!(c.redacted_endpoint(), None);
+
+        c.clickhouse_url = Some("http://ch:8123".into());
+        assert!(c.pinned());
+        assert_eq!(c.redacted_endpoint(), Some("http://ch:8123"));
+    }
+
+    #[test]
+    fn a_blank_endpoint_is_no_endpoint() {
+        // `FLINT_CLICKHOUSE_URL=` is how a compose file says "unpinned" without
+        // deleting the line. Read as an address it would pin Flint to nowhere:
+        // every request fails and nobody can sign in to correct it.
+        let mut c = config(false, None);
+        for blank in ["", "   ", "\t"] {
+            c.clickhouse_url = Some(blank.into());
+            assert!(!c.pinned(), "{blank:?} was taken for an address");
+            assert_eq!(c.redacted_endpoint(), None, "{blank:?}");
+            assert!(c.sign_in_required(), "{blank:?}");
+        }
+        // And the surrounding whitespace of a real one is not part of it.
+        c.clickhouse_url = Some("  http://ch:8123 ".into());
+        assert_eq!(c.redacted_endpoint(), Some("http://ch:8123"));
+    }
+
+    #[test]
+    fn a_variable_set_to_nothing_is_a_variable_that_is_not_set() {
+        // How somebody writes "no workspace" with the line still in the file.
+        // Left as `Some("")`, Flint believed it had a workspace called nothing:
+        // `CREATE DATABASE ``` at boot, the same syntax error on every alert and
+        // report tick, and a `/api/config` that told the UI to offer five
+        // sections which all opened on it.
+        let mut c = config(false, None);
+        c.clickhouse_url = Some("http://ch:8123".into());
+        c.workspace_database = Some(String::new());
+        c.backup_disk = Some("   ".into());
+        c.cors_origin = Some(String::new());
+        c.normalise();
+        assert_eq!(c.workspace_database, None);
+        assert_eq!(c.backup_disk, None);
+        assert_eq!(c.cors_origin, None);
+        // And stateless is then the supported pair rather than a boot failure.
+        assert!(c.check().is_ok());
+
+        // A named one survives, with the whitespace a YAML block attaches to it
+        // taken off: a database called `" flint"` is not one.
+        c.workspace_database = Some("  flint\n".into());
+        c.normalise();
+        assert_eq!(c.workspace_database.as_deref(), Some("flint"));
+    }
+
+    #[test]
+    fn a_workspace_needs_a_server_named_in_the_manifest() {
+        let mut c = config(false, None);
+        c.clickhouse_url = None;
+        c.workspace_database = Some("flint".into());
+        let err = c
+            .check()
+            .expect_err("a workspace with no server must not boot");
+        assert!(err.contains("FLINT_WORKSPACE_DATABASE"), "{err}");
+        assert!(err.contains("FLINT_CLICKHOUSE_URL"), "{err}");
+
+        // Unpinned and stateless is the supported pair, and pinned with a
+        // workspace is the one that always worked.
+        c.workspace_database = None;
+        assert!(c.check().is_ok());
+        c.clickhouse_url = Some("http://ch:8123".into());
+        c.workspace_database = Some("flint".into());
+        assert!(c.check().is_ok());
     }
 
     #[test]

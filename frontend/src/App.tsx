@@ -7,17 +7,22 @@ import { rememberedDatabase, resolveDatabase } from './lib/database'
 import { Chrome } from './components/Chrome'
 import { spaceOf, spacesFor } from './lib/spaces'
 import { Palette, usePaletteShortcut } from './components/Palette'
+import { Console } from './components/Console'
+import { AlertsRail } from './components/AlertsRail'
 import { ExplorerRail } from './components/ExplorerRail'
 import { ServerPage } from './routes/ServerPage'
+import { OverviewPage } from './routes/Overview'
 import { DatabasePage } from './routes/DatabasePage'
 import { TableView } from './routes/TableView'
 import { TabsProvider } from './editor/tabs'
 import { ErrorNote, Loading } from './components/Note'
+import { OutageBar, OutageScreen, useReach } from './components/Reach'
+import { admits } from './lib/session'
+import { SignIn } from './routes/SignIn'
 
 // CodeMirror is two thirds of the bundle and the schema is the landing
 // surface, so the editor loads only once someone opens a query tab.
 const Editor = lazy(() => import('./routes/Editor').then((m) => ({ default: m.Editor })))
-const Builder = lazy(() => import('./routes/Builder').then((m) => ({ default: m.Builder })))
 const DashboardList = lazy(() =>
   import('./routes/Dashboards').then((m) => ({ default: m.DashboardList })),
 )
@@ -33,10 +38,14 @@ const HealthPage = lazy(() => import('./routes/Health').then((m) => ({ default: 
 const PipelinesPage = lazy(() =>
   import('./routes/Pipelines').then((m) => ({ default: m.PipelinesPage })),
 )
-const ReplicationPage = lazy(() =>
-  import('./routes/Replication').then((m) => ({ default: m.ReplicationPage })),
-)
+const ClusterPage = lazy(() => import('./routes/Cluster').then((m) => ({ default: m.ClusterPage })))
 const AccessPage = lazy(() => import('./routes/Access').then((m) => ({ default: m.AccessPage })))
+const AuditPage = lazy(() => import('./routes/Audit').then((m) => ({ default: m.AuditPage })))
+const ConfigPage = lazy(() => import('./routes/Config').then((m) => ({ default: m.ConfigPage })))
+const SchemaPage = lazy(() => import('./routes/Schema').then((m) => ({ default: m.SchemaPage })))
+const BackupsPage = lazy(() =>
+  import('./routes/Backups').then((m) => ({ default: m.BackupsPage })),
+)
 const AlertsPage = lazy(() =>
   import('./routes/Alerts').then((m) => ({ default: m.AlertsPage })),
 )
@@ -46,6 +55,13 @@ const ReportsPage = lazy(() =>
 const PublishPage = lazy(() =>
   import('./routes/Publish').then((m) => ({ default: m.PublishPage })),
 )
+const PublishEndpointPage = lazy(() =>
+  import('./routes/PublishEndpoint').then((m) => ({ default: m.PublishEndpointPage })),
+)
+/* Data's own board. Lazy for the same reason as the rest, and absent for the
+   same reason as the four sections it summarises: a Flint with no workspace
+   keeps nothing for it to list. */
+const HomePage = lazy(() => import('./routes/Home').then((m) => ({ default: m.HomePage })))
 
 type Theme = 'dark' | 'light'
 
@@ -78,10 +94,28 @@ export function App() {
   const [theme, toggleTheme] = useTheme()
   const [paletteOpen, setPaletteOpen] = useState(false)
   usePaletteShortcut(() => setPaletteOpen(true))
+  /* Whether there is a backend at all. Read before anything else is decided:
+     the answers below — sign in, boot, render the shell — are all answers to
+     "what should this person do now", and "nothing, the server is not there"
+     outranks every one of them. */
+  const reach = useReach()
   const config = useQuery({ queryKey: ['config'], queryFn: api.config })
-  // The server may be unreachable; the chrome says so rather than the app
-  // failing to render.
-  const server = useQuery({ queryKey: ['server'], queryFn: api.server, retry: 1 })
+  /* Who is asking. Never stale for long: a session can end while the tab sits
+     open, and the answer decides whether there is an app to show at all. */
+  const session = useQuery({ queryKey: ['session'], queryFn: api.session, staleTime: 10_000 })
+  /* Signed in, or on a deployment that asks nobody to. Three answers, not two —
+     see `lib/session`. */
+  const admitted = admits(session.data)
+  /* The server may be unreachable; the chrome says so rather than the app
+     failing to render. Waits for admission, though — asked before it, this is
+     one guaranteed 401 on every cold load of a Flint that requires signing in,
+     and one spurious "your session ended" for a session that never began. */
+  const server = useQuery({
+    queryKey: ['server'],
+    queryFn: api.server,
+    retry: 1,
+    enabled: admitted,
+  })
   /* Whether the Infrastructure half of the product exists here at all —
      undefined until the config lands, which is a third answer and not a no.
      Asked once, at the top, because it decides both the bar and the routes, and
@@ -89,6 +123,19 @@ export function App() {
      worse than either alone. */
   const infrastructure = config.data ? spacesFor(config.data).length > 1 : undefined
   const { pathname } = useLocation()
+
+  /* Nothing renders until both answers are in. A flash of the app followed by
+     a sign-in screen would show a moment of somebody else's data — and worse, a
+     flash of the sign-in screen on a deployment that requires no sign-in makes
+     Flint look broken to everyone who has never needed one. */
+  if (config.isPending || session.isPending) return <Boot />
+  /* Nothing to show and no way to get it: the tab was opened onto a Flint that
+     is not running. Before the sign-in screen on purpose — with the backend
+     down, `session` is a failed request rather than "nobody is signed in", and
+     asking for credentials that cannot be checked is a screen that blames the
+     reader for the server. */
+  if (reach.outage && !config.data) return <OutageScreen outage={reach.outage} since={reach.since} />
+  if (!admitted) return <SignIn config={config.data} />
 
   return (
     <TabsProvider>
@@ -103,10 +150,15 @@ export function App() {
         <Chrome
           config={config.data}
           server={server.data}
+          session={session.data}
           theme={theme}
           onToggleTheme={toggleTheme}
           onFind={() => setPaletteOpen(true)}
         />
+        {/* Under the chrome and over everything else: the facts in the bar above
+            it are from before the outage, and the pages below it are about to
+            start saying they are waiting. */}
+        {reach.outage ? <OutageBar outage={reach.outage} since={reach.since} /> : null}
         <Palette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
         <div className="shell__body">
           {/* The rail lists the objects in a database, which is a Data
@@ -114,10 +166,35 @@ export function App() {
               furniture, and it costs the wide tables there 264px they need.
               Read off the URL rather than off the config, so it disappears the
               instant you cross over rather than a request later. */}
-          {spaceOf(pathname) === 'data' ? <ExplorerRail /> : null}
+          {/* And a page may own its rail. The explorer is the Data space's
+              default because most of its pages are about objects; the alerts
+              are not, and a list of tables beside a list of alerts is a rail
+              nothing on which answers a question the reader has. */}
+          {/* And the home owns none at all: it is a board about what Flint
+              keeps, not a way of browsing objects, and it carries its own two
+              ways into the schema in its header. */}
+          {spaceOf(pathname) === 'data' && pathname !== '/home' ? (
+            pathname.startsWith('/alerts') ? (
+              <AlertsRail />
+            ) : (
+              <ExplorerRail />
+            )
+          ) : null}
           <main className="shell__main" id="main" tabIndex={-1}>
             <Routes>
               <Route path="/" element={<LandingRoute />} />
+              {/* Data's board. The route exists whatever the deployment keeps —
+                  the page explains the absence rather than the router hiding it,
+                  which is what the four kept sections already do for a bookmark
+                  that outlived its workspace. */}
+              <Route
+                path="/home"
+                element={
+                  <Suspense fallback={<Loading label="Reading the workspace" />}>
+                    <HomePage />
+                  </Suspense>
+                }
+              />
               <Route path="/server" element={<ServerPage />} />
               <Route path="/db/:database" element={<DatabaseRoute />} />
               <Route path="/db/:database/:table" element={<TableRoute />} />
@@ -137,14 +214,10 @@ export function App() {
                   </Suspense>
                 }
               />
-              <Route
-                path="/build"
-                element={
-                  <Suspense fallback={<Loading label="Loading the builder" />}>
-                    <Builder />
-                  </Suspense>
-                }
-              />
+              {/* Where the form used to live. It is a face of the query page
+                  now, not a page — but the path is in bookmarks and in links
+                  people have sent each other, so it still lands on the form. */}
+              <Route path="/build" element={<Navigate to="/query?mode=build" replace />} />
               <Route
                 path="/query"
                 element={
@@ -185,6 +258,16 @@ export function App() {
                   </Suspense>
                 }
               />
+              {/* One address, in full: its contract beside what has actually
+                  been happening to it. */}
+              <Route
+                path="/apis/:slug"
+                element={
+                  <Suspense fallback={<Loading label="Reading the endpoint" />}>
+                    <PublishEndpointPage />
+                  </Suspense>
+                }
+              />
               {/* The routes exist whatever the answer; `InfraRoute` is what
                   makes "off" mean absent. Deciding out here instead sent every
                   direct link to /infra/* back to Data on the first render,
@@ -206,10 +289,29 @@ export function App() {
                 }
               />
               <Route
-                path="/infra/replication"
+                path="/infra/cluster"
                 element={
-                  <InfraRoute allowed={infrastructure} label="Reading the replicas">
-                    <ReplicationPage />
+                  <InfraRoute allowed={infrastructure} label="Reading the cluster">
+                    <ClusterPage />
+                  </InfraRoute>
+                }
+              />
+              {/* The path this section had when it was only about replicas. In
+                  bookmarks, and in alert webhooks already delivered. */}
+              <Route path="/infra/replication" element={<Navigate to="/infra/cluster" replace />} />
+              <Route
+                path="/infra/schema"
+                element={
+                  <InfraRoute allowed={infrastructure} label="Reading the schema">
+                    <SchemaPage />
+                  </InfraRoute>
+                }
+              />
+              <Route
+                path="/infra/backups"
+                element={
+                  <InfraRoute allowed={infrastructure} label="Reading the backup log">
+                    <BackupsPage />
                   </InfraRoute>
                 }
               />
@@ -221,13 +323,58 @@ export function App() {
                   </InfraRoute>
                 }
               />
-              <Route path="/infra" element={<Navigate to="/infra/health" replace />} />
+              <Route
+                path="/infra/audit"
+                element={
+                  <InfraRoute allowed={infrastructure} label="Reading the trail">
+                    <AuditPage />
+                  </InfraRoute>
+                }
+              />
+              <Route
+                path="/infra/config"
+                element={
+                  <InfraRoute allowed={infrastructure} label="Reading the configuration">
+                    <ConfigPage />
+                  </InfraRoute>
+                }
+              />
+              {/* The first page of the space, rather than a redirect into the busiest
+                  one. `/infra/health` is the right page for working on the server and
+                  the wrong one for finding out whether you need to. */}
+              <Route
+                path="/infra"
+                element={
+                  <InfraRoute allowed={infrastructure} label="Reading the server">
+                    <OverviewPage />
+                  </InfraRoute>
+                }
+              />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </main>
         </div>
+        {/* Outside `<Routes>` and never unmounted, which is the whole of the
+            feature: the transcript, the draft and the query still in flight
+            belong to the session rather than to the page you happened to be on
+            when you started them. Last in the shell so it sits over everything
+            without a stacking context to fight. */}
+        <Console />
       </div>
     </TabsProvider>
+  )
+}
+
+/** The pause before Flint knows whether it has to ask who you are.
+ *
+ *  Deliberately almost nothing: this is a few hundred milliseconds on a local
+ *  connection, and a spinner big enough to notice is a spinner you notice
+ *  flickering. */
+function Boot() {
+  return (
+    <div className="boot">
+      <Loading label="Starting Flint" />
+    </div>
   )
 }
 

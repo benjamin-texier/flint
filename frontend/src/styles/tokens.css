@@ -28,18 +28,25 @@
   --text-secondary: #514e48;
   /* Clears AA on the page ground too, not only on the white surfaces. */
   --text-muted: #6a655c;
+  /* Below the muted tier, for marks that are not text: a hairline, a dot, a
+     glyph nobody has to read. 3.3:1 on white, and deliberately so — never set
+     this on a sentence. */
+  --text-faint: #948e84;
 
-  /* One teal for every interactive state, deep enough to clear AA as link text
-     on white. The vibrant tint lives in --accent-2 and the chart palette. */
-  --accent: #0e7c72;
+  /* One green for every interactive state, deep enough to clear AA as link text
+     on white (5.4:1) and on the page ground behind it (4.5:1). The hue is the
+     dark theme's Spark, re-stepped rather than flipped: a brand colour that
+     changes family with the theme is not a brand colour, and #3ddc9a itself is
+     1.5:1 on white. The vibrant tint lives in --accent-2 and the charts. */
+  --accent: #0d794c;
   --accent-ink: #ffffff;
-  --accent-2: #17a99b;
-  --accent-weak: #d8edea;
+  --accent-2: #15ac6e;
+  --accent-weak: #e3f4ed;
   /* For accent-coloured text sitting on --accent-weak, where the standard
-     accent only reaches 4.2:1. */
-  --accent-strong: #0b6a61;
-  --interactive: #0e7c72;
-  --interactive-weak: #d8edea;
+     accent reaches 4.8:1 and this reaches 5.8:1. */
+  --accent-strong: #0a6b42;
+  --interactive: #0d794c;
+  --interactive-weak: #e3f4ed;
 
   --solid: #26231d;
   --solid-ink: #ffffff;
@@ -61,7 +68,7 @@
   --success-text: #1a6e46;
   --success-weak: #dff0e6;
 
-  --focus-ring: rgb(14 124 114 / 55%);
+  --focus-ring: rgb(13 121 76 / 55%);
   --shadow-card: 0 1px 2px rgb(55 45 32 / 6%);
   --shadow-pop: 0 8px 24px rgb(55 45 32 / 13%);
 
@@ -147,37 +154,62 @@
   --bg-canvas: #080d14;
   --bg-sidebar: #0e1620;
   --bg-surface: #0e1620;
-  --bg-surface-2: #141f2b;
-  --fill: #1a2532;
+  --bg-surface-2: #141c26;
+  /* Line and fill swapped rather than merged: the palette names one edge
+     colour, and a hovered row whose fill matches its own border has no edge
+     left. So the edge takes the named value and the old edge, a step lighter,
+     becomes the fill that lifts under the cursor. */
+  --fill: #1e2937;
 
-  --border: #1e2937;
+  --border: #1a2532;
   --border-strong: #33404f;
-  --divider: #18222e;
+  --divider: #141c26;
 
-  --text-primary: #f3f4f7;
-  --text-secondary: #b6bac6;
-  --text-muted: #939aa8;
+  --text-primary: #e8eef5;
+  --text-secondary: #a8bccf;
+  /* The palette's muted is #476585, which is 3.0:1 on the surface — beautiful,
+     and below AA for text. Flint spends this tier on things that carry meaning
+     (a section's subtitle, a path, a verdict's own words), so it takes the same
+     hue lifted until it clears AA, and stays unmistakably the blue-grey the
+     palette asked for rather than the neutral it replaces.
 
-  --accent: #32bba7;
-  --accent-ink: #08302b;
-  --accent-2: #4fd3c5;
-  --accent-weak: rgb(23 179 164 / 18%);
-  --accent-strong: #4fd3c5;
-  --interactive: #32bba7;
-  --interactive-weak: #10322e;
+     Lifted twice. The first step was measured against the page, the surface and
+     the raised surface and cleared all three at 4.5 — and missed `--fill`, which
+     is the ground under a hovered or striped table row and the lightest thing a
+     muted word ever sits on. 3.88:1 there, found by the browser check on a
+     profile table. Every ground now: 5.85 on the page, 5.62 on the surface, 5.30
+     raised, 4.54 on the fill. */
+  --text-muted: #7292b4;
+  /* The palette's value, kept exactly, for marks that are not text: a hairline,
+     a dot, a glyph nobody has to read. Never set this on a sentence. */
+  --text-faint: #476585;
+
+  /* Spark. Green now, not teal: 10.3:1 on the surface, and the one colour in
+     the product that means "you can touch this". */
+  --accent: #3ddc9a;
+  --accent-ink: #04231a;
+  --accent-2: #5fe8b0;
+  --accent-weak: rgb(61 220 154 / 16%);
+  --accent-strong: #5fe8b0;
+  --interactive: #3ddc9a;
+  --interactive-weak: #0f2f24;
 
   --solid: #242d40;
   --solid-ink: #f3f4f7;
 
-  --success: #34b27b;
-  --danger: #ef8a70;
-  --danger-weak: #3a1e1e;
+  --success: #4ec98a;
+  /* A true red rather than the salmon it replaces. It clears AA on every
+     surface (4.8:1) but only reaches 4.0:1 inside its own weak fill, so the
+     fill is deepened and the text step below is no longer an alias. */
+  --danger: #e05252;
+  --danger-weak: #2c1717;
   /* Re-stepped for the dark surface, not flipped: 8.2:1 on it, 5.9:1 in the
      weak fill. */
-  --warning: #d8a63a;
+  --warning: #d9a441;
   --warning-weak: #3a2f14;
-  /* Already 6.2:1 in the weak fill on this surface, so the fill step stands. */
-  --danger-text: var(--danger);
+  /* Lifted off `--danger` so a red chip stays readable on its own fill: 4.9:1
+     there, 5.7:1 on the surface. */
+  --danger-text: #e46767;
   --success-text: var(--success);
   --success-weak: #14301f;
 
@@ -190,7 +222,7 @@
   --series-5: #8468c4;
   --series-6: #4f963e;
 
-  --focus-ring: rgb(50 187 167 / 75%);
+  --focus-ring: rgb(61 220 154 / 70%);
   --shadow-card: 0 1px 2px rgb(0 0 0 / 34%);
   --shadow-pop: 0 10px 30px rgb(0 0 0 / 50%);
 
@@ -210,6 +242,11 @@
 /* On the dark ground the lifted chart palette already clears AA as text, so
    the type hues and the fills can be the same colours again. */
 :root[data-theme='dark'] {
+  /* The palette's own value, which is where it was drawn to sit: 5.5:1 on the
+     surface. */
+  --cold: #5b8fd6;
+  --cold-weak: #152238;
+
   --t-number: var(--chart-2);
   --t-string: var(--chart-6);
   --t-time: var(--chart-3);
@@ -233,14 +270,30 @@
   --chalk: var(--text-primary);
   --chalk-dim: var(--text-secondary);
   --chalk-faint: var(--text-muted);
+  /* Below faint, and not for text: see --text-faint. */
+  --chalk-ghost: var(--text-faint);
 
-  /* What you are touching. Teal now, not an ember: one interactive colour for
-     the whole product. */
+  /* Cold. The fifth state the palette names, and the one the other four cannot
+     say: dormant. An alert somebody paused, a job switched off, a replica taken
+     out of the set — none of these is fine, none is broken, and colouring them
+     with either is a lie in both directions. Blue because it is the one hue in
+     the palette that reads as "not running" rather than as a judgement.
+
+     Re-stepped for the light theme like every other hue here: #5b8fd6 is 2.4:1
+     on white. */
+  --cold: #2e69ba;
+  --cold-weak: #e8f0fb;
+
+  /* What you are touching. Green now — teal before, an ember before that: one
+     interactive colour for the whole product, whichever hue it is this year. */
   --spark: var(--accent);
   --spark-wash: var(--accent-weak);
   --spark-line: var(--accent-2);
 
   --alarm: var(--danger);
+  /* `--alarm` is a fill — 3.3:1 as small text on white, which is the same trap
+     the chart hues set. This is the step to set on a word. */
+  --alarm-text: var(--danger-text);
 
   /* ClickHouse type families. These are set as *text* — a type name beside a
      column, a keyword in the editor — so they cannot be the chart palette,
@@ -267,6 +320,13 @@
      so it is quieter than the bars that stand on their own. */
   --bar-cell: color-mix(in srgb, var(--chart-8) 13%, transparent);
   --grid-dot: color-mix(in srgb, var(--text-muted) 22%, transparent);
+  /* The partition grid. Its cells carry a magnitude the same way the storage
+     bars do, so they are the same ink — a second colour for the same quantity
+     would read as a second quantity. The absent square is not a value of zero
+     and must not look like a faint one: it is a hairline outline of nothing,
+     quiet enough that a row of them reads as a gap rather than as data. */
+  --cell-ink: var(--chart-8);
+  --cell-absent: color-mix(in srgb, var(--text-muted) 14%, transparent);
   /* Diagram edges need more presence than a panel border: they are content. */
   --edge: color-mix(in srgb, var(--text-muted) 58%, transparent);
 
@@ -300,8 +360,11 @@
   --rail-w: 264px;
   --ease-out: var(--ease);
 
-  /* Flint's own: the dots travelling an edge of the schema diagram. Slower than
-     any of Dashfile's loops on purpose — it is the one thing on the page that
-     moves without being asked, and at a loop's pace it would nag. */
-  --loop-flow: 2.8s;
+  /* Flint's own: the pace of the dots travelling an edge of the schema diagram,
+     in pixels of diagram per second. A speed rather than a duration because the
+     dots are a measurement — their *spacing* carries how much each pipeline
+     moved, so the speed has to be the one thing they all share. Slower than any
+     of Dashfile's loops on purpose: it is the one thing on the page that moves
+     without being asked, and at a loop's pace it would nag. */
+  --flow-speed: 9;
 }

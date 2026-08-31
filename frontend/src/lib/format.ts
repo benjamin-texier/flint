@@ -12,6 +12,16 @@ export function count(n: number | null | undefined): string {
   return COMPACT.format(n).replace(/([A-Z])$/, ' $1')
 }
 
+/** A computed figure — a mean, a total, a percentile — at the size it reads
+ *  best: compact past a thousand, where the digits stop carrying information
+ *  and start costing width, and two decimals below it, where an average of 3.22
+ *  is the answer and 3 is not. */
+export function figure(value: number): string {
+  if (!Number.isFinite(value)) return '—'
+  if (Math.abs(value) >= 1000) return count(value)
+  return Number.isInteger(value) ? String(value) : String(Math.round(value * 100) / 100)
+}
+
 export function exact(n: number | null | undefined): string {
   if (n === null || n === undefined) return '—'
   return FULL.format(n)
@@ -36,6 +46,24 @@ export function duration(seconds: number): string {
   const m = Math.floor(seconds / 60)
   const s = Math.round(seconds % 60)
   return `${m}m ${s}s`
+}
+
+/** How long a stretch of *data* covers, which is a different question from how
+ *  long a query took and wants a different coarseness. `duration` renders 12,000
+ *  seconds as "200m 0s" — right for a slow query, useless for the three hours a
+ *  result happens to span. */
+export function stretch(seconds: number): string {
+  if (seconds < 1) return '<1 s'
+  if (seconds < 60) return `${Math.round(seconds)} s`
+  if (seconds < 3600) return `${Math.round(seconds / 60)} min`
+  if (seconds < 86_400) {
+    const h = Math.floor(seconds / 3600)
+    const m = Math.round((seconds % 3600) / 60)
+    return m > 0 ? `${h} h ${m} min` : `${h} h`
+  }
+  const d = Math.floor(seconds / 86_400)
+  const h = Math.round((seconds % 86_400) / 3600)
+  return h > 0 ? `${d} d ${h} h` : `${d} d`
 }
 
 export function uptime(seconds: number): string {

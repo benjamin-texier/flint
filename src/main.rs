@@ -1,10 +1,15 @@
 mod alerts;
+mod auth;
 mod clickhouse;
 mod config;
+mod dataset;
 mod error;
+mod export;
+mod jobs;
 mod published;
 mod reports;
 mod routes;
+mod target;
 mod workspace;
 
 use clap::Parser;
@@ -21,7 +26,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_target(false)
         .init();
 
-    let config = config::Config::parse();
+    let mut config = config::Config::parse();
+    // Before the manifest is read for anything: a variable set to nothing is a
+    // variable that is not set, and every check below is entitled to assume it.
+    config.normalise();
+    let config = config;
 
     if config.health_check {
         return health_check(&config).await;
@@ -31,7 +40,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // here, not serve a UI missing the half somebody asked for.
     config.check()?;
 
-    let ch = clickhouse::Client::new(&config)?;
+    let mut ch = clickhouse::Client::new(&config)?;
 
     // Probe once at boot so misconfiguration shows up in the logs rather than
     // as a blank page. A failure is not fatal: ClickHouse may still be starting
@@ -40,26 +49,64 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The two failures are worth telling apart. "Cannot reach it" and "reached
     // it, and it said no" send you looking in completely different places, and
     // reporting the second as the first sends you looking in the wrong one.
-    match clickhouse::meta::server_info(&ch).await {
-        Ok(info) => tracing::info!(
-            version = %info.version,
-            databases = info.databases,
-            tables = info.tables,
-            readonly = config.readonly,
-            tier = config.tier().as_str(),
-            infrastructure = config.infrastructure,
-            "connected to ClickHouse at {}",
-            config.redacted_endpoint()
-        ),
-        Err(e @ error::Error::ClickHouse { .. }) => tracing::warn!(
-            "reached ClickHouse at {} but it refused: {}",
-            config.redacted_endpoint(),
-            // ClickHouse appends a multi-paragraph hint to auth errors. The
-            // first line is the part that belongs in a log line; the UI shows
-            // the rest.
-            e.to_string().lines().next().unwrap_or_default()
-        ),
-        Err(e) => tracing::warn!("{e}"),
+    //
+    // Only where the manifest names a server. Unpinned there is nothing to
+    // probe: the first connection this process makes is the one somebody's
+    // sign-in asks for, and the answer to "is it reachable" belongs on that
+    // form rather than in a log written before anyone typed an address.
+    match config.redacted_endpoint() {
+        Some(endpoint) => match clickhouse::meta::server_info(&ch).await {
+            Ok(info) => {
+                // Kept from the handshake rather than asked again: the dataset
+                // API states which zone its dates were cut in on every answer,
+                // and a round trip per query to learn a fact that changes only
+                // when ClickHouse restarts would be a tax on the busiest path in
+                // Flint. Left empty if the handshake could not read it, and the
+                // answer then says nothing rather than guessing.
+                ch = ch.with_timezone(info.timezone.clone());
+                tracing::info!(
+                    version = %info.version,
+                    databases = info.databases,
+                    tables = info.tables,
+                    timezone = %info.timezone,
+                    readonly = config.readonly,
+                    tier = config.tier().as_str(),
+                    infrastructure = config.infrastructure,
+                    "connected to ClickHouse at {endpoint}"
+                );
+            }
+            Err(e @ error::Error::ClickHouse { .. }) => tracing::warn!(
+                "reached ClickHouse at {endpoint} but it refused: {}",
+                // ClickHouse appends a multi-paragraph hint to auth errors. The
+                // first line is the part that belongs in a log line; the UI shows
+                // the rest.
+                e.to_string().lines().next().unwrap_or_default()
+            ),
+            Err(e) => tracing::warn!("{e}"),
+        },
+        None => {
+            tracing::info!(
+                tier = config.tier().as_str(),
+                infrastructure = config.infrastructure,
+                "unpinned: FLINT_CLICKHOUSE_URL is unset, so the browser names the server at \
+                 sign-in. Stateless by construction — nothing runs on a schedule, because a \
+                 schedule has no session to borrow a server from."
+            );
+            // Said at boot and said loudly, because it is the one thing about
+            // this mode an operator cannot see in the UI: without an allow-list,
+            // anyone who can reach this port can make this process dial any
+            // address it can route to, and learn from the answer whether
+            // something is listening there.
+            if config.targets.is_empty() {
+                tracing::warn!(
+                    "unpinned with no allow-list: Flint will dial any host a browser names. Set \
+                     FLINT_TARGETS=host[:port],... to narrow it — see src/target.rs for what \
+                     that does and does not promise."
+                );
+            } else {
+                tracing::info!(targets = ?config.targets, "unpinned, and only these are allowed");
+            }
+        }
     }
 
     // Opt-in persistence. Bootstrapped now so a misconfiguration shows up in
@@ -98,13 +145,91 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         tokio::spawn(scheduler.run());
     }
 
+    // Long operations, where there is somewhere to record them. Recovery runs
+    // before the server listens: a browser that reconnects should find the job
+    // it left already marked interrupted, not a spinner that will never stop.
+    let jobs = match workspace.clone() {
+        Some(ws) => {
+            let runner = jobs::Runner::new(ch.clone(), ws);
+            runner.recover().await;
+            Some(runner)
+        }
+        None => None,
+    };
+
+    if config.sign_in_required() {
+        tracing::info!(
+            idle_hours = config.session_idle_hours,
+            "sign-in required: statements run as the ClickHouse user who is signed in"
+        );
+    }
+    // Held whatever the setting, and empty when nobody can sign in: one field
+    // that is sometimes unused reads better than an Option nothing ever fills.
+    let sessions = auth::Sessions::new(std::time::Duration::from_secs(
+        config.session_idle_hours.max(1) * 3600,
+    ));
+
     let addr = config.bind_addr();
     let state = routes::AppState {
         ch,
         config: Arc::new(config),
         workspace,
         runner,
+        sessions,
+        // Bounds how many addresses this process dials at once for callers who
+        // are nobody yet. See `AppState::dials`.
+        dials: Arc::new(tokio::sync::Semaphore::new(routes::CONCURRENT_DIALS)),
+        jobs,
+        api_cache: Arc::new(published::cache::Cache::new()),
+        calls: Arc::new(published::log::CallLog::new()),
     };
+
+    // The other half of the buffered call log. Started before the listener, so
+    // no call can be recorded into a buffer nothing is draining — and only
+    // where there is a workspace to drain it into, since without one there is
+    // nothing to publish and nothing to record.
+    if let Some(workspace) = state.workspace.clone() {
+        let calls = state.calls.clone();
+        let ch = state.ch.clone();
+        tokio::spawn(async move {
+            // A short tick rather than a sleep for the whole flush window: a
+            // burst that fills the buffer should be written when it fills,
+            // not when the clock next comes round.
+            let mut tick = tokio::time::interval(std::time::Duration::from_secs(1));
+            tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            loop {
+                tick.tick().await;
+                if !calls.due() {
+                    continue;
+                }
+                let (batch, dropped) = calls.take();
+                if dropped > 0 {
+                    // Said out loud. A usage panel quietly missing an hour is
+                    // worse than one that says it is, and this is the only
+                    // place that knows.
+                    tracing::warn!(
+                        dropped,
+                        "the call log filled up and dropped calls; \
+                         the endpoints page is missing them"
+                    );
+                }
+                let held = batch.len();
+                if let Err(e) = workspace.write_calls(&ch, &batch).await {
+                    calls.give_back(batch);
+                    // The backlog after the batch went back, which is the
+                    // figure an operator wants: it says whether this is one
+                    // failed write or an hour of them, and the buffer has a cap
+                    // it will start dropping at.
+                    tracing::debug!(
+                        held,
+                        waiting = calls.waiting(),
+                        error = %e,
+                        "could not write the call log; will retry"
+                    );
+                }
+            }
+        });
+    }
     // A raw `Os { code: 98, kind: AddrInUse }` says nothing about what to do.
     // This is the most common way starting Flint fails — another Flint, or the
     // host one clashing with a container on `network_mode: host`.

@@ -146,8 +146,11 @@ select {
   color: var(--accent-strong);
 }
 
+/* `--danger-text`, not `--danger`: the fill colour is 2.7:1 as 11px text on its
+ * own weak background, which the token file says in as many words and this call
+ * site had missed. The repo's own browser check flags it. */
 .pill--warn {
-  color: var(--danger);
+  color: var(--danger-text);
   background: var(--danger-weak);
 }
 

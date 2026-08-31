@@ -1,12 +1,22 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { FlintError } from '../lib/api'
+import { outageOf } from '../lib/reach'
 
 /** Failure states say what happened and what to do about it — never an
  *  apology, never a bare stack trace. */
 export function ErrorNote({ error, retry }: { error: unknown; retry?: () => void }) {
   const flint = error instanceof FlintError ? error : null
   const message = error instanceof Error ? error.message : String(error)
+
+  /* When the backend is unreachable every panel on the page fails at once, and
+     each of them shouting the same status line at the reader says nothing three
+     times over. The strip at the top of the window owns that sentence — and
+     owns the retry, since retrying one panel against a server that is not there
+     is a button that cannot work. What is left here is a place-holder that
+     keeps the panel's shape and waits. */
+  const outage = outageOf(error)
+  if (outage) return <WaitingNote outage={outage} />
 
   const hint =
     flint?.kind === 'transport'
@@ -32,6 +42,18 @@ export function ErrorNote({ error, retry }: { error: unknown; retry?: () => void
         </button>
       ) : null}
     </div>
+  )
+}
+
+/** A panel with nothing to say, because nothing is answering. Deliberately not
+ *  an error: the panel did not fail, it is waiting — and the difference is the
+ *  whole reason this exists. */
+function WaitingNote({ outage }: { outage: 'flint' | 'clickhouse' }) {
+  return (
+    <p className="note note--waiting">
+      <span className="note__wait" aria-hidden="true" />
+      waiting for {outage === 'flint' ? 'Flint' : 'ClickHouse'}
+    </p>
   )
 }
 
@@ -80,5 +102,32 @@ export function Loading({ label = 'Reading' }: { label?: string }) {
         <span className="loading__slow">still waiting on ClickHouse</span>
       ) : null}
     </div>
+  )
+}
+
+/** A sentence whose backticked runs are identifiers.
+ *
+ *  The advisory modules build their sentences as plain strings, because a string
+ *  is what a test can assert on and the wording is the arguable part. Marking a
+ *  column name inside one means a convention, and backticks are the convention
+ *  the whole codebase already writes in its comments — but nothing renders
+ *  markdown, so `sensor` reached the page with its backticks showing. Twice,
+ *  before anybody looked at it rather than at the test.
+ *
+ *  So the string keeps the convention and this renders it. Odd runs are inside
+ *  backticks, which is what `split` on a backtick gives you. */
+export function Sentence({ text, className }: { text: string; className?: string }) {
+  return (
+    <p className={className}>
+      {text.split('`').map((run, i) =>
+        i % 2 === 1 ? (
+          <code className="ident" key={i}>
+            {run}
+          </code>
+        ) : (
+          <span key={i}>{run}</span>
+        ),
+      )}
+    </p>
   )
 }
