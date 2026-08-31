@@ -32,6 +32,12 @@ export interface AppConfig {
   reserved_settings: string[]
   /** The database Flint persists into, or null when it is stateless. */
   workspace: string | null
+  /** Whether anything runs on a timer: a workspace *and* a server pinned in the
+   *  manifest. The two came together until the workspace could be given a server
+   *  of its own — unpinned, Flint now keeps what you save but has nothing to ask
+   *  until somebody signs in, which is too late for a schedule. See
+   *  `lib/spaces.runs`. */
+  scheduled: boolean
   /** Whether alerts may POST anywhere. False makes the alert form say so
    *  up front rather than leaving it to be found in the history. */
   alert_webhooks: boolean

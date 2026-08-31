@@ -831,7 +831,7 @@ pub async fn openapi_index(State(state): State<AppState>, headers: HeaderMap) ->
     }
 
     let mut described = Vec::new();
-    for endpoint in workspace.published(&state.ch).await? {
+    for endpoint in workspace.published().await? {
         if !endpoint.enabled {
             continue;
         }
@@ -921,7 +921,7 @@ async fn resolve(
     // answer may change shape, a pinned one has said they cannot.
     let pin = pinned_revision(headers, params)?;
     let endpoint = workspace
-        .published_by_slug(&state.ch, &slug, pin)
+        .published_by_slug(&slug, pin)
         .await?
         .ok_or_else(|| match pin {
             // Different sentences on purpose. A wrong address and a version
@@ -965,7 +965,7 @@ async fn resolve(
     // a time: `app-frontend` swaps its secret for a key and is suddenly visible
     // in the call log, while the four scripts nobody can find go on working.
     let caller = match presented.as_deref() {
-        Some(secret) => match workspace.key_by_secret(&state.ch, secret).await? {
+        Some(secret) => match workspace.key_by_secret(secret).await? {
             Some(key) => {
                 // Scope is checked before quota, because "this key is not for
                 // that endpoint" and "this key has had enough for today" are
@@ -1018,7 +1018,7 @@ async fn resolve(
         // alone lags by a flush window, and on a key doing ten calls a second
         // that is fifty calls of overshoot rather than a rounding error.
         let so_far = workspace
-            .calls_today(&state.ch, &caller.key_id, &endpoint.slug)
+            .calls_today(&caller.key_id, &endpoint.slug)
             .await?
             + state.calls.pending(&caller.key_id, &endpoint.slug);
         if so_far >= u64::from(caller.quota_per_day) {

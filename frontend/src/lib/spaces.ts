@@ -35,8 +35,17 @@ export interface Section {
   badge?: string
   /** What the deployment must have for this section to exist. `'workspace'`
    *  means the page has nothing to show and nothing to write without
-   *  `FLINT_WORKSPACE_DATABASE` — see `spacesFor`. */
-  needs?: 'workspace'
+   *  `FLINT_WORKSPACE_DATABASE` — see `spacesFor`.
+   *
+   *  `'schedule'` is the stricter one, and it exists because a workspace stopped
+   *  implying a schedule. `FLINT_WORKSPACE_URL` lets Flint keep its own tables on
+   *  a server of its own, so an unpinned deployment can now save things while
+   *  having no server to *ask* — the browser names that one at sign-in, which is
+   *  too late for something that ticks. An alert or a report is a question on a
+   *  timer, so it needs both halves; a dashboard only needs somewhere to be
+   *  written down. Every `'schedule'` section also needs a workspace, which
+   *  `dataFor` relies on rather than restating per section. */
+  needs?: 'workspace' | 'schedule'
   /** Whether this section holds only its own path, rather than everything
    *  underneath it.
    *
@@ -86,8 +95,8 @@ const DATA: Space = {
     { id: 'explore', to: '/', label: 'Explore' },
     { id: 'query', to: '/query', label: 'Query' },
     { id: 'dash', to: '/dash', label: 'Dashboards', needs: 'workspace' },
-    { id: 'alerts', to: '/alerts', label: 'Alerts', badge: '/alerts', needs: 'workspace' },
-    { id: 'reports', to: '/reports', label: 'Reports', badge: '/reports', needs: 'workspace' },
+    { id: 'alerts', to: '/alerts', label: 'Alerts', badge: '/alerts', needs: 'schedule' },
+    { id: 'reports', to: '/reports', label: 'Reports', badge: '/reports', needs: 'schedule' },
     { id: 'apis', to: '/apis', label: 'APIs', needs: 'workspace' },
     { id: 'diagnose', to: '/diagnose', label: 'Diagnostics' },
   ],
@@ -178,7 +187,9 @@ export function outsideSpaces(pathname: string): boolean {
  *  Their routes stay: a bookmark or a pasted link still resolves, onto a page
  *  that explains the one line of configuration that brings it back. */
 export function spacesFor(
-  config: { infrastructure?: boolean; workspace?: string | null } | undefined,
+  config:
+    | { infrastructure?: boolean; workspace?: string | null; scheduled?: boolean }
+    | undefined,
 ): Space[] {
   const data = dataFor(config)
   return config?.infrastructure ? [data, INFRA] : [data]
@@ -194,13 +205,18 @@ export function spacesFor(
  *  A copy, never the table: `spaceById` hands `DATA` itself to everyone, and
  *  filtering in place would drop the five sections for the rest of the session
  *  the first time a stateless answer arrived. */
-export function dataFor(config: { workspace?: string | null } | undefined): Space {
-  if (keeps(config)) return DATA
-  return {
-    ...DATA,
-    home: '/',
-    sections: DATA.sections.filter((s) => s.needs !== 'workspace'),
-  }
+export function dataFor(
+  config: { workspace?: string | null; scheduled?: boolean } | undefined,
+): Space {
+  if (keeps(config) && runs(config)) return DATA
+  // Two gates rather than one, and the order matters only in that a deployment
+  // with no workspace has no schedule either — so the first filter subsumes the
+  // second and the home link moves. With a workspace but nothing to ask, Home
+  // stays where it is and only the two timed sections go.
+  const sections = DATA.sections.filter(
+    (s) => (s.needs !== 'workspace' || keeps(config)) && (s.needs !== 'schedule' || runs(config)),
+  )
+  return keeps(config) ? { ...DATA, sections } : { ...DATA, home: '/', sections }
 }
 
 /** Whether this deployment keeps anything at all.
@@ -212,6 +228,17 @@ export function dataFor(config: { workspace?: string | null } | undefined): Spac
  *  answer instead of guessing at it. */
 export function keeps(config: { workspace?: string | null } | undefined): boolean {
   return Boolean(config?.workspace)
+}
+
+/** Whether anything on this deployment runs on a timer.
+ *
+ *  A stricter `keeps`. The backend decides it — a workspace *and* a pinned
+ *  server — and sends one boolean, because the frontend reading two fields and
+ *  combining them itself is the same rule written in two places, and the second
+ *  copy is the one that goes stale. Undefined counts as no, for `keeps`' reason:
+ *  waiting a tick beats guessing. */
+export function runs(config: { scheduled?: boolean } | undefined): boolean {
+  return Boolean(config?.scheduled)
 }
 
 export function spaceById(id: SpaceId): Space {

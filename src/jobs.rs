@@ -139,7 +139,7 @@ impl Runner {
             finished_ms: 0,
             version: 1,
         };
-        self.workspace.write_job(&self.ch, &row).await?;
+        self.workspace.write_job(&row).await?;
 
         let runner = self.clone();
         let label = spec.label.clone();
@@ -162,7 +162,7 @@ impl Runner {
         // Read it back rather than assembling it here: the caller gets the row
         // as the reader will see it, which is one shape instead of two.
         self.workspace
-            .job(&self.ch, &id)
+            .job(&id)
             .await?
             .ok_or_else(|| Error::Decode("the job was written but cannot be read back".into()))
     }
@@ -208,7 +208,7 @@ impl Runner {
             version: row.version + 1,
             ..row.clone()
         };
-        if let Err(e) = self.workspace.write_job(&self.ch, &closed).await {
+        if let Err(e) = self.workspace.write_job(&closed).await {
             // Nothing to do but say so: the job did run, and the row will read
             // `running` until the next restart marks it interrupted. Better a
             // stale row than a panic in a background task.
@@ -246,7 +246,7 @@ impl Runner {
     /// well still be going, but the statement that was waiting on it is gone, so
     /// Flint cannot honestly claim to be running it. It says what it knows.
     pub async fn recover(&self) {
-        let orphans = match self.workspace.running_jobs(&self.ch).await {
+        let orphans = match self.workspace.running_jobs().await {
             Ok(rows) => rows,
             // A workspace that is not ready yet is not an error worth shouting
             // about at boot; the next request bootstraps it.
@@ -260,7 +260,7 @@ impl Runner {
         }
         for job in &orphans {
             let row = interrupted_row(job);
-            if let Err(e) = self.workspace.write_job(&self.ch, &row).await {
+            if let Err(e) = self.workspace.write_job(&row).await {
                 tracing::warn!("jobs: could not mark `{}` interrupted: {e}", job.label);
             }
         }

@@ -665,6 +665,21 @@ pub struct AlertEvent {
 #[derive(Clone)]
 pub struct Workspace {
     database: String,
+    /// The server Flint's own tables live on.
+    ///
+    /// Held here rather than passed in at each call, and that is the whole
+    /// point of the field. Once the workspace can be on a *different* server
+    /// from the one being explored, "which client does this go to" stops being
+    /// obvious at the call site — and there are eighty-odd of them. A handler
+    /// that reaches for the client it already has in scope would write Flint's
+    /// bookkeeping into somebody's production and read it back empty, with
+    /// nothing failing loudly enough to notice.
+    ///
+    /// So the choice is made once, where the workspace is built, and no caller
+    /// is offered the chance to make it again. The single method that genuinely
+    /// needs the other server — [`Workspace::delegation_check`] — asks for it by
+    /// name in its signature.
+    ch: Client,
     /// Whether the schema has been created in this process. Bootstrapping is
     /// idempotent, so this is only an optimisation — but it also means a
     /// ClickHouse that was not up at startup gets another chance on first use.
@@ -672,11 +687,18 @@ pub struct Workspace {
 }
 
 impl Workspace {
-    pub fn new(database: String) -> Self {
+    pub fn new(database: String, ch: Client) -> Self {
         Self {
             database,
+            ch,
             ready: Arc::new(RwLock::new(false)),
         }
+    }
+
+    /// Where Flint's own tables are, for a log line or an error that has to say
+    /// which of the two servers it means.
+    pub fn endpoint(&self) -> &str {
+        self.ch.endpoint()
     }
 
     /// Backtick-quoted, because a workspace database may legitimately be called
@@ -704,22 +726,24 @@ impl Workspace {
 
     /// Create the database and table if they are not there. Safe to call on
     /// every request; the first success latches.
-    pub async fn ensure(&self, ch: &Client) -> Result<()> {
+    pub async fn ensure(&self) -> Result<()> {
         if *self.ready.read().await {
             return Ok(());
         }
         let db = self.quoted();
 
-        ch.execute(
-            &format!("CREATE DATABASE IF NOT EXISTS {db}"),
-            self.write_opts(),
-        )
-        .await
-        .map_err(|e| self.explain(e))?;
+        self.ch
+            .execute(
+                &format!("CREATE DATABASE IF NOT EXISTS {db}"),
+                self.write_opts(),
+            )
+            .await
+            .map_err(|e| self.explain(e))?;
 
-        ch.execute(
-            &format!(
-                "CREATE TABLE IF NOT EXISTS {db}.saved_queries \
+        self.ch
+            .execute(
+                &format!(
+                    "CREATE TABLE IF NOT EXISTS {db}.saved_queries \
                  ( \
                     id         UUID, \
                     name       String, \
@@ -732,15 +756,16 @@ impl Workspace {
                  ) \
                  ENGINE = ReplacingMergeTree(version) \
                  ORDER BY id"
-            ),
-            self.write_opts(),
-        )
-        .await
-        .map_err(|e| self.explain(e))?;
+                ),
+                self.write_opts(),
+            )
+            .await
+            .map_err(|e| self.explain(e))?;
 
-        ch.execute(
-            &format!(
-                "CREATE TABLE IF NOT EXISTS {db}.dashboards \
+        self.ch
+            .execute(
+                &format!(
+                    "CREATE TABLE IF NOT EXISTS {db}.dashboards \
                  ( \
                     id         UUID, \
                     name       String, \
@@ -752,15 +777,16 @@ impl Workspace {
                  ) \
                  ENGINE = ReplacingMergeTree(version) \
                  ORDER BY id"
-            ),
-            self.write_opts(),
-        )
-        .await
-        .map_err(|e| self.explain(e))?;
+                ),
+                self.write_opts(),
+            )
+            .await
+            .map_err(|e| self.explain(e))?;
 
-        ch.execute(
-            &format!(
-                "CREATE TABLE IF NOT EXISTS {db}.alerts \
+        self.ch
+            .execute(
+                &format!(
+                    "CREATE TABLE IF NOT EXISTS {db}.alerts \
                  ( \
                     id               UUID, \
                     name             String, \
@@ -777,19 +803,20 @@ impl Workspace {
                  ) \
                  ENGINE = ReplacingMergeTree(version) \
                  ORDER BY id"
-            ),
-            self.write_opts(),
-        )
-        .await
-        .map_err(|e| self.explain(e))?;
+                ),
+                self.write_opts(),
+            )
+            .await
+            .map_err(|e| self.explain(e))?;
 
         // A log, not a document: no ReplacingMergeTree and no tombstone,
         // because an alert's history is evidence and evidence is not edited.
         // `value` is Nullable so "failed to run" keeps no measurement rather
         // than a zero that reads like one.
-        ch.execute(
-            &format!(
-                "CREATE TABLE IF NOT EXISTS {db}.alert_events \
+        self.ch
+            .execute(
+                &format!(
+                    "CREATE TABLE IF NOT EXISTS {db}.alert_events \
                  ( \
                     alert_id       UUID, \
                     alert          String, \
@@ -804,15 +831,16 @@ impl Workspace {
                  PARTITION BY toYYYYMM(at) \
                  ORDER BY (alert_id, at) \
                  TTL toDateTime(at) + INTERVAL 90 DAY"
-            ),
-            self.write_opts(),
-        )
-        .await
-        .map_err(|e| self.explain(e))?;
+                ),
+                self.write_opts(),
+            )
+            .await
+            .map_err(|e| self.explain(e))?;
 
-        ch.execute(
-            &format!(
-                "CREATE TABLE IF NOT EXISTS {db}.reports \
+        self.ch
+            .execute(
+                &format!(
+                    "CREATE TABLE IF NOT EXISTS {db}.reports \
                  ( \
                     id         UUID, \
                     name       String, \
@@ -831,19 +859,20 @@ impl Workspace {
                  ) \
                  ENGINE = ReplacingMergeTree(version) \
                  ORDER BY id"
-            ),
-            self.write_opts(),
-        )
-        .await
-        .map_err(|e| self.explain(e))?;
+                ),
+                self.write_opts(),
+            )
+            .await
+            .map_err(|e| self.explain(e))?;
 
         // The point of a report: what the numbers *were*. So this is a log like
         // the alert events, but it keeps the contents, and it keeps them longer
         // — six months, because "what did this look like last quarter" is the
         // question the table exists to answer.
-        ch.execute(
-            &format!(
-                "CREATE TABLE IF NOT EXISTS {db}.report_runs \
+        self.ch
+            .execute(
+                &format!(
+                    "CREATE TABLE IF NOT EXISTS {db}.report_runs \
                  ( \
                     run_id         UUID, \
                     report_id      UUID, \
@@ -860,15 +889,16 @@ impl Workspace {
                  PARTITION BY toYYYYMM(at) \
                  ORDER BY (report_id, at) \
                  TTL toDateTime(at) + INTERVAL 180 DAY"
-            ),
-            self.write_opts(),
-        )
-        .await
-        .map_err(|e| self.explain(e))?;
+                ),
+                self.write_opts(),
+            )
+            .await
+            .map_err(|e| self.explain(e))?;
 
-        ch.execute(
-            &format!(
-                "CREATE TABLE IF NOT EXISTS {db}.published \
+        self.ch
+            .execute(
+                &format!(
+                    "CREATE TABLE IF NOT EXISTS {db}.published \
                  ( \
                     id         UUID, \
                     name       String, \
@@ -934,11 +964,11 @@ impl Workspace {
                  ) \
                  ENGINE = ReplacingMergeTree(version) \
                  ORDER BY id"
-            ),
-            self.write_opts(),
-        )
-        .await
-        .map_err(|e| self.explain(e))?;
+                ),
+                self.write_opts(),
+            )
+            .await
+            .map_err(|e| self.explain(e))?;
 
         // ── Keys ────────────────────────────────────────────────────────
         //
@@ -955,9 +985,10 @@ impl Workspace {
         //
         // The secret is hashed on the way in and readable exactly once, for
         // the same reason an endpoint's token is.
-        ch.execute(
-            &format!(
-                "CREATE TABLE IF NOT EXISTS {db}.api_keys \
+        self.ch
+            .execute(
+                &format!(
+                    "CREATE TABLE IF NOT EXISTS {db}.api_keys \
                  ( \
                     id            UUID, \
                     name          String, \
@@ -980,11 +1011,11 @@ impl Workspace {
                  ) \
                  ENGINE = ReplacingMergeTree(version) \
                  ORDER BY id"
-            ),
-            self.write_opts(),
-        )
-        .await
-        .map_err(|e| self.explain(e))?;
+                ),
+                self.write_opts(),
+            )
+            .await
+            .map_err(|e| self.explain(e))?;
 
         // ── The call log ────────────────────────────────────────────────
         //
@@ -1001,9 +1032,10 @@ impl Workspace {
         //
         // One row per call, refusals included. Thirty days, like the jobs: the
         // page asks about today and this week.
-        ch.execute(
-            &format!(
-                "CREATE TABLE IF NOT EXISTS {db}.api_calls \
+        self.ch
+            .execute(
+                &format!(
+                    "CREATE TABLE IF NOT EXISTS {db}.api_calls \
                  ( \
                     at         DateTime64(3), \
                     slug       LowCardinality(String), \
@@ -1030,11 +1062,11 @@ impl Workspace {
                  PARTITION BY toYYYYMM(at) \
                  ORDER BY (slug, at) \
                  TTL toDateTime(at) + INTERVAL 30 DAY"
-            ),
-            self.write_opts(),
-        )
-        .await
-        .map_err(|e| self.explain(e))?;
+                ),
+                self.write_opts(),
+            )
+            .await
+            .map_err(|e| self.explain(e))?;
 
         // ── Jobs ────────────────────────────────────────────────────────
         //
@@ -1047,9 +1079,10 @@ impl Workspace {
         // Thirty days: long enough to answer "what did we run last week", short
         // enough that a Flint left running for a year is not keeping a log
         // nobody reads.
-        ch.execute(
-            &format!(
-                "CREATE TABLE IF NOT EXISTS {db}.jobs \
+        self.ch
+            .execute(
+                &format!(
+                    "CREATE TABLE IF NOT EXISTS {db}.jobs \
                  ( \
                     id           UUID, \
                     kind         LowCardinality(String), \
@@ -1069,11 +1102,11 @@ impl Workspace {
                  PARTITION BY toYYYYMM(started_at) \
                  ORDER BY id \
                  TTL toDateTime(started_at) + INTERVAL 30 DAY"
-            ),
-            self.write_opts(),
-        )
-        .await
-        .map_err(|e| self.explain(e))?;
+                ),
+                self.write_opts(),
+            )
+            .await
+            .map_err(|e| self.explain(e))?;
 
         // ── Columns added after a table first shipped ───────────────────
         //
@@ -1110,12 +1143,13 @@ impl Workspace {
             ("published", "published_by", "String"),
             ("reports", "timezone", "String"),
         ] {
-            ch.execute(
-                &format!("ALTER TABLE {db}.{table} ADD COLUMN IF NOT EXISTS {column} {ty}"),
-                self.write_opts(),
-            )
-            .await
-            .map_err(|e| self.explain(e))?;
+            self.ch
+                .execute(
+                    &format!("ALTER TABLE {db}.{table} ADD COLUMN IF NOT EXISTS {column} {ty}"),
+                    self.write_opts(),
+                )
+                .await
+                .map_err(|e| self.explain(e))?;
         }
 
         *self.ready.write().await = true;
@@ -1153,8 +1187,8 @@ impl Workspace {
         }
     }
 
-    pub async fn list(&self, ch: &Client) -> Result<Vec<SavedQuery>> {
-        self.ensure(ch).await?;
+    pub async fn list(&self) -> Result<Vec<SavedQuery>> {
+        self.ensure().await?;
         // Collapsed with argMax rather than FINAL so `created_at` can be the
         // minimum across versions: the moment the query was first saved, not the
         // moment it was last edited.
@@ -1172,11 +1206,11 @@ impl Workspace {
              LIMIT 500",
             self.quoted()
         );
-        ch.rows(&sql).await
+        self.ch.rows(&sql).await
     }
 
-    pub async fn save(&self, ch: &Client, input: SaveInput) -> Result<SavedQuery> {
-        self.ensure(ch).await?;
+    pub async fn save(&self, input: SaveInput) -> Result<SavedQuery> {
+        self.ensure().await?;
         let name = input.name.trim();
         if name.is_empty() {
             return Err(Error::BadRequest("a saved query needs a name".into()));
@@ -1214,19 +1248,20 @@ impl Workspace {
                     now64(3), now64(3), 0, toUnixTimestamp64Milli(now64(3))",
             self.quoted()
         );
-        ch.execute(
-            &sql,
-            QueryOptions {
-                params: params.clone(),
-                ..self.write_opts()
-            },
-        )
-        .await?;
+        self.ch
+            .execute(
+                &sql,
+                QueryOptions {
+                    params: params.clone(),
+                    ..self.write_opts()
+                },
+            )
+            .await?;
 
         // Read it back rather than reconstruct it: the timestamps and, for a new
         // query, the id are the server's to decide.
         let saved = self
-            .list(ch)
+            .list()
             .await?
             .into_iter()
             .find(|q| match &input.id {
@@ -1241,8 +1276,8 @@ impl Workspace {
     // Same shape as saved queries: a version log, a tombstone for a delete, and
     // an argMax read so `created_at` is the first save rather than the last.
 
-    pub async fn dashboards(&self, ch: &Client) -> Result<Vec<Dashboard>> {
-        self.ensure(ch).await?;
+    pub async fn dashboards(&self) -> Result<Vec<Dashboard>> {
+        self.ensure().await?;
         let sql = format!(
             "SELECT toString(id)               AS id, \
                     argMax(name, version)       AS name, \
@@ -1256,11 +1291,11 @@ impl Workspace {
              LIMIT 200",
             self.quoted()
         );
-        ch.rows(&sql).await
+        self.ch.rows(&sql).await
     }
 
-    pub async fn save_dashboard(&self, ch: &Client, input: DashboardInput) -> Result<Dashboard> {
-        self.ensure(ch).await?;
+    pub async fn save_dashboard(&self, input: DashboardInput) -> Result<Dashboard> {
+        self.ensure().await?;
         let name = input.name.trim();
         if name.is_empty() {
             return Err(Error::BadRequest("a dashboard needs a name".into()));
@@ -1289,21 +1324,22 @@ impl Workspace {
             params.push(("id".to_string(), id.clone()));
         }
 
-        ch.execute(
-            &format!(
-                "INSERT INTO {}.dashboards \
+        self.ch
+            .execute(
+                &format!(
+                    "INSERT INTO {}.dashboards \
                  SELECT {id_expr}, {{name:String}}, unhex({{spec:String}}), \
                         now64(3), now64(3), 0, toUnixTimestamp64Milli(now64(3))",
-                self.quoted()
-            ),
-            QueryOptions {
-                params,
-                ..self.write_opts()
-            },
-        )
-        .await?;
+                    self.quoted()
+                ),
+                QueryOptions {
+                    params,
+                    ..self.write_opts()
+                },
+            )
+            .await?;
 
-        self.dashboards(ch)
+        self.dashboards()
             .await?
             .into_iter()
             .find(|d| match &input.id {
@@ -1313,21 +1349,22 @@ impl Workspace {
             .ok_or_else(|| Error::Decode("the dashboard did not come back".into()))
     }
 
-    pub async fn remove_dashboard(&self, ch: &Client, id: &str) -> Result<()> {
-        self.ensure(ch).await?;
-        ch.execute(
-            &format!(
-                "INSERT INTO {}.dashboards \
+    pub async fn remove_dashboard(&self, id: &str) -> Result<()> {
+        self.ensure().await?;
+        self.ch
+            .execute(
+                &format!(
+                    "INSERT INTO {}.dashboards \
                  SELECT {{id:UUID}}, '', '', now64(3), now64(3), 1, \
                         toUnixTimestamp64Milli(now64(3))",
-                self.quoted()
-            ),
-            QueryOptions {
-                params: vec![("id".into(), id.to_string())],
-                ..self.write_opts()
-            },
-        )
-        .await
+                    self.quoted()
+                ),
+                QueryOptions {
+                    params: vec![("id".into(), id.to_string())],
+                    ..self.write_opts()
+                },
+            )
+            .await
     }
 
     // ── Published statements ────────────────────────────────────────────
@@ -1411,35 +1448,36 @@ impl Workspace {
     /// first. Drafts and retired revisions included: this is what the page
     /// lists, and a revision nobody can call is exactly the one somebody needs
     /// to see in order to do something about it.
-    pub async fn published(&self, ch: &Client) -> Result<Vec<Published>> {
-        self.ensure(ch).await?;
+    pub async fn published(&self) -> Result<Vec<Published>> {
+        self.ensure().await?;
         let sql = format!(
             "{} FROM ({}) WHERE pdeleted = 0 ORDER BY pslug, revision DESC LIMIT 2000",
             Self::PUBLISHED_COLUMNS,
             self.published_rollup()
         );
-        ch.rows(&sql).await
+        self.ch.rows(&sql).await
     }
 
     /// Every revision at one address, newest first.
-    pub async fn published_revisions(&self, ch: &Client, slug: &str) -> Result<Vec<Published>> {
-        self.ensure(ch).await?;
+    pub async fn published_revisions(&self, slug: &str) -> Result<Vec<Published>> {
+        self.ensure().await?;
         let sql = format!(
             "{} FROM ({}) WHERE pdeleted = 0 AND pslug = {{slug:String}} \
              ORDER BY revision DESC LIMIT 200",
             Self::PUBLISHED_COLUMNS,
             self.published_rollup()
         );
-        ch.rows_with(
-            &sql,
-            QueryOptions {
-                params: vec![("slug".into(), slug.to_string())],
-                quote_64bit_integers: false,
-                introspection: true,
-                ..Default::default()
-            },
-        )
-        .await
+        self.ch
+            .rows_with(
+                &sql,
+                QueryOptions {
+                    params: vec![("slug".into(), slug.to_string())],
+                    quote_64bit_integers: false,
+                    introspection: true,
+                    ..Default::default()
+                },
+            )
+            .await
     }
 
     /// The revision a call reaches.
@@ -1455,11 +1493,10 @@ impl Workspace {
     /// finished is not a caller's business.
     pub async fn published_by_slug(
         &self,
-        ch: &Client,
         slug: &str,
         pin: Option<u32>,
     ) -> Result<Option<Published>> {
-        self.ensure(ch).await?;
+        self.ensure().await?;
         // `state IN` rather than `!= 'draft'`: a state this binary has never
         // heard of should refuse rather than answer, because the row was
         // written by something that knew a rule this one does not.
@@ -1481,16 +1518,17 @@ impl Workspace {
         if let Some(pin) = pin {
             params.push(("pin".to_string(), pin.to_string()));
         }
-        ch.row_with(
-            &sql,
-            QueryOptions {
-                params,
-                quote_64bit_integers: false,
-                introspection: true,
-                ..Default::default()
-            },
-        )
-        .await
+        self.ch
+            .row_with(
+                &sql,
+                QueryOptions {
+                    params,
+                    quote_64bit_integers: false,
+                    introspection: true,
+                    ..Default::default()
+                },
+            )
+            .await
     }
 
     /// Whether naming a role would actually narrow anything.
@@ -1515,14 +1553,14 @@ impl Workspace {
     /// nothing else the account holds can be reached through one — and refusing
     /// on an `INSERT` grant would refuse every deployment that can write at all,
     /// for a risk that is not there.
-    pub async fn delegation_check(&self, ch: &Client) -> Result<Vec<String>> {
+    pub async fn delegation_check(&self, target: &Client) -> Result<Vec<String>> {
         #[derive(Deserialize)]
         struct Grant {
             database: Option<String>,
             table: Option<String>,
         }
 
-        let reaching: Vec<Grant> = ch
+        let reaching: Vec<Grant> = target
             .rows_with(
                 "SELECT database, table \
                  FROM system.grants \
@@ -1558,10 +1596,10 @@ impl Workspace {
     /// the bare list it used to be.
     pub async fn save_published(
         &self,
-        ch: &Client,
+        target: &Client,
         input: PublishedInput,
     ) -> Result<PublishedSaved> {
-        self.ensure(ch).await?;
+        self.ensure().await?;
         let name = input.name.trim();
         if name.is_empty() {
             return Err(Error::BadRequest(
@@ -1591,7 +1629,7 @@ impl Workspace {
             }
         }
 
-        let existing = self.published(ch).await?;
+        let existing = self.published().await?;
         let before = input
             .id
             .as_ref()
@@ -1719,13 +1757,17 @@ impl Workspace {
             (None, Some(before)) => before.timezone.clone(),
             (None, None) => String::new(),
         };
-        crate::clickhouse::check_timezone(ch, &timezone).await?;
+        // The explored server's, not the workspace's. This zone is handed to
+        // whichever server runs the endpoint — `routes::data` puts it on the
+        // target's client — so a name only the workspace server knows would
+        // save cleanly here and fail on every call.
+        crate::clickhouse::check_timezone(target, &timezone).await?;
 
         if !run_as.is_empty() {
             // The precondition, checked rather than assumed. An endpoint saved
             // with a role that narrows nothing would read as delegated on the
             // page and run as the administrator on the wire.
-            let reaching = self.delegation_check(ch).await?;
+            let reaching = self.delegation_check(target).await?;
             if !reaching.is_empty() {
                 return Err(Error::BadRequest(format!(
                     "this endpoint cannot be delegated to `{run_as}`. Flint's own account \
@@ -1820,9 +1862,10 @@ impl Workspace {
             params.push(("id".to_string(), id.clone()));
         }
 
-        ch.execute(
-            &format!(
-                "INSERT INTO {}.published \
+        self.ch
+            .execute(
+                &format!(
+                    "INSERT INTO {}.published \
                  (id, name, slug, sql, database, defaults, token, public, enabled, \
                   max_rows, created_at, updated_at, deleted, version, expires_at, run_as, \
                   timezone, revision, state, description, cache_ttl, contract, published_by) \
@@ -1834,37 +1877,38 @@ impl Workspace {
                         {{revision:UInt32}}, {{state:String}}, unhex({{description:String}}), \
                         {{cache_ttl:UInt32}}, unhex({{contract:String}}), \
                         {{published_by:String}}",
-                self.quoted()
-            ),
-            QueryOptions {
-                params,
-                ..self.write_opts()
-            },
-        )
-        .await?;
+                    self.quoted()
+                ),
+                QueryOptions {
+                    params,
+                    ..self.write_opts()
+                },
+            )
+            .await?;
         Ok(PublishedSaved {
-            endpoints: self.published(ch).await?,
+            endpoints: self.published().await?,
             minted: fresh,
         })
     }
 
-    pub async fn remove_published(&self, ch: &Client, id: &str) -> Result<()> {
-        self.ensure(ch).await?;
-        ch.execute(
-            &format!(
-                "INSERT INTO {}.published \
+    pub async fn remove_published(&self, id: &str) -> Result<()> {
+        self.ensure().await?;
+        self.ch
+            .execute(
+                &format!(
+                    "INSERT INTO {}.published \
                  (id, name, slug, sql, database, defaults, token, public, enabled, \
                   max_rows, created_at, updated_at, deleted, version, expires_at, run_as) \
                  SELECT {{id:UUID}}, '', '', '', '', '{{}}', '', 0, 0, 0, now64(3), now64(3), 1, \
                         toUnixTimestamp64Milli(now64(3)), toDateTime64(0, 3), ''",
-                self.quoted()
-            ),
-            QueryOptions {
-                params: vec![("id".into(), id.to_string())],
-                ..self.write_opts()
-            },
-        )
-        .await
+                    self.quoted()
+                ),
+                QueryOptions {
+                    params: vec![("id".into(), id.to_string())],
+                    ..self.write_opts()
+                },
+            )
+            .await
     }
 
     /// Publish several tables at once, one endpoint each.
@@ -1896,11 +1940,11 @@ impl Workspace {
     /// lists by hand.
     pub async fn publish_tables(
         &self,
-        ch: &Client,
+        target: &Client,
         caller: &Client,
         input: PublishTablesInput,
     ) -> Result<TablesPublished> {
-        self.ensure(ch).await?;
+        self.ensure().await?;
         let database = input.database.trim().to_string();
         if database.is_empty() {
             return Err(Error::BadRequest("name a database to expose from".into()));
@@ -1924,7 +1968,7 @@ impl Workspace {
         // manifest account afterwards, so the grant check has to happen here or
         // it never happens at all.
         let real = crate::clickhouse::meta::tables(caller, &database).await?;
-        let existing = self.published(ch).await?;
+        let existing = self.published().await?;
 
         let state = State::parse(&input.state);
         let mut published: Vec<PublishedTable> = Vec::new();
@@ -1995,7 +2039,7 @@ impl Workspace {
 
             let saved = self
                 .save_published(
-                    ch,
+                    target,
                     PublishedInput {
                         id: None,
                         name: name.to_string(),
@@ -2032,7 +2076,7 @@ impl Workspace {
         }
 
         Ok(TablesPublished {
-            endpoints: self.published(ch).await?,
+            endpoints: self.published().await?,
             published,
             skipped,
         })
@@ -2050,9 +2094,9 @@ impl Workspace {
     /// The token is not copied. A draft answers nothing, so it needs no
     /// secret; it is minted when the draft goes live, which is also the moment
     /// somebody is present to be handed it.
-    pub async fn new_revision(&self, ch: &Client, slug: &str) -> Result<PublishedSaved> {
-        self.ensure(ch).await?;
-        let revisions = self.published_revisions(ch, slug).await?;
+    pub async fn new_revision(&self, slug: &str) -> Result<PublishedSaved> {
+        self.ensure().await?;
+        let revisions = self.published_revisions(slug).await?;
         let from = revisions
             .first()
             .ok_or_else(|| Error::NotFound(format!("no endpoint at `{slug}`")))?;
@@ -2067,9 +2111,10 @@ impl Workspace {
         }
         let next = revisions.iter().map(|p| p.revision).max().unwrap_or(0) + 1;
 
-        ch.execute(
-            &format!(
-                "INSERT INTO {}.published \
+        self.ch
+            .execute(
+                &format!(
+                    "INSERT INTO {}.published \
                  (id, name, slug, sql, database, defaults, token, public, enabled, \
                   max_rows, created_at, updated_at, deleted, version, expires_at, run_as, \
                   timezone, revision, state, description, cache_ttl, contract, published_by) \
@@ -2080,38 +2125,38 @@ impl Workspace {
                         {{run_as:String}}, {{timezone:String}}, {{revision:UInt32}}, 'draft', \
                         unhex({{description:String}}), {{cache_ttl:UInt32}}, \
                         unhex({{contract:String}}), {{published_by:String}}",
-                self.quoted()
-            ),
-            QueryOptions {
-                params: vec![
-                    ("name".into(), from.name.clone()),
-                    ("slug".into(), from.slug.clone()),
-                    ("sql".into(), Self::text(&from.sql)),
-                    ("database".into(), from.database.clone()),
-                    ("defaults".into(), from.defaults.clone()),
-                    ("public".into(), u8::from(from.public).to_string()),
-                    ("max_rows".into(), from.max_rows.to_string()),
-                    (
-                        "expires_at".into(),
-                        match from.expires_at.as_str() {
-                            "" => "1970-01-01 00:00:00.000".to_string(),
-                            given => given.to_string(),
-                        },
-                    ),
-                    ("run_as".into(), from.run_as.clone()),
-                    ("timezone".into(), from.timezone.clone()),
-                    ("revision".into(), next.to_string()),
-                    ("description".into(), Self::text(&from.description)),
-                    ("cache_ttl".into(), from.cache_ttl.to_string()),
-                    ("contract".into(), Self::text(&from.contract)),
-                    ("published_by".into(), from.published_by.clone()),
-                ],
-                ..self.write_opts()
-            },
-        )
-        .await?;
+                    self.quoted()
+                ),
+                QueryOptions {
+                    params: vec![
+                        ("name".into(), from.name.clone()),
+                        ("slug".into(), from.slug.clone()),
+                        ("sql".into(), Self::text(&from.sql)),
+                        ("database".into(), from.database.clone()),
+                        ("defaults".into(), from.defaults.clone()),
+                        ("public".into(), u8::from(from.public).to_string()),
+                        ("max_rows".into(), from.max_rows.to_string()),
+                        (
+                            "expires_at".into(),
+                            match from.expires_at.as_str() {
+                                "" => "1970-01-01 00:00:00.000".to_string(),
+                                given => given.to_string(),
+                            },
+                        ),
+                        ("run_as".into(), from.run_as.clone()),
+                        ("timezone".into(), from.timezone.clone()),
+                        ("revision".into(), next.to_string()),
+                        ("description".into(), Self::text(&from.description)),
+                        ("cache_ttl".into(), from.cache_ttl.to_string()),
+                        ("contract".into(), Self::text(&from.contract)),
+                        ("published_by".into(), from.published_by.clone()),
+                    ],
+                    ..self.write_opts()
+                },
+            )
+            .await?;
         Ok(PublishedSaved {
-            endpoints: self.published(ch).await?,
+            endpoints: self.published().await?,
             minted: None,
         })
     }
@@ -2127,12 +2172,12 @@ impl Workspace {
     ///
     /// Returns the token minted where one was: a draft carries no secret, so
     /// going live is when a token-guarded endpoint gets its first.
-    pub async fn set_state(&self, ch: &Client, id: &str, to: State) -> Result<PublishedSaved> {
-        self.ensure(ch).await?;
+    pub async fn set_state(&self, id: &str, to: State) -> Result<PublishedSaved> {
+        self.ensure().await?;
         if !crate::routes::is_uuid(id) {
             return Err(Error::BadRequest(format!("`{id}` is not an endpoint id")));
         }
-        let all = self.published(ch).await?;
+        let all = self.published().await?;
         let target = all
             .iter()
             .find(|p| p.id == id)
@@ -2196,7 +2241,6 @@ impl Workspace {
             .then(crate::published::mint_token);
 
         self.write_state(
-            ch,
             target,
             to,
             minted
@@ -2206,11 +2250,11 @@ impl Workspace {
         )
         .await?;
         if let Some(down) = stepping_down {
-            self.write_state(ch, down, State::Retiring, down.token.clone())
+            self.write_state(down, State::Retiring, down.token.clone())
                 .await?;
         }
         Ok(PublishedSaved {
-            endpoints: self.published(ch).await?,
+            endpoints: self.published().await?,
             minted,
         })
     }
@@ -2218,16 +2262,11 @@ impl Workspace {
     /// One row, rewritten with a new state. Every other column carried across
     /// verbatim: `ReplacingMergeTree` keeps the newest row per id whole, so a
     /// column left out of this insert is a column set back to its default.
-    async fn write_state(
-        &self,
-        ch: &Client,
-        row: &Published,
-        to: State,
-        token: String,
-    ) -> Result<()> {
-        ch.execute(
-            &format!(
-                "INSERT INTO {}.published \
+    async fn write_state(&self, row: &Published, to: State, token: String) -> Result<()> {
+        self.ch
+            .execute(
+                &format!(
+                    "INSERT INTO {}.published \
                  (id, name, slug, sql, database, defaults, token, public, enabled, \
                   max_rows, created_at, updated_at, deleted, version, expires_at, run_as, \
                   timezone, revision, state, description, cache_ttl, contract, published_by) \
@@ -2239,40 +2278,40 @@ impl Workspace {
                         {{revision:UInt32}}, {{state:String}}, unhex({{description:String}}), \
                         {{cache_ttl:UInt32}}, unhex({{contract:String}}), \
                         {{published_by:String}}",
-                self.quoted()
-            ),
-            QueryOptions {
-                params: vec![
-                    ("id".into(), row.id.clone()),
-                    ("name".into(), row.name.clone()),
-                    ("slug".into(), row.slug.clone()),
-                    ("sql".into(), Self::text(&row.sql)),
-                    ("database".into(), row.database.clone()),
-                    ("defaults".into(), row.defaults.clone()),
-                    ("token".into(), token),
-                    ("public".into(), u8::from(row.public).to_string()),
-                    ("enabled".into(), u8::from(row.enabled).to_string()),
-                    ("max_rows".into(), row.max_rows.to_string()),
-                    (
-                        "expires_at".into(),
-                        match row.expires_at.as_str() {
-                            "" => "1970-01-01 00:00:00.000".to_string(),
-                            given => given.to_string(),
-                        },
-                    ),
-                    ("run_as".into(), row.run_as.clone()),
-                    ("timezone".into(), row.timezone.clone()),
-                    ("revision".into(), row.revision.to_string()),
-                    ("state".into(), to.as_str().to_string()),
-                    ("description".into(), Self::text(&row.description)),
-                    ("cache_ttl".into(), row.cache_ttl.to_string()),
-                    ("contract".into(), Self::text(&row.contract)),
-                    ("published_by".into(), row.published_by.clone()),
-                ],
-                ..self.write_opts()
-            },
-        )
-        .await
+                    self.quoted()
+                ),
+                QueryOptions {
+                    params: vec![
+                        ("id".into(), row.id.clone()),
+                        ("name".into(), row.name.clone()),
+                        ("slug".into(), row.slug.clone()),
+                        ("sql".into(), Self::text(&row.sql)),
+                        ("database".into(), row.database.clone()),
+                        ("defaults".into(), row.defaults.clone()),
+                        ("token".into(), token),
+                        ("public".into(), u8::from(row.public).to_string()),
+                        ("enabled".into(), u8::from(row.enabled).to_string()),
+                        ("max_rows".into(), row.max_rows.to_string()),
+                        (
+                            "expires_at".into(),
+                            match row.expires_at.as_str() {
+                                "" => "1970-01-01 00:00:00.000".to_string(),
+                                given => given.to_string(),
+                            },
+                        ),
+                        ("run_as".into(), row.run_as.clone()),
+                        ("timezone".into(), row.timezone.clone()),
+                        ("revision".into(), row.revision.to_string()),
+                        ("state".into(), to.as_str().to_string()),
+                        ("description".into(), Self::text(&row.description)),
+                        ("cache_ttl".into(), row.cache_ttl.to_string()),
+                        ("contract".into(), Self::text(&row.contract)),
+                        ("published_by".into(), row.published_by.clone()),
+                    ],
+                    ..self.write_opts()
+                },
+            )
+            .await
     }
 
     // ── Keys ────────────────────────────────────────────────────────────
@@ -2303,8 +2342,8 @@ impl Workspace {
         )
     }
 
-    pub async fn api_keys(&self, ch: &Client) -> Result<Vec<ApiKey>> {
-        self.ensure(ch).await?;
+    pub async fn api_keys(&self) -> Result<Vec<ApiKey>> {
+        self.ensure().await?;
         let sql = format!(
             "{} FROM ({}) WHERE kdeleted = 0 ORDER BY kname LIMIT 1000",
             Self::KEY_COLUMNS,
@@ -2313,7 +2352,7 @@ impl Workspace {
         // `scope` is stored as JSON text and wanted as a list. Read as text
         // here and split in `parse_scope`, rather than asking ClickHouse for
         // an Array(String) it would have to parse out of a String column.
-        let raw: Vec<ApiKeyRow> = ch.rows(&sql).await?;
+        let raw: Vec<ApiKeyRow> = self.ch.rows(&sql).await?;
         Ok(raw.into_iter().map(ApiKeyRow::into_key).collect())
     }
 
@@ -2324,14 +2363,15 @@ impl Workspace {
     /// hashed and the hash is what the lookup matches. That also means the
     /// query carries a digest rather than a credential, which is what anyone
     /// reading the query log will see.
-    pub async fn key_by_secret(&self, ch: &Client, secret: &str) -> Result<Option<ApiKey>> {
-        self.ensure(ch).await?;
+    pub async fn key_by_secret(&self, secret: &str) -> Result<Option<ApiKey>> {
+        self.ensure().await?;
         let sql = format!(
             "{} FROM ({}) WHERE kdeleted = 0 AND kenabled != 0 AND khash = {{hash:String}} LIMIT 1",
             Self::KEY_COLUMNS,
             self.keys_rollup()
         );
-        let row: Option<ApiKeyRow> = ch
+        let row: Option<ApiKeyRow> = self
+            .ch
             .row_with(
                 &sql,
                 QueryOptions {
@@ -2345,8 +2385,8 @@ impl Workspace {
         Ok(row.map(ApiKeyRow::into_key))
     }
 
-    pub async fn save_api_key(&self, ch: &Client, input: ApiKeyInput) -> Result<ApiKeySaved> {
-        self.ensure(ch).await?;
+    pub async fn save_api_key(&self, input: ApiKeyInput) -> Result<ApiKeySaved> {
+        self.ensure().await?;
         let name = input.name.trim();
         if name.is_empty() {
             return Err(Error::BadRequest(
@@ -2358,7 +2398,7 @@ impl Workspace {
                 return Err(Error::BadRequest(format!("`{id}` is not a key id")));
             }
         }
-        let existing = self.api_keys(ch).await?;
+        let existing = self.api_keys().await?;
         if let Some(clash) = existing
             .iter()
             .find(|k| k.name == name && Some(&k.id) != input.id.as_ref())
@@ -2414,48 +2454,50 @@ impl Workspace {
         if let Some(id) = &input.id {
             params.push(("id".to_string(), id.clone()));
         }
-        ch.execute(
-            &format!(
-                "INSERT INTO {}.api_keys \
+        self.ch
+            .execute(
+                &format!(
+                    "INSERT INTO {}.api_keys \
                  (id, name, owner, hash, scope, quota_per_day, enabled, created_at, deleted, \
                   version) \
                  SELECT {id_expr}, {{name:String}}, {{owner:String}}, {{hash:String}}, \
                         {{scope:String}}, {{quota:UInt32}}, {{enabled:UInt8}}, now64(3), 0, \
                         toUnixTimestamp64Milli(now64(3))",
-                self.quoted()
-            ),
-            QueryOptions {
-                params,
-                ..self.write_opts()
-            },
-        )
-        .await?;
+                    self.quoted()
+                ),
+                QueryOptions {
+                    params,
+                    ..self.write_opts()
+                },
+            )
+            .await?;
         Ok(ApiKeySaved {
-            keys: self.api_keys(ch).await?,
+            keys: self.api_keys().await?,
             minted,
         })
     }
 
-    pub async fn remove_api_key(&self, ch: &Client, id: &str) -> Result<()> {
-        self.ensure(ch).await?;
+    pub async fn remove_api_key(&self, id: &str) -> Result<()> {
+        self.ensure().await?;
         if !crate::routes::is_uuid(id) {
             return Err(Error::BadRequest(format!("`{id}` is not a key id")));
         }
-        ch.execute(
-            &format!(
-                "INSERT INTO {}.api_keys \
+        self.ch
+            .execute(
+                &format!(
+                    "INSERT INTO {}.api_keys \
                  (id, name, owner, hash, scope, quota_per_day, enabled, created_at, deleted, \
                   version) \
                  SELECT {{id:UUID}}, '', '', '', '[]', 0, 0, now64(3), 1, \
                         toUnixTimestamp64Milli(now64(3))",
-                self.quoted()
-            ),
-            QueryOptions {
-                params: vec![("id".into(), id.to_string())],
-                ..self.write_opts()
-            },
-        )
-        .await
+                    self.quoted()
+                ),
+                QueryOptions {
+                    params: vec![("id".into(), id.to_string())],
+                    ..self.write_opts()
+                },
+            )
+            .await
     }
 
     // ── The call log ────────────────────────────────────────────────────
@@ -2486,11 +2528,11 @@ impl Workspace {
     /// not put caller-controlled text into SQL. Not as one parameter per field
     /// either — five hundred rows would be six thousand parameters and a query
     /// string nothing would accept.
-    pub async fn write_calls(&self, ch: &Client, calls: &[CallRecord]) -> Result<()> {
+    pub async fn write_calls(&self, calls: &[CallRecord]) -> Result<()> {
         if calls.is_empty() {
             return Ok(());
         }
-        self.ensure(ch).await?;
+        self.ensure().await?;
 
         let mut batch = String::with_capacity(calls.len() * 200);
         for call in calls {
@@ -2520,22 +2562,23 @@ impl Workspace {
             batch.push('\n');
         }
 
-        ch.execute(
-            &format!(
-                "INSERT INTO {db}.api_calls ({columns}) \
+        self.ch
+            .execute(
+                &format!(
+                    "INSERT INTO {db}.api_calls ({columns}) \
                  SELECT {select} \
                  FROM format(JSONEachRow, '{structure}', unhex({{batch:String}}))",
-                db = self.quoted(),
-                columns = Self::CALL_COLUMNS,
-                select = Self::CALL_SELECT,
-                structure = Self::CALL_STRUCTURE,
-            ),
-            QueryOptions {
-                params: vec![("batch".into(), Self::text(&batch))],
-                ..self.write_opts()
-            },
-        )
-        .await
+                    db = self.quoted(),
+                    columns = Self::CALL_COLUMNS,
+                    select = Self::CALL_SELECT,
+                    structure = Self::CALL_STRUCTURE,
+                ),
+                QueryOptions {
+                    params: vec![("batch".into(), Self::text(&batch))],
+                    ..self.write_opts()
+                },
+            )
+            .await
     }
 
     /// How many calls this key has already made to this address today.
@@ -2545,7 +2588,7 @@ impl Workspace {
     /// own refusals would lock a caller out for the rest of the day the moment
     /// they hit it once, which is a different and much worse rule than the one
     /// the page says is in force.
-    pub async fn calls_today(&self, ch: &Client, key_id: &str, slug: &str) -> Result<u64> {
+    pub async fn calls_today(&self, key_id: &str, slug: &str) -> Result<u64> {
         #[derive(Deserialize)]
         struct Row {
             n: u64,
@@ -2556,7 +2599,8 @@ impl Workspace {
                AND at >= toStartOfDay(now64(3)) AND status < 400",
             self.quoted()
         );
-        let row: Option<Row> = ch
+        let row: Option<Row> = self
+            .ch
             .row_with(
                 &sql,
                 QueryOptions {
@@ -2580,8 +2624,8 @@ impl Workspace {
     /// p95 that includes refusals is fast (a 429 costs nothing), and a call
     /// count that includes them is high. The page wants "how much work is this
     /// doing" and "how much is it turning away" as two numbers.
-    pub async fn usage_index(&self, ch: &Client, hours: u32) -> Result<Vec<SlugUsage>> {
-        self.ensure(ch).await?;
+    pub async fn usage_index(&self, hours: u32) -> Result<Vec<SlugUsage>> {
+        self.ensure().await?;
         // Per *revision*, not per address, and that is the whole point of the
         // column. "v3 is retiring and still took two thousand calls today" is
         // the sentence somebody needs before they can go and have a
@@ -2616,21 +2660,22 @@ impl Workspace {
              LIMIT 2000",
             self.quoted()
         );
-        ch.rows_with(
-            &sql,
-            QueryOptions {
-                params: vec![("hours".into(), hours.to_string())],
-                quote_64bit_integers: false,
-                introspection: true,
-                ..Default::default()
-            },
-        )
-        .await
+        self.ch
+            .rows_with(
+                &sql,
+                QueryOptions {
+                    params: vec![("hours".into(), hours.to_string())],
+                    quote_64bit_integers: false,
+                    introspection: true,
+                    ..Default::default()
+                },
+            )
+            .await
     }
 
     /// One address's traffic, split the four ways the detail page shows it.
-    pub async fn endpoint_traffic(&self, ch: &Client, slug: &str, hours: u32) -> Result<Traffic> {
-        self.ensure(ch).await?;
+    pub async fn endpoint_traffic(&self, slug: &str, hours: u32) -> Result<Traffic> {
+        self.ensure().await?;
         let params = || {
             vec![
                 ("slug".to_string(), slug.to_string()),
@@ -2654,7 +2699,8 @@ impl Workspace {
             avg_hit_ms: Option<f64>,
             avg_miss_ms: Option<f64>,
         }
-        let totals: Option<Totals> = ch
+        let totals: Option<Totals> = self
+            .ch
             .row_with(
                 &format!(
                     "SELECT countIf(status < 400)                    AS calls, \
@@ -2684,7 +2730,8 @@ impl Workspace {
             avg_miss_ms: None,
         });
 
-        let callers: Vec<CallerUsage> = ch
+        let callers: Vec<CallerUsage> = self
+            .ch
             .rows_with(
                 &format!(
                     "SELECT key_name        AS key_name, \
@@ -2702,7 +2749,8 @@ impl Workspace {
             )
             .await?;
 
-        let refusals: Vec<RefusalUsage> = ch
+        let refusals: Vec<RefusalUsage> = self
+            .ch
             .rows_with(
                 &format!(
                     "SELECT status          AS status, \
@@ -2730,7 +2778,8 @@ impl Workspace {
             throttled_today: u64,
             last_call: String,
         }
-        let today: Vec<KeyDay> = ch
+        let today: Vec<KeyDay> = self
+            .ch
             .rows_with(
                 &format!(
                     "SELECT key_id                     AS key_id, \
@@ -2756,7 +2805,7 @@ impl Workspace {
         // Every key that may call this address, whether or not it has — a key
         // holding a quota it has never spent is exactly what somebody looks
         // for when they ask who could be calling this.
-        let keys = self.api_keys(ch).await?;
+        let keys = self.api_keys().await?;
         let mut key_usage: Vec<KeyUsage> = keys
             .into_iter()
             .filter(|k| k.scope.is_empty() || k.scope.iter().any(|s| s == slug))
@@ -2802,28 +2851,29 @@ impl Workspace {
     /// is compared against were written by ClickHouse, and Flint already shows
     /// ClickHouse's timezone on the server page. Two clocks would eventually
     /// disagree, and the disagreement would look like a report that runs twice.
-    pub async fn clock(&self, ch: &Client, timezone: &str) -> Result<crate::reports::Clock> {
+    pub async fn clock(&self, timezone: &str) -> Result<crate::reports::Clock> {
         // `now_ts` is an instant and does not move; `midnight_ts` and `dow` are
         // wall-clock facts and do. That is exactly the split a schedule needs —
         // "is it past nine in Auckland" is the same integer comparison, against
         // an Auckland midnight.
-        ch.row_with(
-            "SELECT toInt64(toUnixTimestamp(now()))                    AS now_ts, \
+        self.ch
+            .row_with(
+                "SELECT toInt64(toUnixTimestamp(now()))                    AS now_ts, \
                     toInt64(toUnixTimestamp(toDateTime(today())))       AS midnight_ts, \
                     toUInt8(toDayOfWeek(now()))                        AS dow",
-            QueryOptions {
-                timezone: (!timezone.is_empty()).then(|| timezone.to_string()),
-                introspection: true,
-                quote_64bit_integers: false,
-                ..Default::default()
-            },
-        )
-        .await?
-        .ok_or_else(|| Error::Decode("ClickHouse returned no clock".into()))
+                QueryOptions {
+                    timezone: (!timezone.is_empty()).then(|| timezone.to_string()),
+                    introspection: true,
+                    quote_64bit_integers: false,
+                    ..Default::default()
+                },
+            )
+            .await?
+            .ok_or_else(|| Error::Decode("ClickHouse returned no clock".into()))
     }
 
-    pub async fn reports(&self, ch: &Client) -> Result<Vec<Report>> {
-        self.ensure(ch).await?;
+    pub async fn reports(&self) -> Result<Vec<Report>> {
+        self.ensure().await?;
         let db = self.quoted();
         let sql = format!(
             "SELECT toString(r.id)                          AS id, \
@@ -2863,21 +2913,19 @@ impl Workspace {
              ORDER BY r.name \
              LIMIT 500"
         );
-        ch.rows(&sql).await
+        self.ch.rows(&sql).await
     }
 
     /// Unix seconds of the last run of each report, for the due-ness check.
-    pub async fn last_run_seconds(
-        &self,
-        ch: &Client,
-    ) -> Result<std::collections::HashMap<String, i64>> {
-        self.ensure(ch).await?;
+    pub async fn last_run_seconds(&self) -> Result<std::collections::HashMap<String, i64>> {
+        self.ensure().await?;
         #[derive(Deserialize)]
         struct Row {
             id: String,
             ran: i64,
         }
-        let rows: Vec<Row> = ch
+        let rows: Vec<Row> = self
+            .ch
             .rows(&format!(
                 "SELECT toString(report_id)                     AS id, \
                         toInt64(toUnixTimestamp(max(at)))       AS ran \
@@ -2888,8 +2936,8 @@ impl Workspace {
         Ok(rows.into_iter().map(|r| (r.id, r.ran)).collect())
     }
 
-    pub async fn save_report(&self, ch: &Client, input: ReportInput) -> Result<()> {
-        self.ensure(ch).await?;
+    pub async fn save_report(&self, input: ReportInput) -> Result<()> {
+        self.ensure().await?;
         let name = input.name.trim();
         if name.is_empty() {
             return Err(Error::BadRequest("a report needs a name".into()));
@@ -2911,7 +2959,7 @@ impl Workspace {
                         .into(),
                 ));
             }
-            crate::clickhouse::check_timezone(ch, &timezone).await?;
+            crate::clickhouse::check_timezone(&self.ch, &timezone).await?;
         }
         if let Some(id) = &input.id {
             if !crate::routes::is_uuid(id) {
@@ -2936,51 +2984,48 @@ impl Workspace {
             params.push(("id".to_string(), id.clone()));
         }
 
-        ch.execute(
-            &format!(
-                "INSERT INTO {}.reports \
+        self.ch
+            .execute(
+                &format!(
+                    "INSERT INTO {}.reports \
                  (id, name, spec, schedule, webhook, enabled, created_at, updated_at, \
                   deleted, version, timezone) \
                  SELECT {id_expr}, {{name:String}}, unhex({{spec:String}}), {{schedule:String}}, \
                         {{webhook:String}}, {{enabled:UInt8}}, now64(3), now64(3), 0, \
                         toUnixTimestamp64Milli(now64(3)), {{timezone:String}}",
-                self.quoted()
-            ),
-            QueryOptions {
-                params,
-                ..self.write_opts()
-            },
-        )
-        .await
+                    self.quoted()
+                ),
+                QueryOptions {
+                    params,
+                    ..self.write_opts()
+                },
+            )
+            .await
     }
 
-    pub async fn remove_report(&self, ch: &Client, id: &str) -> Result<()> {
-        self.ensure(ch).await?;
-        ch.execute(
-            &format!(
-                "INSERT INTO {}.reports \
+    pub async fn remove_report(&self, id: &str) -> Result<()> {
+        self.ensure().await?;
+        self.ch
+            .execute(
+                &format!(
+                    "INSERT INTO {}.reports \
                  (id, name, spec, schedule, webhook, enabled, created_at, updated_at, \
                   deleted, version, timezone) \
                  SELECT {{id:UUID}}, '', '', '', '', 0, now64(3), now64(3), 1, \
                         toUnixTimestamp64Milli(now64(3)), ''",
-                self.quoted()
-            ),
-            QueryOptions {
-                params: vec![("id".into(), id.to_string())],
-                ..self.write_opts()
-            },
-        )
-        .await
+                    self.quoted()
+                ),
+                QueryOptions {
+                    params: vec![("id".into(), id.to_string())],
+                    ..self.write_opts()
+                },
+            )
+            .await
     }
 
     /// The runs of a report, without their contents.
-    pub async fn report_runs(
-        &self,
-        ch: &Client,
-        report_id: Option<&str>,
-        limit: u64,
-    ) -> Result<Vec<ReportRun>> {
-        self.ensure(ch).await?;
+    pub async fn report_runs(&self, report_id: Option<&str>, limit: u64) -> Result<Vec<ReportRun>> {
+        self.ensure().await?;
         let filter = if report_id.is_some() {
             "WHERE report_id = {id:UUID}"
         } else {
@@ -3008,21 +3053,22 @@ impl Workspace {
         let params = report_id
             .map(|id| vec![("id".to_string(), id.to_string())])
             .unwrap_or_default();
-        ch.rows_with(
-            &sql,
-            QueryOptions {
-                params,
-                quote_64bit_integers: false,
-                introspection: true,
-                ..Default::default()
-            },
-        )
-        .await
+        self.ch
+            .rows_with(
+                &sql,
+                QueryOptions {
+                    params,
+                    quote_64bit_integers: false,
+                    introspection: true,
+                    ..Default::default()
+                },
+            )
+            .await
     }
 
     /// One run, with what it found.
-    pub async fn report_snapshot(&self, ch: &Client, run_id: &str) -> Result<ReportSnapshot> {
-        self.ensure(ch).await?;
+    pub async fn report_snapshot(&self, run_id: &str) -> Result<ReportSnapshot> {
+        self.ensure().await?;
         let sql = format!(
             "SELECT toString(run_id)     AS run, \
                     toString(report_id)  AS which, \
@@ -3036,17 +3082,18 @@ impl Workspace {
              LIMIT 1",
             self.quoted()
         );
-        ch.row_with(
-            &sql,
-            QueryOptions {
-                params: vec![("id".into(), run_id.to_string())],
-                quote_64bit_integers: false,
-                introspection: true,
-                ..Default::default()
-            },
-        )
-        .await?
-        .ok_or_else(|| Error::NotFound(format!("no report run `{run_id}`")))
+        self.ch
+            .row_with(
+                &sql,
+                QueryOptions {
+                    params: vec![("id".into(), run_id.to_string())],
+                    quote_64bit_integers: false,
+                    introspection: true,
+                    ..Default::default()
+                },
+            )
+            .await?
+            .ok_or_else(|| Error::NotFound(format!("no report run `{run_id}`")))
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -3056,7 +3103,6 @@ impl Workspace {
     /// answer when two runs can land in the same second.
     pub async fn record_report_run(
         &self,
-        ch: &Client,
         run_id: &str,
         report: &Report,
         status: &str,
@@ -3065,31 +3111,32 @@ impl Workspace {
         error: &str,
         delivery: &crate::alerts::Delivery,
     ) -> Result<()> {
-        self.ensure(ch).await?;
-        ch.execute(
-            &format!(
-                "INSERT INTO {}.report_runs \
+        self.ensure().await?;
+        self.ch
+            .execute(
+                &format!(
+                    "INSERT INTO {}.report_runs \
                  SELECT {{run_id:UUID}}, {{id:UUID}}, {{report:String}}, now64(3), \
                         {{status:String}}, {{sections:String}}, {{count:UInt32}}, \
                         {{error:String}}, {{delivered:UInt8}}, {{derror:String}}",
-                self.quoted()
-            ),
-            QueryOptions {
-                params: vec![
-                    ("run_id".into(), run_id.to_string()),
-                    ("id".into(), report.id.clone()),
-                    ("report".into(), report.name.clone()),
-                    ("status".into(), status.to_string()),
-                    ("sections".into(), sections_json.to_string()),
-                    ("count".into(), section_count.to_string()),
-                    ("error".into(), error.to_string()),
-                    ("delivered".into(), u8::from(delivery.sent()).to_string()),
-                    ("derror".into(), delivery.note()),
-                ],
-                ..self.write_opts()
-            },
-        )
-        .await
+                    self.quoted()
+                ),
+                QueryOptions {
+                    params: vec![
+                        ("run_id".into(), run_id.to_string()),
+                        ("id".into(), report.id.clone()),
+                        ("report".into(), report.name.clone()),
+                        ("status".into(), status.to_string()),
+                        ("sections".into(), sections_json.to_string()),
+                        ("count".into(), section_count.to_string()),
+                        ("error".into(), error.to_string()),
+                        ("delivered".into(), u8::from(delivery.sent()).to_string()),
+                        ("derror".into(), delivery.note()),
+                    ],
+                    ..self.write_opts()
+                },
+            )
+            .await
     }
 
     // ── Jobs ────────────────────────────────────────────────────────────
@@ -3102,11 +3149,12 @@ impl Workspace {
     /// because ClickHouse's is a mutation — a rewrite of parts — and a job that
     /// changes state three times must not cost three rewrites.
     #[allow(clippy::too_many_arguments)]
-    pub async fn write_job(&self, ch: &Client, job: &JobRow) -> Result<()> {
-        self.ensure(ch).await?;
-        ch.execute(
-            &format!(
-                "INSERT INTO {}.jobs \
+    pub async fn write_job(&self, job: &JobRow) -> Result<()> {
+        self.ensure().await?;
+        self.ch
+            .execute(
+                &format!(
+                    "INSERT INTO {}.jobs \
                  SELECT {{id:UUID}}, {{kind:String}}, unhex({{label:String}}), \
                         unhex({{target:String}}), unhex({{statement:String}}), \
                         {{by:String}}, {{tier:String}}, {{query_id:String}}, \
@@ -3114,35 +3162,35 @@ impl Workspace {
                         fromUnixTimestamp64Milli({{started:Int64}}), \
                         fromUnixTimestamp64Milli({{finished:Int64}}), \
                         {{version:UInt64}}",
-                self.quoted()
-            ),
-            QueryOptions {
-                params: vec![
-                    ("id".into(), job.id.clone()),
-                    ("kind".into(), job.kind.clone()),
-                    ("label".into(), Self::text(&job.label)),
-                    ("target".into(), Self::text(&job.target)),
-                    ("statement".into(), Self::text(&job.statement)),
-                    ("by".into(), job.submitted_by.clone()),
-                    ("tier".into(), job.tier.clone()),
-                    ("query_id".into(), job.query_id.clone()),
-                    ("state".into(), job.state.clone()),
-                    ("detail".into(), Self::text(&job.detail)),
-                    ("started".into(), job.started_ms.to_string()),
-                    // Zero rather than null while it runs: `finished_at` is not
-                    // nullable, and the state says whether it means anything.
-                    ("finished".into(), job.finished_ms.to_string()),
-                    ("version".into(), job.version.to_string()),
-                ],
-                ..self.write_opts()
-            },
-        )
-        .await
+                    self.quoted()
+                ),
+                QueryOptions {
+                    params: vec![
+                        ("id".into(), job.id.clone()),
+                        ("kind".into(), job.kind.clone()),
+                        ("label".into(), Self::text(&job.label)),
+                        ("target".into(), Self::text(&job.target)),
+                        ("statement".into(), Self::text(&job.statement)),
+                        ("by".into(), job.submitted_by.clone()),
+                        ("tier".into(), job.tier.clone()),
+                        ("query_id".into(), job.query_id.clone()),
+                        ("state".into(), job.state.clone()),
+                        ("detail".into(), Self::text(&job.detail)),
+                        ("started".into(), job.started_ms.to_string()),
+                        // Zero rather than null while it runs: `finished_at` is not
+                        // nullable, and the state says whether it means anything.
+                        ("finished".into(), job.finished_ms.to_string()),
+                        ("version".into(), job.version.to_string()),
+                    ],
+                    ..self.write_opts()
+                },
+            )
+            .await
     }
 
     /// The most recent jobs, newest first.
-    pub async fn jobs(&self, ch: &Client, limit: u64) -> Result<Vec<Job>> {
-        self.ensure(ch).await?;
+    pub async fn jobs(&self, limit: u64) -> Result<Vec<Job>> {
+        self.ensure().await?;
         // Aggregated inside, ordered outside. Aliasing an aggregate as the
         // column it aggregates — `min(started_at) AS started_at` — makes a
         // later `ORDER BY started_at` resolve to the alias, and ClickHouse
@@ -3173,7 +3221,7 @@ impl Workspace {
             self.quoted(),
             limit.clamp(1, 200)
         );
-        let mut jobs: Vec<Job> = ch.rows(&sql).await?;
+        let mut jobs: Vec<Job> = self.ch.rows(&sql).await?;
         for job in &mut jobs {
             drop_epoch_finish(job);
         }
@@ -3181,15 +3229,15 @@ impl Workspace {
     }
 
     /// One job, whatever state it is in.
-    pub async fn job(&self, ch: &Client, id: &str) -> Result<Option<Job>> {
-        Ok(self.jobs(ch, 200).await?.into_iter().find(|j| j.id == id))
+    pub async fn job(&self, id: &str) -> Result<Option<Job>> {
+        Ok(self.jobs(200).await?.into_iter().find(|j| j.id == id))
     }
 
     /// Every job still claiming to run, with what it would take to find it
     /// again on the server.
-    pub async fn running_jobs(&self, ch: &Client) -> Result<Vec<Job>> {
+    pub async fn running_jobs(&self) -> Result<Vec<Job>> {
         Ok(self
-            .jobs(ch, 200)
+            .jobs(200)
             .await?
             .into_iter()
             .filter(|j| j.state == "running")
@@ -3203,8 +3251,8 @@ impl Workspace {
     /// The state comes from the event log rather than from the scheduler's
     /// memory, so the list reads the same in a browser opened after a restart
     /// as it did before one.
-    pub async fn alerts(&self, ch: &Client) -> Result<Vec<Alert>> {
-        self.ensure(ch).await?;
+    pub async fn alerts(&self) -> Result<Vec<Alert>> {
+        self.ensure().await?;
         let db = self.quoted();
         let sql = format!(
             "SELECT toString(a.id)                          AS id, \
@@ -3253,22 +3301,22 @@ impl Workspace {
              ORDER BY a.name \
              LIMIT 500"
         );
-        ch.rows(&sql).await
+        self.ch.rows(&sql).await
     }
 
     /// The last state of every alert, for the scheduler to resume from so a
     /// restart does not re-announce what was already firing.
     pub async fn last_states(
         &self,
-        ch: &Client,
     ) -> Result<std::collections::HashMap<String, crate::alerts::State>> {
-        self.ensure(ch).await?;
+        self.ensure().await?;
         #[derive(Deserialize)]
         struct Row {
             id: String,
             last_state: String,
         }
-        let rows: Vec<Row> = ch
+        let rows: Vec<Row> = self
+            .ch
             .rows(&format!(
                 "SELECT toString(alert_id) AS id, argMax(state, at) AS last_state \
                  FROM {}.alert_events GROUP BY alert_id",
@@ -3281,8 +3329,8 @@ impl Workspace {
             .collect())
     }
 
-    pub async fn save_alert(&self, ch: &Client, input: AlertInput) -> Result<()> {
-        self.ensure(ch).await?;
+    pub async fn save_alert(&self, input: AlertInput) -> Result<()> {
+        self.ensure().await?;
         let name = input.name.trim();
         if name.is_empty() {
             return Err(Error::BadRequest("an alert needs a name".into()));
@@ -3323,48 +3371,49 @@ impl Workspace {
             params.push(("id".to_string(), id.clone()));
         }
 
-        ch.execute(
-            &format!(
-                "INSERT INTO {}.alerts \
+        self.ch
+            .execute(
+                &format!(
+                    "INSERT INTO {}.alerts \
                  SELECT {id_expr}, {{name:String}}, unhex({{sql:String}}), {{database:String}}, \
                         {{condition:String}}, {{interval:UInt32}}, {{webhook:String}}, \
                         {{enabled:UInt8}}, now64(3), now64(3), 0, \
                         toUnixTimestamp64Milli(now64(3))",
-                self.quoted()
-            ),
-            QueryOptions {
-                params,
-                ..self.write_opts()
-            },
-        )
-        .await
+                    self.quoted()
+                ),
+                QueryOptions {
+                    params,
+                    ..self.write_opts()
+                },
+            )
+            .await
     }
 
-    pub async fn remove_alert(&self, ch: &Client, id: &str) -> Result<()> {
-        self.ensure(ch).await?;
-        ch.execute(
-            &format!(
-                "INSERT INTO {}.alerts \
+    pub async fn remove_alert(&self, id: &str) -> Result<()> {
+        self.ensure().await?;
+        self.ch
+            .execute(
+                &format!(
+                    "INSERT INTO {}.alerts \
                  SELECT {{id:UUID}}, '', '', '', '', 0, '', 0, now64(3), now64(3), 1, \
                         toUnixTimestamp64Milli(now64(3))",
-                self.quoted()
-            ),
-            QueryOptions {
-                params: vec![("id".into(), id.to_string())],
-                ..self.write_opts()
-            },
-        )
-        .await
+                    self.quoted()
+                ),
+                QueryOptions {
+                    params: vec![("id".into(), id.to_string())],
+                    ..self.write_opts()
+                },
+            )
+            .await
     }
 
     /// The recent history of one alert, or of all of them.
     pub async fn alert_events(
         &self,
-        ch: &Client,
         alert_id: Option<&str>,
         limit: u64,
     ) -> Result<Vec<AlertEvent>> {
-        self.ensure(ch).await?;
+        self.ensure().await?;
         let filter = if alert_id.is_some() {
             "WHERE alert_id = {id:UUID}"
         } else {
@@ -3392,30 +3441,30 @@ impl Workspace {
         let params = alert_id
             .map(|id| vec![("id".to_string(), id.to_string())])
             .unwrap_or_default();
-        ch.rows_with(
-            &sql,
-            QueryOptions {
-                params,
-                quote_64bit_integers: false,
-                introspection: true,
-                ..Default::default()
-            },
-        )
-        .await
+        self.ch
+            .rows_with(
+                &sql,
+                QueryOptions {
+                    params,
+                    quote_64bit_integers: false,
+                    introspection: true,
+                    ..Default::default()
+                },
+            )
+            .await
     }
 
     /// Append one event. Called by the scheduler, which has already decided
     /// that this is a transition worth recording.
     pub async fn record_alert_event(
         &self,
-        ch: &Client,
         alert: &Alert,
         state: crate::alerts::State,
         value: Option<f64>,
         message: &str,
         delivery: &crate::alerts::Delivery,
     ) -> Result<()> {
-        self.ensure(ch).await?;
+        self.ensure().await?;
         // A missing measurement is NULL, not zero: "could not run" and
         // "measured nothing" are different facts.
         let value_expr = match value {
@@ -3437,40 +3486,42 @@ impl Workspace {
             params.push(("value".to_string(), v.to_string()));
         }
 
-        ch.execute(
-            &format!(
-                "INSERT INTO {}.alert_events \
+        self.ch
+            .execute(
+                &format!(
+                    "INSERT INTO {}.alert_events \
                  SELECT {{id:UUID}}, {{alert:String}}, now64(3), {{state:String}}, \
                         {value_expr}, {{message:String}}, {{delivered:UInt8}}, \
                         {{error:String}}",
-                self.quoted()
-            ),
-            QueryOptions {
-                params,
-                ..self.write_opts()
-            },
-        )
-        .await
+                    self.quoted()
+                ),
+                QueryOptions {
+                    params,
+                    ..self.write_opts()
+                },
+            )
+            .await
     }
 
     /// A tombstone, not a DELETE: the row stays and a later version marks it
     /// gone, which is how a ReplacingMergeTree forgets something.
-    pub async fn remove(&self, ch: &Client, id: &str) -> Result<()> {
-        self.ensure(ch).await?;
+    pub async fn remove(&self, id: &str) -> Result<()> {
+        self.ensure().await?;
         let sql = format!(
             "INSERT INTO {}.saved_queries \
              SELECT {{id:UUID}}, '', '', '', now64(3), now64(3), 1, \
                     toUnixTimestamp64Milli(now64(3))",
             self.quoted()
         );
-        ch.execute(
-            &sql,
-            QueryOptions {
-                params: vec![("id".into(), id.to_string())],
-                ..self.write_opts()
-            },
-        )
-        .await
+        self.ch
+            .execute(
+                &sql,
+                QueryOptions {
+                    params: vec![("id".into(), id.to_string())],
+                    ..self.write_opts()
+                },
+            )
+            .await
     }
 }
 
@@ -3478,18 +3529,31 @@ impl Workspace {
 mod tests {
     use super::*;
 
+    /// A workspace over a connection to nowhere.
+    ///
+    /// Both properties below are decided before anything is sent — the quoting
+    /// of a name and the settings on a statement — so the address is never
+    /// dialled. Naming a port nothing listens on keeps it that way: a test that
+    /// silently started talking to a real server would be worse than one that
+    /// fails.
+    fn workspace(database: &str) -> Workspace {
+        let mut config = <crate::config::Config as clap::Parser>::parse_from(["flint"]);
+        config.clickhouse_url = Some("http://127.0.0.1:1".into());
+        Workspace::new(database.into(), Client::new(&config).expect("client"))
+    }
+
     #[test]
     fn quotes_a_database_name_that_needs_it() {
-        assert_eq!(Workspace::new("flint".into()).quoted(), "`flint`");
-        assert_eq!(Workspace::new("odd name".into()).quoted(), "`odd name`");
-        assert_eq!(Workspace::new("a`b".into()).quoted(), "`a\\`b`");
+        assert_eq!(workspace("flint").quoted(), "`flint`");
+        assert_eq!(workspace("odd name").quoted(), "`odd name`");
+        assert_eq!(workspace("a`b").quoted(), "`a\\`b`");
     }
 
     #[test]
     fn workspace_writes_are_allowed_even_in_read_only_mode() {
         // FLINT_READONLY is a promise about the user's tables, not about Flint's
         // own; without this a read-only deployment could never save anything.
-        assert!(Workspace::new("flint".into()).write_opts().allow_write);
+        assert!(workspace("flint").write_opts().allow_write);
     }
 
     // ── Where a revision sits in its life ───────────────────────────────
