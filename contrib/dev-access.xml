@@ -1,0 +1,34 @@
+<?xml version="1.0"?>
+<!--
+  SQL-driven access control, for the development ClickHouse.
+
+  A stock ClickHouse cannot create a user from SQL. `default` holds no
+  `access_management`, so `CREATE USER` comes back as code 497 — and the users,
+  roles and quotas that do exist come from `users.xml`, where SQL cannot touch
+  them either (`system.users.storage` says `users_xml` for those and
+  `local_directory` for the ones SQL made). That is not a bug to work around: it
+  is the fact the Access page has to report, and Flint's own writes have to
+  refuse against.
+
+  But none of it can be *seen* — no quota, no settings profile, no row policy
+  exists on a default server, so a page that reads them shows three empty
+  sections whether it works or not. So this file grants `default` the access
+  management it needs, and `contrib/dev-access.sql` creates one of each to look
+  at.
+
+  `flint_probe` deliberately does not get it: a user who cannot manage access is
+  the other half of what the page has to render.
+
+  Applied from `users.d` on boot. To add it to a running container:
+
+      docker cp contrib/dev-access.xml \
+        flint-dev-clickhouse-1:/etc/clickhouse-server/users.d/flint-access.xml
+-->
+<clickhouse>
+  <users>
+    <default>
+      <access_management>1</access_management>
+      <named_collection_control>1</named_collection_control>
+    </default>
+  </users>
+</clickhouse>

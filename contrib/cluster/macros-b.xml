@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<!-- Which replica this container is. A ReplicatedMergeTree path uses these, so
+     the two servers can share a table definition and still know themselves. -->
+<clickhouse>
+  <macros>
+    <shard>1</shard>
+    <replica>ch-b</replica>
+  </macros>
+</clickhouse>

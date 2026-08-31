@@ -15,8 +15,14 @@ export default defineConfig({
     // Reachable from outside the container when running under compose.
     host: true,
     proxy: {
+      // Anchored and with the trailing slash, because Vite matches a proxy key
+      // as a *prefix*: plain `/api` also captures `/apis`, which is one of the
+      // app's own routes. That page was being handed to the backend, which
+      // answered with the built index.html — so it 404'd on assets that only
+      // exist after a production build, and the repo's own browser check has
+      // been failing on it.
       // Under compose the API is a sibling service, not localhost.
-      '/api': {
+      '^/api/': {
         target: process.env.FLINT_API_PROXY ?? 'http://localhost:8080',
         changeOrigin: true,
       },

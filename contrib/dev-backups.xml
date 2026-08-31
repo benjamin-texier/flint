@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<!--
+  A destination for BACKUP, for the development ClickHouse.
+
+  `BACKUP … TO Disk(…)` is refused outright unless `backups.allowed_disk` names a
+  disk — the server will not write a backup to somewhere nobody sanctioned. Which
+  is right, and it means a default ClickHouse cannot exercise the feature at all:
+  `system.backups` stays empty, `RESTORE` has nothing to read, and a backup screen
+  developed against that has never seen a backup.
+
+  A local disk inside the container. Not how anybody should back up in earnest —
+  a backup on the same machine as the data is not a backup — and exactly right for
+  seeing the machinery work.
+-->
+<clickhouse>
+  <storage_configuration>
+    <disks>
+      <backups>
+        <type>local</type>
+        <path>/var/lib/clickhouse/backups/</path>
+      </backups>
+    </disks>
+  </storage_configuration>
+  <backups>
+    <allowed_disk>backups</allowed_disk>
+  </backups>
+</clickhouse>

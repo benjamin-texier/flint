@@ -55,6 +55,7 @@ check-live: ## Run the live checks against a running Flint (BASE=url)
 	contrib/smoke.sh $(BASE)
 	node contrib/api-check.mjs $(BASE)
 	node contrib/browser-check.mjs $(BASE)
+	cd $(FRONTEND) && FLINT_LIVE=$(BASE) $(PNPM) vitest run src/lib/timeline.live
 
 # Vite serves the frontend and proxies /api to the binary, so both run.
 dev: ## Run the API and the Vite dev server together
@@ -62,6 +63,14 @@ dev: ## Run the API and the Vite dev server together
 
 run: ## Run the API on its own (serves frontend/dist)
 	$(CARGO) run
+
+# `env -u` rather than an empty assignment, and both variables rather than one.
+# The dev shell exports FLINT_CLICKHOUSE_URL and FLINT_WORKSPACE_DATABASE through
+# direnv, so `cargo run` here is always pinned — and a workspace without a server
+# is a manifest `Config::check` refuses, which would look like a broken target
+# rather than the one setting that had to go with the other.
+run-unpinned: ## Run the API with no server in its manifest (the browser names one)
+	env -u FLINT_CLICKHOUSE_URL -u FLINT_WORKSPACE_DATABASE $(CARGO) run
 
 clean: ## Remove build output
 	$(CARGO) clean

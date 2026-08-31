@@ -1,0 +1,57 @@
+# A real cluster, for the work that cannot be verified without one.
+#
+# Not part of the default development environment: `docker-compose.dev.yml` is a
+# single ClickHouse, which is what most people run and what Flint must be honest
+# about. But four things on the Clusters page — a populated `system.replicas`, a
+# replication queue with entries in it, `SYSTEM SYNC REPLICA`, and a stopped
+# fetch — do not exist on one node, and a control nobody has watched work is
+# worse than no control.
+#
+#   docker compose -f docker-compose.cluster.yml up -d
+#   FLINT_CLICKHOUSE_URL=http://localhost:8231 \
+#     FLINT_CLICKHOUSE_USER=default FLINT_CLICKHOUSE_PASSWORD=flint \
+#     FLINT_TIER=admin cargo run
+#   docker compose -f docker-compose.cluster.yml down -v
+#
+# One Keeper and two replicas of one shard. Deliberately small: the failures worth
+# looking at — a replica falling behind, a fetch that will not come — need two
+# nodes, not six.
+
+name: flint-cluster
+
+services:
+  keeper:
+    image: clickhouse/clickhouse-keeper:latest
+    volumes:
+      - ./contrib/cluster/keeper.xml:/etc/clickhouse-keeper/keeper_config.xml:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'clickhouse-keeper-client -q ruok 2>/dev/null | grep -q imok']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  ch-a:
+    image: clickhouse/clickhouse-server:latest
+    environment:
+      CLICKHOUSE_PASSWORD: flint
+    volumes:
+      - ./contrib/cluster/server-common.xml:/etc/clickhouse-server/config.d/00-cluster.xml:ro
+      - ./contrib/cluster/macros-a.xml:/etc/clickhouse-server/config.d/01-macros.xml:ro
+    ports:
+      - '${FLINT_CLUSTER_A_PORT:-8231}:8123'
+    depends_on:
+      keeper:
+        condition: service_healthy
+
+  ch-b:
+    image: clickhouse/clickhouse-server:latest
+    environment:
+      CLICKHOUSE_PASSWORD: flint
+    volumes:
+      - ./contrib/cluster/server-common.xml:/etc/clickhouse-server/config.d/00-cluster.xml:ro
+      - ./contrib/cluster/macros-b.xml:/etc/clickhouse-server/config.d/01-macros.xml:ro
+    ports:
+      - '${FLINT_CLUSTER_B_PORT:-8232}:8123'
+    depends_on:
+      keeper:
+        condition: service_healthy

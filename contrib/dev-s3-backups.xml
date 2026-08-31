@@ -1,0 +1,48 @@
+<?xml version="1.0"?>
+<!--
+  An S3 disk to back up to, for the development ClickHouse.
+
+  This is the interesting half of "S3 destinations": it needs **no code in
+  Flint**. `BACKUP … TO S3(url, key, secret)` puts the credentials in the
+  statement — which ClickHouse records in `query_log` and Flint would record in
+  its own job table — where a named disk puts them in the server's configuration,
+  which is where they belong. So Flint keeps naming a disk, `FLINT_BACKUP_DISK`
+  points at this one, and nothing secret ever passes through Flint.
+
+  What S3 *does* change is the archive format. `zip` is refused outright:
+
+      Code: 36. Zip archive format is not supported for S3 backups because zip
+      requires seeking which S3 does not support efficiently. Use tar.gz or
+      other tar-based formats instead.
+
+  `.tar`, `.tar.gz` and `.tzst` all work, and a name with no extension writes a
+  *directory* of many objects rather than one archive. That is the part Flint has
+  to know, and it is why the suggested file name depends on where it is going.
+
+  Mounted by `docker-compose.s3.yml` and not by the base compose, because
+  ClickHouse **will not start** without the endpoint this names — it exits with
+  `Code: 499 … Not found address of host: s3 (DNS_ERROR)`. So it comes up only
+  with the MinIO that answers it:
+
+      docker compose -f docker-compose.dev.yml -f docker-compose.s3.yml up -d
+
+  The credentials are worthless on purpose.
+-->
+<clickhouse>
+  <storage_configuration>
+    <disks>
+      <s3backup>
+        <type>s3</type>
+        <endpoint>http://s3:9000/backups/flint/</endpoint>
+        <access_key_id>flintkey</access_key_id>
+        <secret_access_key>flintsecret</secret_access_key>
+      </s3backup>
+    </disks>
+  </storage_configuration>
+  <backups>
+    <!-- Both, so a deployment can be moved from one to the other without
+         editing two files. -->
+    <allowed_disk>backups</allowed_disk>
+    <allowed_disk>s3backup</allowed_disk>
+  </backups>
+</clickhouse>

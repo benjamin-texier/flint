@@ -28,6 +28,39 @@ services:
     volumes:
       # The official image applies everything in this directory on first boot.
       - ./contrib/demo-schema.sql:/docker-entrypoint-initdb.d/10-demo-schema.sql:ro
+      # A second user, granted almost nothing. Flint has a lot of behaviour that
+      # only appears when it is refused — `Reach` telling a missing table from a
+      # missing grant, every diagnostic naming the grant it needs — and none of
+      # it is reachable while signed in as an account allowed everything.
+      - ./contrib/dev-users.xml:/etc/clickhouse-server/users.d/flint-probe.xml:ro
+      # A cluster on paper: `system.clusters` is configuration, so this gives the
+      # Clusters page a real ring — two shards, a local replica, and one endpoint
+      # that is not there — without needing a Keeper or a second server.
+      - ./contrib/dev-cluster.xml:/etc/clickhouse-server/config.d/flint-cluster.xml:ro
+      # A destination for BACKUP. Without one the server refuses the statement
+      # outright, `system.backups` stays empty, and a backup screen developed
+      # against that has never seen a backup.
+      - ./contrib/dev-backups.xml:/etc/clickhouse-server/config.d/flint-backups.xml:ro
+      # A second volume, so tiering can be seen at all. `MOVE PARTITION TO
+      # VOLUME` was left out of Flint on the grounds that this server had one
+      # disk; this is the fixture that removed the excuse.
+      - ./contrib/dev-storage.xml:/etc/clickhouse-server/config.d/flint-storage.xml:ro
+      # SQL-driven access control, which a stock server does not allow: without
+      # it `CREATE USER` is code 497 and no quota, profile or row policy can
+      # exist to look at. `contrib/dev-access.sql` then creates one of each.
+      - ./contrib/dev-access.xml:/etc/clickhouse-server/users.d/flint-access.xml:ro
+      - ./contrib/dev-access.sql:/docker-entrypoint-initdb.d/20-dev-access.sql:ro
+      # Three dictionaries in the three states worth looking at. A stock server
+      # has none, so the page that reads them shows an empty table whether it
+      # works or not — and the state it exists for cannot be reasoned about
+      # without producing it.
+      - ./contrib/dev-dictionaries.sql:/docker-entrypoint-initdb.d/30-dev-dictionaries.sql:ro
+      # A workload, so the projection advisor has a query log to read. It reads
+      # `system.query_log` and nothing else, so on a server nobody has queried
+      # its correct answer — "nothing has touched this table" — is the same
+      # empty panel a broken advisor would show. Numbered last: every statement
+      # in it queries the tables the schema script creates and fills.
+      - ./contrib/dev-workload.sql:/docker-entrypoint-initdb.d/40-dev-workload.sql:ro
       - clickhouse-data:/var/lib/clickhouse
     ports:
       - '${FLINT_DEV_CLICKHOUSE_PORT:-8125}:8123'
@@ -57,6 +90,14 @@ services:
       FLINT_CLICKHOUSE_URL: http://clickhouse:8123
       FLINT_CLICKHOUSE_PASSWORD: flint
       FLINT_CLICKHOUSE_DATABASE: analytics
+      # Somewhere for Flint to keep its own things. Without it the dev stack runs
+      # stateless, which is a supported mode and the wrong default here: five of
+      # Data's sections — Home, Dashboards, Alerts, Reports, APIs — are then
+      # absent from the bar, so the half of the product that keeps anything is
+      # never once seen while it is being built. Same reasoning as the
+      # dictionaries and the backup disk below: a state you cannot produce is a
+      # state nobody reasons about.
+      FLINT_WORKSPACE_DATABASE: flint
       # Writes are allowed in development: you want to be able to try them.
       FLINT_READONLY: 'false'
       # The dev server is a different origin, so the API has to allow it.

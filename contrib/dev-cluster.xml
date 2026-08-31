@@ -1,0 +1,54 @@
+<?xml version="1.0"?>
+<!--
+  A cluster definition for the development ClickHouse.
+
+  `system.clusters` is pure configuration — it needs no Keeper and no replicated
+  table — so this is enough to give the Clusters page a real ring to draw. Which
+  matters, because a topology view developed against a single node has never
+  actually rendered a node: shards across, replicas down, the local one marked,
+  and an unreachable one carrying its error count are four states that a
+  one-server fixture cannot produce.
+
+  Two shards, and the second one deliberately points at a host that does not
+  exist. That is the state worth being able to see: a ring where one endpoint is
+  gone, which is what an operator opens this page for.
+
+  Applied by the official image from `config.d` on boot. To add it to a container
+  that is already running, without recreating it:
+
+      docker cp contrib/dev-cluster.xml \
+        flint-dev-clickhouse-1:/etc/clickhouse-server/config.d/flint-cluster.xml
+
+  ClickHouse watches that directory and picks the file up within seconds.
+-->
+<clickhouse>
+  <remote_servers>
+    <demo>
+      <shard>
+        <internal_replication>true</internal_replication>
+        <replica>
+          <!-- This container, under the name its own network gives it: the row
+               `system.clusters` marks `is_local`. -->
+          <host>localhost</host>
+          <port>9000</port>
+        </replica>
+        <replica>
+          <!-- A standby that is not running. Two replicas both resolving to this
+               same container would have the page say "this server" twice in one
+               shard — true, and a configuration nobody would write. -->
+          <host>ch-standby</host>
+          <port>9000</port>
+        </replica>
+      </shard>
+      <shard>
+        <internal_replication>true</internal_replication>
+        <replica>
+          <!-- Deliberately not there. The page should say so rather than drawing
+               it like the others. -->
+          <host>ch-that-went-away</host>
+          <port>9000</port>
+        </replica>
+      </shard>
+    </demo>
+  </remote_servers>
+</clickhouse>

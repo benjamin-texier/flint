@@ -43,9 +43,14 @@ RUN touch src/main.rs && cargo build --release --locked
 FROM gcr.io/distroless/cc-debian12
 COPY --from=backend /app/target/release/flint /usr/local/bin/flint
 
+# No endpoint on purpose. The image used to carry `http://localhost:8123`, which
+# inside a container is the container itself and therefore an address that could
+# never work — a default that only ever produced a Flint pointed at nothing.
+# Unset, `docker run -p 8080:8080 flint` starts unpinned and opens on a form
+# asking where to connect, which is the same amount of typing and a working
+# Flint at the end of it. Pass FLINT_CLICKHOUSE_URL to pin it.
 ENV FLINT_HOST=0.0.0.0 \
-    FLINT_PORT=8080 \
-    FLINT_CLICKHOUSE_URL=http://localhost:8123
+    FLINT_PORT=8080
 EXPOSE 8080
 USER nonroot
 ENTRYPOINT ["/usr/local/bin/flint"]

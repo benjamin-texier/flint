@@ -1,0 +1,65 @@
+<?xml version="1.0"?>
+<!--
+  A second volume, so tiering can be seen.
+  
+  `ALTER TABLE … MOVE PARTITION TO VOLUME` was left out of Flint on the grounds
+  that this server had one disk, and a control for moving data between volumes
+  that has never moved any is not a control worth shipping. This is the fixture
+  that removes the excuse: a `cold` disk and a `tiered` policy with two volumes,
+  so a partition can actually be moved and watched arrive.
+  
+  Note what a stock server looks like without it. `system.disks` can hold disks
+  that belong to no policy — the backup disk does — and a disk in no policy can
+  never hold a part, which is a fact worth reading off the page rather than
+  discovering by trying to move something there.
+  
+  Applied from `config.d` on boot. To add it to a running container:
+  
+      docker cp contrib/dev-storage.xml \
+        flint-dev-clickhouse-1:/etc/clickhouse-server/config.d/flint-storage.xml
+  
+  A new disk needs a restart: unlike users, storage configuration is not
+  hot-reloaded in full.
+-->
+<clickhouse>
+  <storage_configuration>
+    <disks>
+      <cold>
+        <path>/var/lib/clickhouse/cold/</path>
+      </cold>
+    </disks>
+    <policies>
+      <tiered>
+        <volumes>
+          <hot>
+            <disk>default</disk>
+            <!-- Small on purpose: a part over this size is written straight to
+                 the next volume, which is the behaviour worth being able to
+                 demonstrate on a development machine. -->
+            <max_data_part_size_bytes>1048576</max_data_part_size_bytes>
+          </hot>
+          <cold>
+            <disk>cold</disk>
+          </cold>
+        </volumes>
+        <!-- Move data down when the hot volume is over 80% full. -->
+        <move_factor>0.2</move_factor>
+      </tiered>
+    </policies>
+  </storage_configuration>
+</clickhouse>
+<!--
+  A table on the tiered policy, to move partitions of:
+
+      CREATE TABLE analytics.tiered_probe (d Date, v UInt32)
+        ENGINE = MergeTree PARTITION BY toYYYYMM(d) ORDER BY d
+        SETTINGS storage_policy = 'tiered';
+      INSERT INTO analytics.tiered_probe SELECT toDate('2026-01-15'), number FROM numbers(200);
+      INSERT INTO analytics.tiered_probe SELECT toDate('2026-02-15'), number FROM numbers(200);
+
+  What that fixture demonstrates, twice measured: the hot volume's free ratio on
+  a development machine is 0.197 against a move factor of 0.2, so the server
+  drains it continuously. A partition moved onto it — by hand or through Flint —
+  is back on `cold` within ten seconds. The page says so before offering the
+  control, which is the whole reason the control was worth building here.
+-->

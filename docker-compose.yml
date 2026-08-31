@@ -21,6 +21,8 @@ services:
     environment:
       # `host.docker.internal` resolves to the host through the extra_hosts
       # entry below; inside the container `localhost` is the container itself.
+      # Set it empty — `FLINT_CLICKHOUSE_URL=` in `.env` — to start unpinned
+      # instead, and name the server from the browser.
       FLINT_CLICKHOUSE_URL: ${FLINT_CLICKHOUSE_URL:-http://host.docker.internal:8123}
       FLINT_CLICKHOUSE_USER: ${FLINT_CLICKHOUSE_USER:-default}
       FLINT_CLICKHOUSE_PASSWORD: ${FLINT_CLICKHOUSE_PASSWORD:-}

@@ -16,8 +16,19 @@
  * left armed after a failed check is worse than no check.
  */
 const BASE = process.argv[2] ?? 'http://localhost:8096'
+/** Credentials, where this Flint signs people in.
+ *
+ *  This file predates `FLINT_AUTH`, so for a while it simply could not run
+ *  against a deployment that required one — the half of Flint other people's
+ *  scripts depend on was uncheckable on exactly the deployments that have
+ *  users. Publishing needs a session; calling an endpoint still needs only its
+ *  token, which is the distinction the whole published face rests on. */
+const USER = process.argv[3] ?? process.env.FLINT_USER
+const PASSWORD = process.argv[4] ?? process.env.FLINT_PASSWORD ?? ''
 const SLUG = 'flint-api-check'
 const ZOO = 'flint-type-check'
+const LEAK = 'flint-leak-check'
+const ZONE = 'flint-zone-check'
 
 /** 500 rows with one of everything a filter can meet: a wide integer, a string,
  *  a timestamp, a column that can be null, and one that is not a scalar. */
@@ -96,6 +107,9 @@ function assertEqual(got, want, why) {
 }
 
 let token = ''
+/** The type endpoint's token, kept from the moment it was minted — the list
+ *  does not carry it and never will again, because it is hashed at rest. */
+let zooHeaders = null
 
 async function call(query, { as = 'json', headers = {} } = {}) {
   const response = await fetch(`${BASE}/api/data/${SLUG}${query ? `?${query}` : ''}`, {
@@ -118,11 +132,60 @@ function safeJson(text) {
   }
 }
 
+/** Headers for a request made *as a person* — publishing, listing, deleting.
+ *  Empty where this Flint signs nobody in. */
+let session = {}
+
+async function signIn() {
+  const asked = await (await fetch(`${BASE}/api/session`)).json()
+  if (!asked.required) return
+  if (!USER) {
+    console.error(
+      'this Flint requires a sign-in, and publishing the endpoint this check needs is\n' +
+        'something only a person can do. Pass credentials:\n' +
+        `  node contrib/api-check.mjs ${BASE} <user> <password>`,
+    )
+    process.exit(2)
+  }
+  const response = await fetch(`${BASE}/api/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user: USER, password: PASSWORD, bearer: true }),
+  })
+  if (!response.ok) {
+    console.error(`sign-in refused: ${(await response.text()).slice(0, 200)}`)
+    process.exit(2)
+  }
+  const body = await response.json()
+  session = { Authorization: `Bearer ${body.bearer}` }
+  console.log(`signed in as ${body.user}`)
+}
+
 async function main() {
+  // Published endpoints live in a workspace, and a workspace lives in a server
+  // named at boot. An unpinned Flint has neither, so this whole file is about
+  // something that cannot exist there. Said here rather than left to the publish
+  // below, whose failure message is advice that would make things worse:
+  // FLINT_WORKSPACE_DATABASE on an unpinned Flint stops it booting.
+  //
+  // `=== false` rather than `!config.pinned`, because a Flint that predates the
+  // field sends nothing and must keep taking the path it always took.
+  const config = await (await fetch(`${BASE}/api/config`)).json()
+  if (config.pinned === false) {
+    console.error(
+      'this Flint is unpinned: it has no server of its own, so it has no workspace and\n' +
+        'publishes nothing. There are no endpoints here for this check to exercise.\n' +
+        'Pin one with FLINT_CLICKHOUSE_URL and give it FLINT_WORKSPACE_DATABASE.',
+    )
+    process.exit(2)
+  }
+
+  await signIn()
+
   // ── Publish the endpoint this whole file is about ─────────────────────
   const created = await fetch(`${BASE}/api/published`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...session },
     body: JSON.stringify({
       name: 'Flint API check',
       slug: SLUG,
@@ -143,8 +206,12 @@ async function main() {
     )
     process.exit(2)
   }
-  const mine = (await created.json()).find((e) => e.slug === SLUG)
-  token = mine.token
+  // The save answers with the list *and* the token, once: a published token is
+  // hashed on its way into the workspace, so this is the only moment anything —
+  // this check included — can read it.
+  const saved = await created.json()
+  token = saved.minted
+  assert(token, 'the save did not hand back a token, and there is no other way to get one')
 
   console.log(`Flint at ${BASE}, calling /api/data/${SLUG}`)
 
@@ -166,6 +233,59 @@ async function main() {
     assertEqual(headers.get('x-flint-returned'), '3', 'X-Flint-Returned')
     assertEqual(headers.get('x-flint-has-more'), 'true', 'X-Flint-Has-More')
     assert(headers.get('link')?.includes('rel="next"'), 'a Link to the next page')
+  })
+
+  await check('an endpoint says whose days it cut, and a caller cannot move them', async () => {
+    // Its own endpoint rather than the shared one, and the reason is a finding
+    // in itself: a zone moves how a *caller's date filter* is read, so putting
+    // one on the endpoint this whole file uses turned `ts=lt.2023-11-15` from
+    // 500 rows into 0. Both numbers were right — the fixture was not.
+    const made = await fetch(`${BASE}/api/published`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...session },
+      body: JSON.stringify({
+        name: 'Flint zone check',
+        slug: ZONE,
+        sql: 'SELECT toDateTime(1700000000) AS ts, 1 AS n',
+        database: '',
+        defaults: '{}',
+        public: false,
+        enabled: true,
+        max_rows: 5,
+        timezone: 'Pacific/Auckland',
+      }),
+    })
+    assert(made.ok, `could not publish the zone endpoint: HTTP ${made.status}`)
+    const zoneToken = (await made.json()).minted
+    const headers = { 'X-Flint-Token': zoneToken }
+    const response = await fetch(`${BASE}/api/data/${ZONE}?limit=2`, { headers })
+    const body = await response.json()
+
+    // Both faces, because they fail differently: a CSV caller has no envelope
+    // to read, and a JSON caller keeps the answer long after reading the
+    // document that would otherwise have told them.
+    assertEqual(body.timezone, 'Pacific/Auckland', 'the envelope names the zone')
+    assertEqual(
+      response.headers.get('x-flint-timezone'),
+      'Pacific/Auckland',
+      'X-Flint-Timezone',
+    )
+    assert(
+      response.headers.get('access-control-expose-headers')?.includes('x-flint-timezone'),
+      'a cross-origin caller may read it',
+    )
+
+    // The endpoint's, never the caller's: two people asking one address must
+    // be shown the same days or neither can reconcile a figure with the other.
+    const asked = await fetch(`${BASE}/api/data/${ZONE}?limit=2&timezone=eq.UTC`, { headers })
+    assertEqual(asked.status, 400, 'a caller naming a zone is refused, not obeyed')
+
+    // The document has to say it, because a caller writing a date filter is
+    // choosing a midnight whether they know it or not.
+    const doc = await (await fetch(`${BASE}/api/data/${ZONE}/openapi.json`, { headers })).json()
+    const said = Object.values(doc.paths)[0].get.description
+    assert(/Pacific\/Auckland/.test(said), `the document names the zone: ${said}`)
+    assert(/filter/i.test(said), `and says date filters are read in it: ${said}`)
   })
 
   await check('a page bigger than the endpoint serves is capped, and says so', async () => {
@@ -370,7 +490,11 @@ async function main() {
   })
 
   await check('every endpoint is in one document too', async () => {
-    const doc = await (await fetch(`${BASE}/api/published/openapi.json`)).json()
+    // The index is guarded the way the endpoint *list* is, not the way one
+    // endpoint is: no single token can speak for all of them.
+    const doc = await (await fetch(`${BASE}/api/published/openapi.json`, {
+      headers: session,
+    })).json()
     assert(doc.paths[`/api/data/${SLUG}`], 'this endpoint is in it')
     for (const reference of references(doc)) {
       let at = doc
@@ -386,7 +510,7 @@ async function main() {
   await check('every column is the type the document says it is', async () => {
     const made = await fetch(`${BASE}/api/published`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...session },
       body: JSON.stringify({
         name: 'Flint type check',
         slug: ZOO,
@@ -399,9 +523,10 @@ async function main() {
       }),
     })
     assert(made.ok, `could not publish the type endpoint: HTTP ${made.status}`)
-    const zoo = (await made.json()).find((e) => e.slug === ZOO)
-
-    const headers = { 'X-Flint-Token': zoo.token }
+    const zooToken = (await made.json()).minted
+    assert(zooToken, 'the type endpoint was saved without handing back a token')
+    const headers = { 'X-Flint-Token': zooToken }
+    zooHeaders = headers
     const answer = await (await fetch(`${BASE}/api/data/${ZOO}`, { headers })).json()
     const doc = await (await fetch(`${BASE}/api/data/${ZOO}/openapi.json`, { headers })).json()
     const row = answer.rows[0]
@@ -433,9 +558,10 @@ async function main() {
   await check('the schema page agrees with the document about the types', async () => {
     // Two readers of the same `DESCRIBE`; if they ever disagree, one of them is
     // showing somebody a type their data does not have.
-    const zoo = (await (await fetch(`${BASE}/api/published`)).json()).find((e) => e.slug === ZOO)
-    if (!zoo) throw new Error('the type endpoint is not there')
-    const headers = { 'X-Flint-Token': zoo.token }
+    // The token from when it was published: the list does not carry it any
+    // more, and that is the point of hashing it.
+    if (!zooHeaders) throw new Error('the type endpoint was never published')
+    const headers = zooHeaders
     const schema = await (await fetch(`${BASE}/api/data/${ZOO}/schema`, { headers })).json()
     const doc = await (await fetch(`${BASE}/api/data/${ZOO}/openapi.json`, { headers })).json()
     const properties = doc.components.schemas.Row.properties
@@ -451,6 +577,50 @@ async function main() {
   })
 
   // ── The door ──────────────────────────────────────────────────────────
+
+  await check('an endpoint with an end says so where a caller will look', async () => {
+    // The README promises every endpoint documents itself. An endpoint that
+    // stops answering on a date does not announce it anywhere else, and once it
+    // has, the caller gets the same 404 a wrong address gives.
+    const doc = await (await fetch(`${BASE}/api/data/${SLUG}/openapi.json`, {
+      headers: { 'X-Flint-Token': token },
+    })).json()
+    const said = Object.values(doc.paths)[0].get.description
+    assert(!said.includes('stops answering'), `this one has no end: ${said}`)
+
+    const schema = await (await fetch(`${BASE}/api/data/${SLUG}/schema`, {
+      headers: { 'X-Flint-Token': token },
+    })).json()
+    assert(!('expires_at' in schema), 'an endpoint with no end carries no expiry')
+  })
+
+  await check('a broken statement is not handed back to whoever called it', async () => {
+    // `without_statement` is what stops a caller reading the author's SQL out
+    // of an error — and for a while it did not, because ClickHouse writes
+    // `in scope` lowercase for an unknown table and the marker list only knew
+    // the capitalised one.
+    const made = await fetch(`${BASE}/api/published`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...session },
+      body: JSON.stringify({
+        name: 'Flint leak check',
+        slug: LEAK,
+        sql: 'SELECT secret_value FROM a_table_that_is_not_there',
+        database: '',
+        defaults: '{}',
+        public: true,
+        enabled: true,
+        max_rows: 1,
+      }),
+    })
+    assert(made.ok, `could not publish the leak endpoint: HTTP ${made.status}`)
+
+    const answer = await (await fetch(`${BASE}/api/data/${LEAK}`)).json()
+    const message = answer?.error?.message ?? ''
+    assert(message.includes('a_table_that_is_not_there'), `named the table: ${message}`)
+    assert(!/select/i.test(message), `handed back the statement: ${message}`)
+    assert(!message.includes('secret_value'), `handed back a column: ${message}`)
+  })
 
   await check('the token is the door, and a wrong address is a closed one', async () => {
     const none = await fetch(`${BASE}/api/data/${SLUG}?limit=1`)
@@ -501,13 +671,23 @@ function references(value, out = []) {
 /** Whatever happened, the throwaway endpoint does not outlive the check. */
 async function cleanUp() {
   try {
-    const all = await (await fetch(`${BASE}/api/published`)).json()
-    for (const slug of [SLUG, ZOO]) {
+    const all = await (await fetch(`${BASE}/api/published`, { headers: session })).json()
+    for (const slug of [SLUG, ZOO, LEAK, ZONE]) {
       const mine = all.find((e) => e.slug === slug)
-      if (mine) await fetch(`${BASE}/api/published/${mine.id}`, { method: 'DELETE' })
+      if (mine) {
+        await fetch(`${BASE}/api/published/${mine.id}`, { method: 'DELETE', headers: session })
+      }
     }
-  } catch {
-    console.log(`  --   could not remove ${SLUG} / ${ZOO}; remove them by hand`)
+  } catch (e) {
+    // Counted, not just printed. A run that ends "26 checks passed" while an
+    // endpoint it made is still armed has told the reader the opposite of what
+    // happened — and this file's whole promise is that the throwaway endpoint
+    // does not outlive the check.
+    failures += 1
+    console.log(
+      `  FAIL could not remove ${SLUG} / ${ZOO} / ${LEAK} / ${ZONE}, so they are still published: ` +
+        `${String(e).slice(0, 160)}`,
+    )
   }
 }
 

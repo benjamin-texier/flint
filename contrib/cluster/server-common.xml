@@ -1,0 +1,37 @@
+<?xml version="1.0"?>
+<!-- Shared by both replicas: where Keeper is, and the ring they belong to.
+     One shard, two replicas — the smallest configuration in which a replication
+     queue, a `SYSTEM SYNC REPLICA` and a stopped fetch all mean something. -->
+<clickhouse>
+  <zookeeper>
+    <node><host>keeper</host><port>9181</port></node>
+  </zookeeper>
+  <remote_servers>
+    <demo>
+      <shard>
+        <internal_replication>true</internal_replication>
+        <!-- The credentials are part of the ring, not of the client. A cluster
+             definition without them reads fine and *selects* fine — the failure
+             only appears on a write, where the node forwarding the insert
+             authenticates against its peer as `default` with no password and is
+             told `Authentication failed`. Which reads like Flint's problem and
+             is the fixture's. -->
+        <replica>
+          <host>ch-a</host><port>9000</port>
+          <user>default</user><password>flint</password>
+        </replica>
+        <replica>
+          <host>ch-b</host><port>9000</port>
+          <user>default</user><password>flint</password>
+        </replica>
+      </shard>
+    </demo>
+  </remote_servers>
+  <!-- So `ON CLUSTER` statements are visible in system.distributed_ddl_queue
+       long enough to be read. -->
+  <distributed_ddl>
+    <path>/clickhouse/task_queue/ddl</path>
+    <cleanup_delay_period>3600</cleanup_delay_period>
+    <task_max_lifetime>86400</task_max_lifetime>
+  </distributed_ddl>
+</clickhouse>

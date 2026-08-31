@@ -1,0 +1,65 @@
+<?xml version="1.0"?>
+<!--
+  A second, narrowly-granted user for the development ClickHouse.
+
+  Flint has a lot of machinery for being refused: `Reach` tells a missing table
+  from a missing grant, every diagnostic section reports its own obstacle and the
+  grant that would fix it, and with `FLINT_AUTH=true` every statement runs as
+  whoever signed in. None of that can be verified against a `default` account
+  that is allowed everything — the only way to see it work is to sign in as
+  somebody who is not.
+
+  So: `flint_probe` / `probe`, holding `SELECT` on `analytics` and nothing else.
+  No `system.*`, which is the interesting part — it is what makes the
+  diagnostics, the profile and the access page say what they need rather than
+  what they found.
+
+  Applied by the official image from `users.d` on boot. To add it to a container
+  that is already running, without recreating it:
+
+      docker cp contrib/dev-users.xml \
+        flint-dev-clickhouse-1:/etc/clickhouse-server/users.d/flint-probe.xml
+
+  ClickHouse watches that directory and picks the file up within seconds.
+-->
+<clickhouse>
+  <users>
+    <flint_probe>
+      <!-- A development fixture, in a file that is in the repository: the
+           password is deliberately worthless. -->
+      <password>probe</password>
+      <networks>
+        <ip>::/0</ip>
+      </networks>
+      <!-- The `default` profile, deliberately, not `readonly`. A `readonly=1`
+           profile forbids *changing settings*, and Flint attaches a timeout and
+           a row cap to every statement — so such a user cannot use Flint at
+           all, and the sign-in screen now says so rather than blaming the
+           password. Grants are how a modern ClickHouse user is made read-only,
+           and the grant below is the whole of this one's access. -->
+      <profile>default</profile>
+      <quota>default</quota>
+      <grants>
+        <query>GRANT SELECT ON analytics.*</query>
+      </grants>
+    </flint_probe>
+
+    <!-- The account that can hand out roles, so delegation can be exercised at
+         all.
+
+         `run_as` on a published endpoint only narrows anything where Flint's
+         own account gets its read access *through roles* — ClickHouse's
+         effective privileges are the union of the active roles and everything
+         granted to the user directly, and a direct grant cannot be switched
+         off. Flint checks that and refuses when it does not hold, which is the
+         whole feature; but the refusal was the only half a developer could see
+         here, because roles need `ACCESS MANAGEMENT` and nobody had it.
+
+         The `default` user gets it, and `contrib/dev-roles.sql` builds the rest
+         on top: two roles and an account holding nothing but them. -->
+    <default>
+      <access_management>1</access_management>
+      <named_collection_control>1</named_collection_control>
+    </default>
+  </users>
+</clickhouse>
