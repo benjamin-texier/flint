@@ -10,6 +10,9 @@
 
 export interface User {
   name: string
+  /** Where the account is defined. `local_directory` is what SQL writes;
+   *  `users_xml` is a file, and SQL cannot touch it. */
+  storage: string
   auth_type: string[]
   host_ip: string[]
   host_names: string[]
@@ -50,6 +53,10 @@ export interface AccessReport {
   roles: Role[]
   grants: Grant[]
   role_grants: RoleGrant[]
+  /** Every privilege this server understands, for the grant form to offer.
+   *  Empty where `system.privileges` could not be read, in which case the form
+   *  takes free text and lets ClickHouse do the refusing. */
+  privileges: string[]
 }
 
 /** `analytics.*`, `system.query_log`, `everything`. */

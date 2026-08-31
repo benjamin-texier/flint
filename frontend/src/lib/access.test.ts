@@ -16,6 +16,7 @@ import {
 
 const user = (over: Partial<User> = {}): User => ({
   name: 'reader',
+  storage: 'local_directory',
   auth_type: ['sha256_password'],
   host_ip: ['::/0'],
   host_names: [],
@@ -166,6 +167,7 @@ describe('lookups', () => {
     roles: [{ name: 'analyst', storage: '' }],
     grants: [grant(), grant({ is_user: false, grantee: 'analyst', database: 'system' })],
     role_grants: [roleGrant(), roleGrant({ grantee: 'other' })],
+    privileges: [],
   }
 
   it('keeps a user and a role of the same name apart', () => {

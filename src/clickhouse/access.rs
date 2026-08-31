@@ -9,6 +9,11 @@
 //! Every one of these tables is privileged: a read-only role usually cannot
 //! read `system.users` at all. That is a configuration fact and is reported as
 //! one, with the grant it would need.
+//!
+//! Read-only *here*. `rbac.rs` writes, and the refusal this module's first
+//! version described as permanent turned out to be about identity rather than
+//! about danger: with `FLINT_AUTH` there is a who to attribute a grant to, and
+//! the server decides whether that who may grant it.
 
 use serde::{Deserialize, Serialize};
 
@@ -18,6 +23,13 @@ use crate::error::Result;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
     pub name: String,
+    /// Where this account is defined, which decides whether SQL may change it:
+    /// `local_directory` is what SQL writes, `users_xml` is a file the container
+    /// mounts, and `ldap` is somebody else's directory. Read for users as well
+    /// as roles because every write against a read-only storage comes back as
+    /// code 495, and a button that always fails is worse than no button.
+    #[serde(default)]
+    pub storage: String,
     /// An array: recent ClickHouse lets one user hold several authentication
     /// methods, and `no_password` among them is the fact worth seeing.
     #[serde(default)]
@@ -81,6 +93,14 @@ pub struct AccessReport {
     pub roles: Vec<Role>,
     pub grants: Vec<Grant>,
     pub role_grants: Vec<RoleGrant>,
+    /// Every privilege this server understands, for the grant form to offer.
+    ///
+    /// Read rather than hardcoded, and read *here* rather than from its own
+    /// endpoint: it is needed exactly where the grants are shown, it costs one
+    /// query, and a list that comes from the server cannot drift from the
+    /// server. Empty where `system.privileges` could not be read, in which case
+    /// the form takes free text and lets ClickHouse do the refusing.
+    pub privileges: Vec<String>,
 }
 
 fn unavailable(reason: String) -> AccessReport {
@@ -91,6 +111,7 @@ fn unavailable(reason: String) -> AccessReport {
         roles: Vec::new(),
         grants: Vec::new(),
         role_grants: Vec::new(),
+        privileges: Vec::new(),
     }
 }
 
@@ -105,7 +126,13 @@ pub async fn access(ch: &Client) -> Result<AccessReport> {
                     .into(),
             ))
         }
-        Reach::Absent => return Ok(unavailable("this server has no system.users".into())),
+        // `Unconfigured` is about a missing Keeper, which access control does
+        // not need. Folded in rather than given a sentence of its own: if this
+        // server ever answers it here, "no system.users" is still the useful
+        // half of the truth.
+        Reach::Absent | Reach::Unconfigured => {
+            return Ok(unavailable("this server has no system.users".into()))
+        }
     }
 
     let valid_until = ch.col_or("users", "valid_until", "[]").await?;
@@ -114,6 +141,7 @@ pub async fn access(ch: &Client) -> Result<AccessReport> {
     let users: Vec<User> = ch
         .rows(&format!(
             "SELECT name                                 AS name, \
+                    storage                              AS storage, \
                     auth_type                            AS auth_type, \
                     host_ip                              AS host_ip, \
                     host_names                           AS host_names, \
@@ -165,6 +193,16 @@ pub async fn access(ch: &Client) -> Result<AccessReport> {
     )
     .await?;
 
+    #[derive(Deserialize)]
+    struct PrivilegeRow {
+        privilege: String,
+    }
+    let privileges: Vec<PrivilegeRow> = optional(
+        ch,
+        "SELECT privilege AS privilege FROM system.privileges ORDER BY privilege LIMIT 1000",
+    )
+    .await?;
+
     Ok(AccessReport {
         available: true,
         reason: None,
@@ -172,6 +210,7 @@ pub async fn access(ch: &Client) -> Result<AccessReport> {
         roles,
         grants,
         role_grants,
+        privileges: privileges.into_iter().map(|r| r.privilege).collect(),
     })
 }
 

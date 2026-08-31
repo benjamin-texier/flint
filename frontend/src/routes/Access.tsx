@@ -12,7 +12,11 @@ import {
   type AccessReport,
   type Note,
 } from '../lib/access'
+import { Create, Manage } from '../components/AccessActions'
+import { LimitsView } from '../components/Limits'
 import { EmptyNote, ErrorNote, Loading } from '../components/Note'
+import { granteeOfRole, granteeOfUser } from '../lib/rbac'
+import { allows } from '../lib/spaces'
 
 /** Infrastructure — Access. */
 export function AccessPage() {
@@ -25,6 +29,7 @@ export function AccessPage() {
         </div>
       </header>
       <AccessView />
+      <LimitsView />
     </div>
   )
 }
@@ -35,20 +40,29 @@ export function AccessPage() {
  *  password is a diagnostic; changing that is a decision that belongs in a
  *  statement somebody wrote on purpose. */
 export function AccessView() {
+  const config = useQuery({ queryKey: ['config'], queryFn: () => api.config() })
   const report = useQuery({
     queryKey: ['access'],
     queryFn: () => api.access(),
     staleTime: 30_000,
   })
+  /* Changing access is `admin`, which the tier enum's own doc already named it
+     as belonging to. Not because a grant destroys data — it does not — but
+     because it is the only write that hands somebody *else* every other one.
+     Hidden rather than offered and refused: a control that fails at click time
+     is worse than one that was never there. */
+  const may = allows(config.data?.tier, 'admin')
 
   return (
     <section className="diag">
       <header className="diag__head">
         <h2 className="diag__title">Users, roles and grants</h2>
         <p className="diag__sub">
-          Read-only. Flint will point out that somebody can connect without a password, or that a
-          role nobody holds is still carrying grants — it will not change any of it.
+          {may
+            ? 'Flint points out that somebody can connect without a password, or that a role nobody holds is still carrying grants — and at this tier it can change them. Every statement runs as whoever is signed in, so the server refuses what that account may not do.'
+            : 'Read-only at this tier. Flint will point out that somebody can connect without a password, or that a role nobody holds is still carrying grants — it will not change any of it.'}
         </p>
+        {may ? <Create /> : null}
       </header>
 
       {report.isPending ? <Loading label="Reading access control" /> : null}
@@ -58,12 +72,12 @@ export function AccessView() {
         <EmptyNote title="Not visible to this user">{report.data.reason}</EmptyNote>
       ) : null}
 
-      {report.data?.available ? <Body report={report.data} /> : null}
+      {report.data?.available ? <Body report={report.data} may={may} /> : null}
     </section>
   )
 }
 
-function Body({ report }: { report: AccessReport }) {
+function Body({ report, may }: { report: AccessReport; may: boolean }) {
   return (
     <>
       <h3 className="acc__group">
@@ -83,6 +97,9 @@ function Body({ report }: { report: AccessReport }) {
                   <Flagged note={note} key={i} />
                 ))}
               </div>
+              {may ? (
+                <Manage subject={granteeOfUser(user)} storage={user.storage} report={report} />
+              ) : null}
               {roles.length ? (
                 <p className="acc__line">
                   <span className="label">ROLES</span>
@@ -149,6 +166,9 @@ function Body({ report }: { report: AccessReport }) {
                   <Flagged note={note} key={i} />
                 ))}
               </div>
+              {may ? (
+                <Manage subject={granteeOfRole(role)} storage={role.storage} report={report} />
+              ) : null}
               {grants.length ? (
                 <table className="tbl acc__grants">
                   <thead>
