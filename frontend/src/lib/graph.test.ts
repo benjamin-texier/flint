@@ -221,32 +221,76 @@ describe('focusSubgraph', () => {
   )
 
   it('keeps one hop in both directions', () => {
-    const { graph: f, hidden } = focusSubgraph(g, 'analytics.mid', 1)
+    const { graph: f, hidden } = focusSubgraph(g, ['analytics.mid'], 1)
     expect(f.nodes.map((n) => n.name).sort()).toEqual(['mid', 'sink', 'src'])
     expect(hidden).toBe(2)
   })
 
   it('reaches further with more hops', () => {
-    const { graph: f } = focusSubgraph(g, 'analytics.src', 2)
+    const { graph: f } = focusSubgraph(g, ['analytics.src'], 2)
     expect(f.nodes.map((n) => n.name).sort()).toEqual(['mid', 'sink', 'src'])
   })
 
   it('keeps only edges with both ends in view', () => {
-    const { graph: f } = focusSubgraph(g, 'analytics.src', 1)
+    const { graph: f } = focusSubgraph(g, ['analytics.src'], 1)
     expect(f.edges).toHaveLength(1)
     expect(f.nodes.map((n) => n.name).sort()).toEqual(['mid', 'src'])
   })
 
-  it('returns nothing for a root that is not in the graph', () => {
-    const { graph: f, hidden } = focusSubgraph(g, 'analytics.ghost', 2)
+  it('returns nothing when none of the roots is in the graph', () => {
+    const { graph: f, hidden } = focusSubgraph(g, ['analytics.ghost'], 2)
     expect(f.nodes).toHaveLength(0)
     expect(hidden).toBe(5)
+  })
+
+  // A link outlives the schema it was written against. Emptying the diagram
+  // because one of three names has since been dropped throws away the answer to
+  // the part of the question that still has one.
+  it('draws the roots it recognises and ignores the ones it does not', () => {
+    const { graph: f } = focusSubgraph(g, ['analytics.ghost', 'analytics.mid'], 1)
+    expect(f.nodes.map((n) => n.name).sort()).toEqual(['mid', 'sink', 'src'])
+  })
+
+  // The point of the whole thing: two centres, and what comes back is both
+  // neighbourhoods in one picture.
+  it('draws every centre it is given', () => {
+    const { graph: f, hidden } = focusSubgraph(g, ['analytics.src', 'analytics.other'], 1)
+    expect(f.nodes.map((n) => n.name).sort()).toEqual(['lonely', 'mid', 'other', 'src'])
+    expect(hidden).toBe(1)
+  })
+
+  // Two centres one hop apart do not double-count the ground between them —
+  // and the pair is drawn joined, because the edge has both ends in view. Two
+  // centres with nothing between them come back as two islands, which is the
+  // honest answer rather than a failure.
+  it('joins overlapping neighbourhoods and leaves unrelated ones apart', () => {
+    const joined = focusSubgraph(g, ['analytics.src', 'analytics.sink'], 1).graph
+    expect(joined.nodes.map((n) => n.name).sort()).toEqual(['mid', 'sink', 'src'])
+    expect(joined.edges).toHaveLength(2)
+
+    const apart = focusSubgraph(g, ['analytics.src', 'analytics.other'], 0).graph
+    expect(apart.nodes.map((n) => n.name).sort()).toEqual(['other', 'src'])
+    expect(apart.edges).toHaveLength(0)
+  })
+
+  // Reached once and capped once, whichever centre got there first. Walking
+  // each centre separately and merging would cap the hub twice, keep two
+  // different eights, and make the diagram depend on the order the boxes were
+  // ticked in.
+  it('caps a shared node once, however many centres reach it', () => {
+    const names = ['hub', 'peer', ...Array.from({ length: 20 }, (_, i) => `v${i}`)]
+    const wide = graph(names, [
+      edge('peer', 'hub'),
+      ...names.slice(2).map((v) => edge('hub', v)),
+    ])
+    const { capped } = focusSubgraph(wide, ['analytics.hub', 'analytics.peer'], 1)
+    expect(capped.filter((c) => c.id === 'analytics.hub')).toHaveLength(1)
   })
 
   it('caps a wide fan-out and reports what it dropped', () => {
     const names = ['hub', ...Array.from({ length: 20 }, (_, i) => `v${i}`)]
     const wide = graph(names, names.slice(1).map((v) => edge('hub', v)))
-    const { graph: f, capped } = focusSubgraph(wide, 'analytics.hub', 1)
+    const { graph: f, capped } = focusSubgraph(wide, ['analytics.hub'], 1)
     // 8 neighbours plus the hub itself.
     expect(f.nodes).toHaveLength(9)
     expect(capped).toEqual([{ id: 'analytics.hub', hidden: 12 }])
@@ -277,9 +321,9 @@ describe('focusSubgraph', () => {
         ...Array.from({ length: 12 }, (_, i) => edge('hub', `t${i}`)),
       ],
     }
-    expect(focusSubgraph(wide, 'analytics.hub', 1).graph.nodes).toHaveLength(3)
+    expect(focusSubgraph(wide, ['analytics.hub'], 1).graph.nodes).toHaveLength(3)
     expect(
-      focusSubgraph(many, 'analytics.hub', 1).graph.nodes.map((n) => n.name),
+      focusSubgraph(many, ['analytics.hub'], 1).graph.nodes.map((n) => n.name),
     ).toContain('big')
   })
 })

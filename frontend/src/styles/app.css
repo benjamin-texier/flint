@@ -13762,3 +13762,90 @@ button.acol__val:hover {
 .dbproj__whole {
   color: var(--warning);
 }
+
+/* -- Several centres ---------------------------------------------------
+   Ticking objects in the inventory draws the diagram around all of them at
+   once. Two surfaces, one fact: a chip per centre in the focus bar, and the
+   tick that put it there in the table below. */
+
+/* A centre, named, with its own way out. Built on `.chip` so it reads as the
+   same object as the filter chips elsewhere, then given the focus bar's
+   vocabulary — the bar sits on the canvas and everything on it is chalk. */
+.chip--drop {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-right: 5px;
+  padding: 1px 5px 1px 8px;
+  border-color: var(--line);
+  background: var(--slab);
+  font-family: var(--font-data);
+  font-size: inherit;
+  color: var(--chalk);
+  transition: border-color var(--motion-fast), background var(--motion-fast);
+}
+.chip--drop:hover {
+  border-color: var(--accent);
+  background: var(--accent-weak);
+}
+.chip--drop:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.chip__name {
+  max-width: 30ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Sized to be hittable without turning the chip into a button with a label:
+   the whole chip removes the centre, and the cross says which way it goes. */
+.chip__x {
+  font-size: 14px;
+  line-height: 1;
+  color: var(--chalk-faint);
+}
+.chip--drop:hover .chip__x {
+  color: var(--chalk);
+}
+
+.panel__count-rest {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+/* The tick column. Narrow enough that it costs the names beside it nothing,
+   and it only exists while there is a diagram above for it to act on. */
+.tbl__pick {
+  width: 28px;
+  padding-right: 0;
+  text-align: center;
+}
+
+.pick {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.pick:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* A ticked row, twice over: a wash across it and a solid edge at its start.
+   The wash alone is not enough at the width this table runs to — by the Share
+   column at the far right there is nothing left to compare the tint against —
+   and the edge alone is invisible past the first screenful of names. Checked
+   against the share bar, which is the one figure on the row read by length
+   rather than by value: `--bar` over `--accent-weak` stays legible, so the
+   wash may cross it. */
+.tbl tr.is-picked > td {
+  background: var(--accent-weak);
+}
+.tbl tr.is-picked > td:first-child {
+  box-shadow: inset 2px 0 0 var(--accent);
+}

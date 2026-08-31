@@ -113,6 +113,32 @@ const READING_MEANING: Record<Reading, string> = {
 
 /** The database, opened on its schema. The diagram is the point: you should be
  *  able to see how the data moves before reading a single row. */
+/** The chosen centres, as they travel in `?around=`.
+ *
+ *  Full `database.name` ids rather than bare names, which costs the address a
+ *  repeated `default.` and buys it the one thing a shortened form cannot have.
+ *  ClickHouse allows a dot in an object's name and this diagram reaches into
+ *  other databases — an edge into `staging` draws the object at the far end of
+ *  it — so `staging.events` shortened is a string that could be either an
+ *  object called `staging.events` here or `events` over there, and a link that
+ *  sometimes centres on the wrong object is worse than a long one.
+ *
+ *  Blanks are dropped and duplicates collapsed, because a hand-edited address
+ *  is a thing people do. */
+function readCentres(raw: string | null): string[] {
+  if (!raw) return []
+  return [...new Set(raw.split(',').map((s) => s.trim()).filter(Boolean))]
+}
+
+/** Add or remove one centre, keeping the order they were picked in.
+ *
+ *  Order matters to the reader and to nothing else: the focus bar lists them,
+ *  and a list that reshuffles when you add a fourth is a list you have to read
+ *  again from the start. */
+function toggleCentre(chosen: string[], id: string): string[] {
+  return chosen.includes(id) ? chosen.filter((c) => c !== id) : [...chosen, id]
+}
+
 export function DatabasePage({ database }: { database: string }) {
   /* The reading lives in the URL, so a particular view of a database is a link
      you can send to somebody — the same rule the object page's tabs follow. The
@@ -135,6 +161,20 @@ export function DatabasePage({ database }: { database: string }) {
     const updated = new URLSearchParams(params)
     if (next === '') updated.delete('like')
     else updated.set('like', next)
+    setParams(updated, { replace: true })
+  }
+  /* Which objects the diagram is drawn around. In the URL like everything else
+     about this view, and for the strongest version of the reason: "the corner
+     of `default` where these three tables live" is the single most useful thing
+     on this page to be able to send somebody, and until now it was the one
+     thing about it that a link could not carry. Empty stays unwritten, so the
+     plain address still means what it always meant — the diagram picks its own
+     centre. */
+  const around = useMemo(() => readCentres(params.get('around')), [params])
+  const setAround = (next: string[]) => {
+    const updated = new URLSearchParams(params)
+    if (next.length === 0) updated.delete('around')
+    else updated.set('around', next.join(','))
     setParams(updated, { replace: true })
   }
   const tables = useQuery({ queryKey: ['tables', database], queryFn: () => api.tables(database) })
@@ -244,9 +284,11 @@ export function DatabasePage({ database }: { database: string }) {
         <p className="eyebrow">Database</p>
         <div className="page__titlerow">
           <h1 className="page__title page__title--hero">{database}</h1>
-          <Link className="btn" to={`/query?database=${encodeURIComponent(database)}`}>
-            Query this database
-          </Link>
+          <div className="page__actions">
+            <Link className="btn" to={`/query?database=${encodeURIComponent(database)}`}>
+              Query this database
+            </Link>
+          </div>
         </div>
         {/* A database engine that points somewhere else — `PostgreSQL`,
             `MySQL`, `S3` — makes every table under it a table on another
@@ -343,6 +385,8 @@ export function DatabasePage({ database }: { database: string }) {
             graph={graph.data}
             database={database}
             onSelect={setPeek}
+            chosen={around}
+            onChosen={setAround}
             traffic={
               traffic.data?.available ? trafficIndex(traffic.data.traffic) : undefined
             }
@@ -377,7 +421,15 @@ export function DatabasePage({ database }: { database: string }) {
       {reading === 'flow' && peek ? (
         <TablePeek node={peek} database={database} onClose={() => setPeek(null)} />
       ) : reading === 'review' || reading === 'keys' ? null : (
-        <ObjectTable database={database} list={list} />
+        <ObjectTable
+          database={database}
+          list={list}
+          /* Only under the diagram. The ticks pick what the diagram is drawn
+             around, and under the partition grid or the treemap they would be
+             a control with nothing above it to act on. */
+          chosen={reading === 'flow' ? around : undefined}
+          onToggle={(id) => setAround(toggleCentre(around, id))}
+        />
       )}
     </article>
   )
@@ -394,6 +446,8 @@ function SchemaView({
   report,
   flowReason,
   onSelect,
+  chosen,
+  onChosen,
 }: {
   graph: SchemaGraph
   database: string
@@ -406,6 +460,16 @@ function SchemaView({
   /** Passed straight through to the canvas: the page below the diagram shows
    *  what is inside whatever is selected. */
   onSelect?: (node: GraphNode | null) => void
+  /** The objects somebody has explicitly asked to see the diagram drawn
+   *  around, ticked in the inventory below it or picked here. Empty is the
+   *  ordinary case and means "you choose" — which is the behaviour this page
+   *  has always had.
+   *
+   *  Held by the page and written to the address rather than kept here, so the
+   *  ticks in the table and the boxes on the canvas are two views of one fact
+   *  rather than two facts that have to be kept in step. */
+  chosen: string[]
+  onChosen: (next: string[]) => void
 }) {
   /* Fixed to the whole diagram, not the slice drawn: a scale that moves when
      you focus or filter makes a quiet object look busy. */
@@ -414,27 +478,58 @@ function SchemaView({
     [traffic, graph.nodes],
   )
   const large = graph.nodes.length > FULL_GRAPH_LIMIT
-  const [root, setRoot] = useState<string | undefined>(() => defaultFocus(graph))
   const [depth, setDepth] = useState(2)
   const [showAll, setShowAll] = useState(false)
-  /** The object whose whole path is being drawn, if any. Independent of the
-   *  neighbourhood machinery: a schema small enough to draw whole still has
-   *  paths through it worth isolating. */
-  const [lineage, setLineage] = useState<string | null>(null)
+  /** The object whose whole path is being drawn, if any, and the choice of
+   *  centres it was asked for over.
+   *
+   *  The second half is what keeps two controls from contradicting each other.
+   *  A path outranks a neighbourhood while it is open — it is the more specific
+   *  question — so a tick made in the inventory below would otherwise change a
+   *  diagram nobody could see change, and read as a broken checkbox. Recording
+   *  which selection the path was opened against makes the path lapse the
+   *  moment that selection moves, which is exactly when it stopped being the
+   *  question. Kept as a snapshot rather than synchronised by an effect: there
+   *  is one fact here, not two that have to be nudged into agreement. */
+  const [lineage, setLineage] = useState<{ id: string; under: string } | null>(null)
+
+  /** Where the diagram opens when nobody has said. Only ever a fallback now —
+   *  the moment something is ticked, the ticks are the centre. */
+  const auto = useMemo(() => defaultFocus(graph), [graph])
+  const roots = chosen.length > 0 ? chosen : auto ? [auto] : []
+  const picked = chosen.join(',')
+  const path = lineage && lineage.under === picked ? lineage.id : null
+  /* An explicit choice narrows the diagram whatever its size, and that is the
+     point rather than a side effect: below the full-graph limit this page had
+     no way to narrow at all, and "just these two and what they touch" is a
+     question people have about a twenty-object schema as much as a
+     hundred-and-seventy-object one. It also outranks `Show all`, because a tick
+     made while looking at everything can only mean "not everything". */
+  const narrowed = chosen.length > 0 || (large && !showAll)
 
   const focused = useMemo(() => {
-    if (lineage) return lineageSubgraph(graph, lineage)
-    return large && !showAll && root ? focusSubgraph(graph, root, depth) : null
-  }, [graph, large, showAll, root, depth, lineage])
+    if (path) return lineageSubgraph(graph, path)
+    return narrowed && roots.length > 0 ? focusSubgraph(graph, roots, depth) : null
+    // `roots` is rebuilt every render; its contents are what matter.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [graph, narrowed, roots.join(','), depth, path])
 
   const shown = focused?.graph ?? graph
-  const rootName = root?.slice(root.indexOf('.') + 1)
-  const lineageName = lineage?.slice(lineage.indexOf('.') + 1)
+  const bare = (id: string) => id.slice(id.indexOf('.') + 1)
+  const autoName = auto ? bare(auto) : undefined
+  const pathName = path ? bare(path) : undefined
+  /* The chosen ids as the names a reader picked them by. An id that matches
+     nothing is dropped rather than drawn as a chip nobody can act on — a link
+     can outlive the table it names, and `focusSubgraph` has already left it out
+     of the diagram. */
+  const chips = chosen
+    .map((id) => graph.nodes.find((n) => nodeId(n) === id))
+    .filter((n): n is GraphNode => n !== undefined)
 
-  const bar = lineage ? (
+  const bar = path ? (
     <div className="focusbar">
       <span className="focusbar__text">
-        The whole path through <span className="focusbar__name">{lineageName}</span>
+        The whole path through <span className="focusbar__name">{pathName}</span>
         <span className="focusbar__rest">
           {' '}
           · {shown.nodes.length} of {graph.nodes.length} objects — everything these rows come
@@ -444,6 +539,59 @@ function SchemaView({
       <span className="panel__spacer" />
       <button className="btn" onClick={() => setLineage(null)}>
         {large ? 'Back to a neighbourhood' : 'Back to the whole schema'}
+      </button>
+    </div>
+  ) : chips.length > 0 ? (
+    /* An explicit choice: the objects are named, each can be dropped from the
+       diagram where it is named, and the count of what is left out reads the
+       same as it does around one centre. No picker here — the inventory below
+       is the picker, and a second one in the bar would be a control that does
+       the same job in a place where you cannot see what you are choosing
+       from. */
+    <div className="focusbar">
+      <span className="focusbar__text">
+        Around{' '}
+        {chips.map((n) => (
+          <button
+            key={nodeId(n)}
+            className="chip chip--drop"
+            title={`Stop drawing the diagram around ${n.name}`}
+            onClick={() => onChosen(chosen.filter((c) => c !== nodeId(n)))}
+          >
+            <span className="chip__name">{n.name}</span>
+            <span className="chip__x" aria-hidden="true">
+              ×
+            </span>
+            <span className="sr-only">— remove from the centre of the diagram</span>
+          </button>
+        ))}
+        {focused && focused.hidden > 0 ? (
+          <span className="focusbar__rest"> · {focused.hidden} more not drawn</span>
+        ) : null}
+      </span>
+      <div className="segmented" role="group" aria-label="Hops from the centre">
+        {[1, 2, 3].map((d) => (
+          <button
+            key={d}
+            className={`segmented__item${depth === d ? ' is-on' : ''}`}
+            aria-pressed={depth === d}
+            title={`${d} hop${d > 1 ? 's' : ''} out from each of them`}
+            onClick={() => setDepth(d)}
+          >
+            {d}
+          </button>
+        ))}
+      </div>
+      <span className="focusbar__unit label">hops out</span>
+      <span className="panel__spacer" />
+      <button
+        className="btn"
+        onClick={() => {
+          onChosen([])
+          setShowAll(true)
+        }}
+      >
+        Show all {graph.nodes.length}
       </button>
     </div>
   ) : large ? (
@@ -467,13 +615,13 @@ function SchemaView({
           <span className="focusbar__text">
             Around{' '}
             <span className="focusbar__centre">
-              <span className="focusbar__name">{rootName}</span>
+              <span className="focusbar__name">{autoName}</span>
               <span className="focusbar__caret" aria-hidden="true" />
               <select
                 className="focusbar__select"
                 aria-label="Object at the centre of the diagram"
-                value={root ?? ''}
-                onChange={(e) => setRoot(e.target.value)}
+                value={auto ?? ''}
+                onChange={(e) => onChosen([e.target.value])}
               >
                 {[...graph.nodes]
                   .sort((a, b) => b.bytes - a.bytes || a.name.localeCompare(b.name))
@@ -519,9 +667,13 @@ function SchemaView({
       graph={shown}
       // Whose path this is, when it is a path. The bar names it; on a diagram
       // of eleven boxes the name is not enough to find it in.
-      here={lineage ?? undefined}
-      onCentre={large && !showAll && !lineage ? setRoot : undefined}
-      onLineage={setLineage}
+      here={path ?? undefined}
+      // Centring from the canvas replaces the choice rather than adding to it:
+      // the gesture is "show me around this one", and a click that quietly made
+      // a fourth centre would be a click nobody could undo without hunting for
+      // the chip.
+      onCentre={narrowed && !path ? (id: string) => onChosen([id]) : undefined}
+      onLineage={(id: string) => setLineage({ id, under: picked })}
       onSelect={onSelect}
       bar={bar}
       traffic={traffic}
@@ -530,7 +682,7 @@ function SchemaView({
       trafficReason={trafficReason}
       report={report}
       flowReason={flowReason}
-      key={`${database}:${showAll}:${lineage ?? ''}`}
+      key={`${database}:${showAll}:${path ?? ''}`}
     />
   )
 }
@@ -581,7 +733,23 @@ function stores(kind: TableSummary['kind']): boolean {
   return kind !== 'view' && kind !== 'materialized_view'
 }
 
-function ObjectTable({ database, list }: { database: string; list: TableSummary[] }) {
+function ObjectTable({
+  database,
+  list,
+  chosen,
+  onToggle,
+}: {
+  database: string
+  list: TableSummary[]
+  /** The objects the diagram above is drawn around, or undefined when there is
+   *  no diagram above for a tick to act on. Undefined rather than an empty
+   *  array, because "nothing is ticked" and "there is nothing to tick" are
+   *  different rows: the first keeps the column, the second has none. */
+  chosen?: string[]
+  onToggle: (id: string) => void
+}) {
+  const picking = chosen !== undefined
+  const inDiagram = useMemo(() => new Set(chosen ?? []), [chosen])
   const [query, setQuery] = useState('')
   const [plumbing, setPlumbing] = useState(false)
   const [sort, setSort] = useState<Sort>({ key: 'bytes', dir: 'desc' })
@@ -646,7 +814,24 @@ function ObjectTable({ database, list }: { database: string; list: TableSummary[
             {ordered.length === list.length
               ? `${list.length} ${list.length === 1 ? 'object' : 'objects'}`
               : `${ordered.length} of ${list.length} objects`}
+            {/* Said here because a tick can be scrolled off the top of a
+                hundred-and-fifty-row table, or filtered out of it entirely, and
+                a diagram drawn around objects the reader cannot see any tick
+                for is a diagram they cannot account for. */}
+            {inDiagram.size > 0 ? (
+              <span className="panel__count-rest">
+                {' '}
+                · {inDiagram.size} in the diagram
+              </span>
+            ) : null}
           </span>
+          {/* What the column of empty boxes is for, until one of them is
+              ticked and the count above says it instead. The two never show at
+              once: an instruction still standing next to the thing it asked
+              for is an instruction that was not followed. */}
+          {picking && inDiagram.size === 0 ? (
+            <span className="panel__hint">Tick objects to draw the diagram around them</span>
+          ) : null}
           <div className="searchbox">
             <svg className="searchbox__glass" viewBox="0 0 16 16" aria-hidden="true">
               <circle cx="6.8" cy="6.8" r="4.4" fill="none" stroke="currentColor" strokeWidth="1.6" />
@@ -689,6 +874,11 @@ function ObjectTable({ database, list }: { database: string; list: TableSummary[
       <table className="tbl">
         <thead>
           <tr>
+            {picking ? (
+              <th className="tbl__pick">
+                <span className="sr-only">In the diagram</span>
+              </th>
+            ) : null}
             {head('name', 'Name')}
             {head('engine', 'Engine')}
             <th>Sorting key</th>
@@ -701,7 +891,21 @@ function ObjectTable({ database, list }: { database: string; list: TableSummary[
         </thead>
         <tbody>
           {ordered.map((t) => (
-            <tr key={t.name}>
+            <tr key={t.name} className={inDiagram.has(`${database}.${t.name}`) ? 'is-picked' : undefined}>
+              {picking ? (
+                <td className="tbl__pick">
+                  {/* A real checkbox, so it is reachable by Tab, toggled by
+                      Space and announced as checked — the diagram is driven
+                      from here and the keyboard has to be able to drive it. */}
+                  <input
+                    type="checkbox"
+                    className="pick"
+                    checked={inDiagram.has(`${database}.${t.name}`)}
+                    aria-label={`Draw the diagram around ${t.name}`}
+                    onChange={() => onToggle(`${database}.${t.name}`)}
+                  />
+                </td>
+              ) : null}
               <td className="tbl__key">
                 <Link
                   to={`/db/${encodeURIComponent(database)}/${encodeURIComponent(t.name)}`}
