@@ -5,6 +5,7 @@ mod diagnostics;
 mod explorer;
 mod jobs;
 mod query;
+mod rows;
 mod saved;
 mod session;
 mod spa;
@@ -334,6 +335,10 @@ pub fn router(state: AppState) -> Router {
             "/databases/{database}/tables/{table}/codecs",
             post(explorer::column_codecs),
         )
+        // Rows are Data: adding one changes nothing about what the table is,
+        // so it sits with the reader rather than under `/infra` with the
+        // statements that change structure.
+        .route("/rows", post(rows::insert))
         .route("/schema", get(explorer::schema))
         .route("/history", get(explorer::history))
         .route("/diagnostics/news", get(diagnostics::what_changed))

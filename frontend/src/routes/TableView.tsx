@@ -3,6 +3,7 @@ import { useQueries, useQuery } from '@tanstack/react-query'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { api, type ColumnDetail, type TableDetailResponse } from '../lib/api'
+import { allows } from '../lib/spaces'
 import { bytes, count, exact, partsLabel, ratio, shortTime } from '../lib/format'
 import { MetricLine, type Metric } from '../components/MetricLine'
 import { ShareBar, StratumBar } from '../components/StratumBar'
@@ -41,12 +42,14 @@ import { ProjectionAdvisor } from '../components/ProjectionAdvisor'
 import { SchemaReview } from '../components/SchemaReview'
 import { EmptyNote, ErrorNote, Loading } from '../components/Note'
 import { Dash } from '../components/Dash'
+import { AddRow } from '../components/AddRow'
 import { Stream } from '../components/Stream'
 import { ExternalPanel } from '../components/ExternalSource'
 
 const TABS = [
   'columns',
   'preview',
+  'add',
   'stream',
   'sources',
   'readby',
@@ -94,6 +97,8 @@ export function TableView({ database, table }: { database: string; table: string
      is not what they expected. An object that stores nothing has nothing to
      open on, so it keeps its columns. */
   const stores = Boolean(detail.data && (detail.data.total_rows || detail.data.parts_rows))
+  const config = useQuery({ queryKey: ['config'], queryFn: api.config })
+  const mayWrite = allows(config.data?.tier, 'data')
   /* And a streaming table opens on what it is doing. A `Kafka` table's preview
      is a `SELECT` that steals messages from its own consumer group — the one
      tab in this product that changes what it looks at — and its columns are a
@@ -124,6 +129,22 @@ export function TableView({ database, table }: { database: string; table: string
   const tabs: [Tab, string, number | null][] = [
     ['columns', 'Columns', t.columns.length],
     ['preview', 'Preview', null],
+    /* Rows are Data, so writing one belongs here beside reading them rather
+       than under `/infra` — nothing on this tab can change what the table *is*,
+       which is the whole of why the two-space rule permits it.
+
+       Gated on the tier, and absent rather than disabled where the deployment
+       does not allow writes: a control nobody can press, with a tooltip
+       explaining itself, is a worse answer than a tab that is not there.
+       Offered on anything the catalogue calls a table, including an empty one —
+       "has rows already" would withhold the form from precisely the table
+       somebody wants to put a first row into. An engine that refuses an insert
+       says so itself; a list of insertable engines kept here would drift. */
+    ...((t.kind === 'table' && mayWrite ? [['add', 'Add rows', null]] : []) as [
+      Tab,
+      string,
+      number | null,
+    ][]),
     /* Only for the two engines that have one, and second because for those two
        it is the tab somebody came for: a Kafka table's columns are a
        declaration, and whether anything is arriving is the question. */
@@ -281,6 +302,9 @@ export function TableView({ database, table }: { database: string; table: string
             <Impact database={database} table={table} />
             <ReadBy database={database} table={table} columns={t.columns} />
           </div>
+        ) : null}
+        {tab === 'add' ? (
+          <AddRow database={database} table={table} columns={t.columns} />
         ) : null}
         {tab === 'stream' ? <Stream database={database} table={table} /> : null}
         {tab === 'path' ? <PathTab database={database} table={table} /> : null}
