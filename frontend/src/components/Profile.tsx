@@ -119,7 +119,7 @@ export function Profile({ database, table }: { database: string; table: string }
                           scaled to its own tallest bar, which is what makes a
                           small column's shape visible at all. */}
                       <button
-                        className="tbl__head shape__open"
+                        className="tbl__head dist__open"
                         aria-expanded={open}
                         onClick={() => setShown(open ? null : c.name)}
                       >
@@ -153,7 +153,7 @@ export function Profile({ database, table }: { database: string; table: string }
                     </td>
                   </tr>
                   {open ? (
-                    <tr className="shape__row">
+                    <tr className="dist__row">
                       <td colSpan={8}>
                         <Shape database={database} table={table} column={c.name} />
                       </td>

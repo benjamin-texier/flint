@@ -20,7 +20,7 @@ import { DESTINATIONS, handoffPath, type Destination } from '../lib/handoff'
 import { clickhouseSql, flintHighlighting, flintTheme } from '../editor/setup'
 import { flintCompletion } from '../editor/complete'
 import { BuildPane } from '../editor/BuildPane'
-import { canSwitch, useTabs, type TabMode, type QueryTab } from '../editor/tabs'
+import { canSwitch, useTabs, type Switchable, type TabMode, type QueryTab } from '../editor/tabs'
 import { asResult, specToDsl } from '../lib/dsl'
 import { builtDownloadNote } from '../lib/export'
 import {
@@ -96,6 +96,13 @@ export function Editor() {
    *  bucketed column that cannot be filtered, the total that cannot be matched
    *  with `contains`. Cleared as soon as anything else happens. */
   const [refused, setRefused] = useState<string | null>(null)
+  /* What the last read of a statement into this tab's form could not carry.
+     
+     Kept per tab, because the strip that shows it belongs to one question and
+     a list left over from another tab would be a list about somebody else's
+     query. Cleared when the tab is turned back over: the statement is the
+     truth again, and nothing has been lost from it. */
+  const [carried, setCarried] = useState<{ tab: string; dropped: string[] } | null>(null)
   /** Why the last rewrite was not run for you — null when everything on screen
    *  is what the statement says. */
   const [awaiting, setAwaiting] = useState<string | null>(null)
@@ -721,7 +728,17 @@ export function Editor() {
           onChange={(next) => tabs.patch(active.id, { database: next })}
         />
 
-        <ModeSwitch tab={active} onSwitch={(next) => tabs.setMode(active.id, next)} />
+        <ModeSwitch
+          tab={active}
+          onSwitch={(next, allowed) => {
+            tabs.setMode(active.id, next, allowed.ok ? allowed.spec : undefined)
+            setCarried(
+              next === 'build' && allowed.ok && allowed.dropped?.length
+                ? { tab: active.id, dropped: allowed.dropped }
+                : null,
+            )
+          }}
+        />
 
         <div className="editor__actions">
           {active.running ? (
@@ -969,6 +986,8 @@ export function Editor() {
           limit={active.spec?.limit ?? 0}
           pending={explained.isFetching}
           error={explained.error}
+          carried={carried?.tab === active.id ? carried.dropped : null}
+          onDismissCarried={() => setCarried(null)}
         />
       ) : active.result && shape && ran ? (
         <QueryStrip
@@ -1075,11 +1094,24 @@ export function Editor() {
  *  control that is simply missing teaches nothing; one that says "the statement
  *  has been edited since the form wrote it" teaches the whole design in a
  *  sentence. */
-function ModeSwitch({ tab, onSwitch }: { tab: QueryTab; onSwitch: (mode: TabMode) => void }) {
+function ModeSwitch({
+  tab,
+  onSwitch,
+}: {
+  tab: QueryTab
+  onSwitch: (mode: TabMode, allowed: Switchable) => void
+}) {
+  /* Reading a statement is a parse, and this renders on every keystroke in the
+     editor. Once per statement, not once per character. */
+  const readings = useMemo(
+    () => ({ build: canSwitch(tab, 'build'), sql: canSwitch(tab, 'sql') }) as Record<TabMode, Switchable>,
+    [tab],
+  )
+
   return (
     <div className="segmented" role="group" aria-label="How to ask this question">
       {MODES.map(({ id, label, hint }) => {
-        const allowed = canSwitch(tab, id)
+        const allowed = readings[id]
         const on = tab.mode === id
         return (
           <button
@@ -1087,8 +1119,8 @@ function ModeSwitch({ tab, onSwitch }: { tab: QueryTab; onSwitch: (mode: TabMode
             className={`segmented__item${on ? ' is-on' : ''}`}
             aria-pressed={on}
             disabled={!allowed.ok}
-            title={allowed.ok ? hint : allowed.why}
-            onClick={() => onSwitch(id)}
+            title={allowed.ok ? (allowed.dropped?.length ? carriedTitle(allowed.dropped, hint) : hint) : allowed.why}
+            onClick={() => onSwitch(id, allowed)}
             type="button"
           >
             {label}
@@ -1097,6 +1129,15 @@ function ModeSwitch({ tab, onSwitch }: { tab: QueryTab; onSwitch: (mode: TabMode
       })}
     </div>
   )
+}
+
+/** The tooltip on a switch that will work but will not carry everything. The
+ *  count leads, because the count is what decides whether to click. */
+function carriedTitle(dropped: string[], hint: string): string {
+  const n = dropped.length
+  return `${hint} ${n} thing${n === 1 ? '' : 's'} in this statement ${
+    n === 1 ? 'has' : 'have'
+  } no place in the form and will be dropped — the switch says which.`
 }
 
 const MODES: { id: TabMode; label: string; hint: string }[] = [
@@ -1151,6 +1192,8 @@ function BuiltStrip({
   limit,
   pending,
   error,
+  carried,
+  onDismissCarried,
 }: {
   sentence: string
   sql: string
@@ -1158,6 +1201,10 @@ function BuiltStrip({
   limit: number
   pending: boolean
   error: unknown
+  /** What the statement this form was read out of said, and the form cannot.
+   *  Null when the form was not read out of anything. */
+  carried: string[] | null
+  onDismissCarried: () => void
 }) {
   const [open, setOpen] = useState(() => {
     try {
@@ -1180,6 +1227,36 @@ function BuiltStrip({
 
   return (
     <div className={`builtstrip${open ? '' : ' is-folded'}`}>
+      {/* Read out of a statement, and not all of it fitted.
+          
+          Above the sentence rather than below the SQL: the sentence is the
+          question as it now stands, and reading it without knowing what fell
+          out of it on the way in is exactly the misreading this says out loud.
+          Dismissible, because it is about a translation that already happened
+          and stops being news the moment it has been read. */}
+      {carried && carried.length > 0 ? (
+        <div className="builtstrip__carried" role="status">
+          <p className="builtstrip__carriedhead">
+            <span>
+              Read from the statement. {carried.length}{' '}
+              {carried.length === 1 ? 'thing' : 'things'} could not come with it:
+            </span>
+            <button
+              className="builtstrip__fold"
+              onClick={onDismissCarried}
+              title="Dismiss — the SQL below is what the form will send"
+              type="button"
+            >
+              Dismiss
+            </button>
+          </p>
+          <ul className="builtstrip__carriedlist">
+            {carried.map((said) => (
+              <li key={said}>{said}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       <p className="builtstrip__says">
         <span className="label">{blocked ? 'not yet a question' : 'asking'}</span>
         <span className="builtstrip__sentence">{blocked ?? sentence}</span>

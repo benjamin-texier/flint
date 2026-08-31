@@ -1000,9 +1000,13 @@
   font-size: 2.375rem;
 }
 
+/* Pushed to the far end of the row: an action set immediately after the name,
+   at the same weight, competes with it — and the name is what the reader came
+   to read. */
 .page__actions {
   display: flex;
   gap: var(--s2);
+  margin-left: auto;
 }
 
 .page__sub {
@@ -1119,8 +1123,42 @@
   padding: 0;
 }
 
+/* The one arrival on the page, and it is the figures rather than the chrome:
+   they land left to right, a beat apart, and the plate follows them. A page of
+   measurements should look like it just finished measuring. The stagger stops
+   at six because a seventh figure would still be arriving after the reader has
+   started reading — and the kill switch in the reduced-motion block flattens
+   the whole sequence to one frame for anyone who asked for that. */
 .metrics__item {
   padding: 0;
+  animation: rise var(--motion-panel) var(--ease-out) both;
+}
+.metrics__item:nth-child(1) {
+  animation-delay: 0ms;
+}
+.metrics__item:nth-child(2) {
+  animation-delay: var(--beat);
+}
+.metrics__item:nth-child(3) {
+  animation-delay: calc(var(--beat) * 2);
+}
+.metrics__item:nth-child(4) {
+  animation-delay: calc(var(--beat) * 3);
+}
+.metrics__item:nth-child(5) {
+  animation-delay: calc(var(--beat) * 4);
+}
+.metrics__item:nth-child(n + 6) {
+  animation-delay: calc(var(--beat) * 5);
+}
+
+/* Small, and the same for everything that arrives: eight pixels of travel is a
+   thing settling into place, twenty is a thing being thrown at the reader. */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
 }
 
 .metrics__value {
@@ -1130,6 +1168,24 @@
   line-height: 1.1;
   letter-spacing: -0.03em;
   color: var(--chalk);
+}
+
+/* The page's own headline line. Bigger than the title above it on purpose: the
+   name of a table is a label, and `316 M rows` is the fact. */
+.metrics--lead {
+  gap: var(--s4) var(--s7);
+  margin-top: var(--s5);
+}
+.metrics--lead .metrics__value {
+  font-size: 2.125rem;
+  letter-spacing: -0.035em;
+}
+.metrics--lead .metrics__unit {
+  margin-left: 5px;
+  font-size: 1rem;
+}
+.metrics--lead .metrics__label {
+  margin-top: 7px;
 }
 /* A figure with a verdict, in the product's own three tones. There is no fourth
    rule for "the important one": the value is already 1.5rem at 600 against a
@@ -2189,17 +2245,41 @@
   opacity: 0;
 }
 
-/* ═══ Shape strip: the clauses that decide how a table reads ═════════════ */
+/* ═══ Shape strip: the clauses that decide how a table reads ═════════════
+ * The plate under the name. Everything here is one answer to "what kind of
+ * thing is this" — the engine, the keys it is sorted and split on, what it
+ * feeds — so it is set as a spec sheet rather than as a grid of tiles: a
+ * label column of fixed width, and the expression given the whole rest of the
+ * line. Those expressions are the reason. `ORDER BY` on a real table is four
+ * function calls and ninety characters; in a 220px tile it wrapped to five
+ * ragged lines while `PARTITION BY` beside it used a third of one, and the
+ * card read as debris. One clause per row, hairline between, and a long key
+ * stays a single readable line.
+ *
+ * White rather than the sunk ground it used to sit on: at 4% apart, a
+ * `--slab-sunk` panel on `--ground` is not a surface, it is a smudge. This is
+ * the first object on the page — it gets an edge. */
 
 .shape {
   position: relative;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: var(--s5);
-  margin: var(--s6) 0 0;
-  padding: var(--s5);
-  background: var(--slab-sunk);
+  margin: var(--s5) 0 0;
+  padding: var(--s2) var(--s6) var(--s3);
+  background: var(--slab);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--k-table);
   border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-1);
+  animation: rise var(--motion-slow) var(--ease-out) both;
+  animation-delay: calc(var(--beat) * 6);
+}
+.shape--materialized_view {
+  border-left-color: var(--k-matview);
+}
+.shape--view {
+  border-left-color: var(--k-view);
+}
+.shape--dictionary {
+  border-left-color: var(--k-dictionary);
 }
 
 /* The teaching lines are the same six sentences on every table in the server.
@@ -2208,29 +2288,42 @@
    control, not one of the clauses. */
 .shape__toggle {
   position: absolute;
-  top: var(--s2);
-  right: var(--s3);
-  padding: 2px 4px;
+  top: var(--s3);
+  right: var(--s4);
+  z-index: 1;
+  padding: 2px 6px;
   border: 0;
+  border-radius: var(--radius-sm);
   background: none;
   font-size: var(--size-label);
   letter-spacing: var(--track-label);
   color: var(--chalk-faint);
   cursor: pointer;
+  transition: color var(--motion-fast) var(--ease-out), background var(--motion-fast) var(--ease-out);
 }
 .shape__toggle:hover {
+  background: var(--spark-wash);
   color: var(--spark);
 }
 
+/* Label left, expression right, explanation under the expression rather than
+   under the label — the sentence belongs to the value it explains, and read
+   down the second column the plate is a paragraph about one table. */
 .shape__item {
+  display: grid;
+  grid-template-columns: 152px minmax(0, 1fr);
+  gap: 0 var(--s5);
   min-width: 0;
+  padding: var(--s4) 0;
+  border-top: 1px solid var(--divider);
 }
-.shape__item--wide {
-  flex-basis: 100%;
+.shape__item:first-of-type {
+  border-top: 0;
 }
 
 .shape__key {
-  margin-bottom: 3px;
+  grid-column: 1;
+  padding-top: 2px;
   font-size: var(--size-label);
   font-weight: 500;
   letter-spacing: var(--track-label);
@@ -2239,20 +2332,31 @@
 }
 
 .shape__value {
+  grid-column: 2;
   margin: 0;
   font-family: var(--font-data);
   font-size: var(--size-body);
+  line-height: 1.5;
   color: var(--chalk);
   word-break: break-word;
+}
+
+/* The engine is the one fact on this plate that decides how every other line
+   reads — a ReplacingMergeTree's ORDER BY is also its identity, a Kafka
+   table's is not a key at all. It is the headline, and it is set like one. */
+.shape__item--engine .shape__value {
+  font-size: var(--size-head);
+  letter-spacing: -0.01em;
 }
 
 /* The teaching line. Sits under the expression, never over it: the expert
  * reads the value and stops, the newcomer reads one sentence more. */
 .shape__why {
-  margin: 5px 0 0;
-  max-width: 44ch;
+  grid-column: 2;
+  margin: 6px 0 0;
+  max-width: 72ch;
   font-size: var(--size-label);
-  line-height: 1.55;
+  line-height: 1.6;
   color: var(--chalk-faint);
 }
 
@@ -2260,6 +2364,26 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--s2);
+}
+
+/* Under a phone's width the label column costs more than it gives: 152px of
+   the line spent on the word `PARTITION BY` leaves the expression a column
+   narrower than the expression is. */
+@media (max-width: 720px) {
+  .shape {
+    padding-inline: var(--s4);
+  }
+  .shape__item {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .shape__key,
+  .shape__value,
+  .shape__why {
+    grid-column: 1;
+  }
+  .shape__key {
+    margin-bottom: 4px;
+  }
 }
 
 .lineage {
@@ -2741,23 +2865,31 @@ tr:hover .stratum__fill {
 .tabs {
   display: flex;
   gap: var(--s1);
-  margin-top: var(--s8);
+  margin-top: var(--s7);
   border-bottom: 1px solid var(--line);
 }
 
+/* Thirteen tabs in the muted tier read as thirteen disabled controls — the row
+   that holds everything worth opening on this page looked like the one thing on
+   it you could not touch. Rest is the dim tier, hover is full ink, and the
+   underline arrives under the pointer before the click rather than after. */
 .tabs__tab {
   display: flex;
   align-items: center;
   gap: 6px;
   padding: var(--s3) var(--s3);
   font-size: var(--size-body);
-  color: var(--chalk-faint);
+  color: var(--chalk-dim);
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
   transition: color var(--motion-fast) var(--ease-out), border-color var(--motion-fast) var(--ease-out);
 }
 .tabs__tab:hover {
-  color: var(--chalk-dim);
+  color: var(--chalk);
+  border-bottom-color: var(--line-strong);
+}
+.tabs__tab.is-active:hover {
+  border-bottom-color: var(--spark);
 }
 .tabs__tab.is-active {
   color: var(--chalk);
@@ -5765,6 +5897,51 @@ tr:hover .stratum__fill {
 .builtstrip__note {
   margin: var(--s1) 0 0;
   font-size: var(--size-label);
+}
+
+/* What a statement could not bring with it into the form.
+ *
+ * Above the sentence, because the sentence is the question as it now stands and
+ * reading it without knowing what fell out on the way in is the misreading this
+ * exists to prevent. The strip is allowed to grow for it: a list that scrolled
+ * behind the SQL would be a list saying what was left out, itself left out. */
+.builtstrip:has(.builtstrip__carried) {
+  max-height: 280px;
+}
+
+.builtstrip__carried {
+  margin: 0 0 var(--s2);
+  padding: var(--s2);
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-sm);
+  background: var(--warning-weak);
+  color: var(--warning);
+}
+
+.builtstrip__carriedhead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s2);
+  margin: 0;
+  font-size: var(--size-label);
+  line-height: 1.5;
+}
+.builtstrip__carriedhead .builtstrip__fold {
+  color: var(--warning);
+}
+.builtstrip__carriedhead .builtstrip__fold:hover {
+  color: var(--text-primary);
+}
+
+.builtstrip__carriedlist {
+  margin: var(--s1) 0 0;
+  padding-left: var(--s3);
+  font-size: var(--size-label);
+  line-height: 1.55;
+}
+.builtstrip__carriedlist li + li {
+  margin-top: var(--s1);
 }
 
 /* A gesture the form could not carry, said where the figures are. */
@@ -9007,10 +9184,13 @@ button.acol__val:hover {
  * every card carries the numbers it rests on, and the caution sits *under* the
  * DDL — last thing read before deciding. */
 
+/* The blocks of a review are not equidistant: what was measured, what it is
+   worth and what it would cost are three separate thoughts, and the sentences
+   inside each belong to each other more than to their neighbours. */
 .review {
   display: flex;
   flex-direction: column;
-  gap: var(--s4);
+  gap: var(--s5);
 }
 
 .review__head {
@@ -9025,12 +9205,14 @@ button.acol__val:hover {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--s1);
 }
 
+/* What was measured, and over how much. The pane's own title — it was set at
+   body size under a tab bar and read as the first of five equal grey lines. */
 .review__claim {
   margin: 0;
-  font-size: var(--size-body);
+  font-size: var(--size-head);
   color: var(--chalk);
 }
 
@@ -9038,13 +9220,18 @@ button.acol__val:hover {
   margin: 0;
   font-family: var(--font-data);
   font-size: var(--size-label);
+  line-height: 1.55;
   color: var(--chalk-faint);
 }
 
+/* The one line on this page somebody acts on: how many changes are worth
+   considering and what they are sitting on. It is the answer the tab was opened
+   for, so it is set as an answer rather than as another caption. */
 .review__stake {
   margin: 0;
-  font-size: var(--size-body);
-  color: var(--chalk-dim);
+  font-size: var(--size-head);
+  line-height: 1.5;
+  color: var(--chalk);
 }
 
 /* Which kinds of finding are listed. Sits in the head beside the claim it
@@ -9183,32 +9370,40 @@ button.acol__val:hover {
   background: var(--warning-weak);
 }
 
-/* The cost of a mutation, said once. */
+/* The cost of a mutation, said once — and said as part of the sentence above
+   it rather than as a block of its own, so it is pulled back out of the list's
+   spacing. */
 .review__cost {
-  margin: 0;
+  margin: calc(var(--s3) - var(--s5)) 0 0;
   max-width: 78ch;
   font-size: var(--size-label);
+  line-height: 1.5;
   color: var(--warning);
 }
 
 .review__list {
   display: flex;
   flex-direction: column;
-  gap: var(--s3);
+  gap: var(--s4);
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
+/* A finding is six things to read — the column, the evidence, the reasoning,
+   the statement, the way to measure it and the caveat — and at twelve pixels of
+   padding they were a paragraph with a border round it. This is a card someone
+   is deciding from. */
 .rfind {
   display: flex;
   flex-direction: column;
-  gap: var(--s2);
-  padding: var(--s3);
+  gap: var(--s3);
+  padding: var(--s4) var(--s5);
   border: 1px solid var(--line);
-  border-left: 2px solid var(--line-strong);
+  border-left: 3px solid var(--line-strong);
   border-radius: var(--radius);
   background: var(--slab);
+  box-shadow: var(--shadow-1);
 }
 
 /* The left edge carries the kind, so a column of cards is scannable without
@@ -9685,9 +9880,12 @@ button.acol__val:hover {
 /* The measurement, once it exists: figures first, then what they do and do not
  * license. Never a predicted saving — the ratio is measured and the projection
  * says "at that ratio" or admits it cannot. */
+/* The button sizes to its label. In a stretched column it ran the full width of
+   the card, which made one optional measurement look like the card's verdict. */
 .rmeasure {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: var(--s2);
 }
 
@@ -11056,7 +11254,7 @@ button.acol__val:hover {
    of them rather than to the table, which is what makes a small column's shape
    visible at all — and is why the figure beside them says what the full height
    is, the same contract the sparklines keep. */
-.shape__open {
+.dist__open {
   display: inline-flex;
   align-items: center;
   gap: var(--s2);
@@ -11069,23 +11267,23 @@ button.acol__val:hover {
   cursor: pointer;
 }
 
-.shape__open:hover {
+.dist__open:hover {
   color: var(--spark);
 }
 
-.shape__row > td {
+.dist__row > td {
   padding: 0 var(--s3) var(--s3);
   background: var(--slab-raised);
 }
 
-.shape {
+.dist {
   display: flex;
   flex-direction: column;
   gap: var(--s2);
   padding: var(--s3) 0 0;
 }
 
-.shape__says {
+.dist__says {
   margin: 0;
   max-width: 78ch;
   /* The panel opens inside a table cell, which sets the data face. This is
@@ -11095,7 +11293,7 @@ button.acol__val:hover {
   color: var(--chalk);
 }
 
-.shape__bars {
+.dist__bars {
   display: flex;
   align-items: flex-end;
   gap: 2px;
@@ -11105,7 +11303,7 @@ button.acol__val:hover {
   list-style: none;
 }
 
-.shape__bar {
+.dist__bar {
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
@@ -11120,7 +11318,7 @@ button.acol__val:hover {
 
 /* A bucket holding nothing draws nothing — a hairline where there are no rows
    would read as "a few", which is the one thing an empty bucket is not. */
-.shape__fill {
+.dist__fill {
   display: block;
   width: 100%;
   border-radius: 2px 2px 0 0;
@@ -11129,12 +11327,12 @@ button.acol__val:hover {
 
 /* Values get their own colour, ranges do not: a tally is a set of things and a
    histogram is one continuous quantity cut up. */
-.shape__bars--tally .shape__fill,
-.shape__bars--top .shape__fill {
+.dist__bars--tally .dist__fill,
+.dist__bars--top .dist__fill {
   background: var(--chart-2);
 }
 
-.shape__tick {
+.dist__tick {
   overflow: hidden;
   margin-top: 3px;
   font-family: var(--font-data);
@@ -11146,7 +11344,7 @@ button.acol__val:hover {
   white-space: nowrap;
 }
 
-.shape__note {
+.dist__note {
   margin: 0;
   font-family: var(--font-sans);
   font-size: var(--size-label);

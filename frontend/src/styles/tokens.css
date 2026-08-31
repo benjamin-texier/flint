@@ -360,6 +360,13 @@
   --rail-w: 264px;
   --ease-out: var(--ease);
 
+  /* Flint's own: the beat between two figures of the same line arriving. Not a
+     step on the --motion-* scale and not interchangeable with one — nothing
+     moves for this long. It is the gap between one thing starting to move and
+     the next, multiplied per item, so a line of five figures has landed well
+     inside a single --motion-slow however many there are. */
+  --beat: 45ms;
+
   /* Flint's own: the pace of the dots travelling an edge of the schema diagram,
      in pixels of diagram per second. A speed rather than a duration because the
      dots are a measurement — their *spacing* carries how much each pipeline

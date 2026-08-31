@@ -34,7 +34,7 @@ export function Shape({
   const d = found.data
   if (!d) return null
   if (!d.available) {
-    return <p className="shape__note">{d.reason ?? 'this column cannot be counted'}.</p>
+    return <p className="dist__note">{d.reason ?? 'this column cannot be counted'}.</p>
   }
 
   const shape = shapeOf(d)
@@ -44,9 +44,9 @@ export function Shape({
      height one is a chart that says nothing. The sentence is the whole answer. */
   if (shape === 'key' || shape === 'empty') {
     return (
-      <div className="shape">
-        <Sentence className="shape__says" text={says(d)} />
-        {aside ? <p className="shape__note">{aside}</p> : null}
+      <div className="dist">
+        <Sentence className="dist__says" text={says(d)} />
+        {aside ? <p className="dist__note">{aside}</p> : null}
       </div>
     )
   }
@@ -55,23 +55,23 @@ export function Shape({
   const peak = Math.max(...d.buckets.map((b) => b.rows))
 
   return (
-    <div className="shape">
-      <Sentence className="shape__says" text={says(d)} />
-      <ol className={`shape__bars shape__bars--${d.mode}`} aria-label={`${column}: ${says(d)}`}>
+    <div className="dist">
+      <Sentence className="dist__says" text={says(d)} />
+      <ol className={`dist__bars dist__bars--${d.mode}`} aria-label={`${column}: ${says(d)}`}>
         {drawn.map((b, i) => (
-          <li className="shape__bar" key={`${b.label}-${i}`}>
+          <li className="dist__bar" key={`${b.label}-${i}`}>
             {/* The figure is on the bar's title rather than beside it: sixteen
                 labelled bars is a table, and the reader came for the outline. */}
             <span
-              className="shape__fill"
+              className="dist__fill"
               style={{ height: `${Math.max(b.share * 100, b.rows > 0 ? 2 : 0)}%` }}
               title={`${b.label}: ${b.rows.toLocaleString('en-GB')} rows`}
             />
-            <span className="shape__tick">{b.label}</span>
+            <span className="dist__tick">{b.label}</span>
           </li>
         ))}
       </ol>
-      <p className="shape__note">
+      <p className="dist__note">
         {counted(d)} · tallest bar {peak.toLocaleString('en-GB')} rows
         {aside ? ` · ${aside}` : ''}
       </p>

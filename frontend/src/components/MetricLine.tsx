@@ -22,10 +22,16 @@ export interface Metric {
 }
 
 /** Headline figures as one dense typographic line, not a row of cards.
- *  Values are set in the display face; labels sit beneath in small caps. */
-export function MetricLine({ metrics }: { metrics: Metric[] }) {
+ *  Values are set in the display face; labels sit beneath in small caps.
+ *
+ *  `lead` is for the line that *is* the page's headline — an object's rows, disk
+ *  and parts under its name. The stylesheet has always claimed the numbers are
+ *  the loudest thing on the page; at the shared size, under a 30px title, they
+ *  were not. Everywhere else the line is one section among several and stays at
+ *  the size it was. */
+export function MetricLine({ metrics, lead = false }: { metrics: Metric[]; lead?: boolean }) {
   return (
-    <dl className="metrics">
+    <dl className={`metrics${lead ? ' metrics--lead' : ''}`}>
       {metrics.map((m) => (
         <div className="metrics__item" key={m.label}>
           <dd

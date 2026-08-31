@@ -1136,7 +1136,7 @@ async function columnShape(browser, colorScheme) {
     await page.waitForSelector('.tbl__note', { timeout: 30_000 })
     await page.waitForTimeout(1200)
 
-    const opener = page.locator('.shape__open').first()
+    const opener = page.locator('.dist__open').first()
     if (!(await opener.count())) {
       fail("a column's shape: no column opens one")
       await page.close()
@@ -1144,14 +1144,14 @@ async function columnShape(browser, colorScheme) {
     }
     const column = ((await opener.textContent()) ?? '').trim()
     await opener.click()
-    await page.waitForSelector('.shape__says', { timeout: 30_000 })
+    await page.waitForSelector('.dist__says', { timeout: 30_000 })
     await page.waitForTimeout(700)
 
     if ((await opener.getAttribute('aria-expanded')) !== 'true') {
       fail("a column's shape: the button does not announce that it opened")
     }
 
-    const said = ((await page.locator('.shape__says').first().textContent()) ?? '').trim()
+    const said = ((await page.locator('.dist__says').first().textContent()) ?? '').trim()
     if (said.length < 12) fail(`a column's shape: ${db}.${table}.${column} said ${JSON.stringify(said)}`)
     if (said.includes('`')) {
       fail(`a column's shape: backticks reached the page — ${JSON.stringify(said.slice(0, 60))}`)
@@ -1160,9 +1160,9 @@ async function columnShape(browser, colorScheme) {
     /* Every bar with rows behind it has height on the screen. A bucket holding
        0.4% of the tallest is in the DOM either way; only a rendered box says
        whether anybody can see it. */
-    const bars = await page.locator('.shape__bar').count()
+    const bars = await page.locator('.dist__bar').count()
     if (bars > 0) {
-      const invisible = await page.locator('.shape__fill').evaluateAll((els) =>
+      const invisible = await page.locator('.dist__fill').evaluateAll((els) =>
         els.filter((e) => {
           const title = e.getAttribute('title') ?? ''
           const rows = Number((title.split(':')[1] ?? '0').replace(/[^0-9]/g, ''))
