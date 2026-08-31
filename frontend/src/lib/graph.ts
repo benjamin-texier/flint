@@ -575,15 +575,34 @@ export interface FocusResult {
  *  eight of sixty, the eight that hold the data are the useful ones. */
 const FAN_CAP = 8
 
-/** The neighbourhood around one object: everything within `depth` hops, in
- *  either direction. */
+/** The neighbourhood around one or more objects: everything within `depth`
+ *  hops of any of them, in either direction.
+ *
+ *  Several centres rather than one because the question a reader has in front
+ *  of a 170-object schema is usually about a *pair* — "is this table anywhere
+ *  near that one", "what sits between these three" — and a diagram that can
+ *  only hold one centre answers it by making them look at two pictures and
+ *  remember the first. Drawn together, the answer is in the picture: if the
+ *  centres are related the path between them is on screen, and if they are not,
+ *  what comes back is two islands, which is also the answer.
+ *
+ *  One walk from all the roots at once, not a union of separate walks, and the
+ *  difference is the fan-out cap. Walking separately and merging would let one
+ *  node be capped twice with two different sets of eight neighbours kept, so
+ *  what got drawn would depend on the order the centres were picked in. Here
+ *  every node is reached once, capped once, and the result depends only on
+ *  which objects were chosen. */
 export function focusSubgraph(
   graph: SchemaGraph,
-  rootId: string,
+  rootIds: string[],
   depth: number,
 ): FocusResult {
   const byId = new Map(graph.nodes.map((n) => [nodeId(n), n]))
-  if (!byId.has(rootId)) {
+  // A centre that is not in this graph is skipped rather than emptying the
+  // diagram: a stale link naming an object somebody has since dropped should
+  // still draw the two that are left, and the count says how many are drawn.
+  const roots = rootIds.filter((id) => byId.has(id))
+  if (roots.length === 0) {
     return { graph: { ...graph, nodes: [], edges: [] }, hidden: graph.nodes.length, capped: [] }
   }
 
@@ -603,9 +622,9 @@ export function focusSubgraph(
     return n ? n.bytes * 1e6 + n.rows : 0
   }
 
-  const kept = new Set<string>([rootId])
+  const kept = new Set<string>(roots)
   const capped: { id: string; hidden: number }[] = []
-  let frontier = [rootId]
+  let frontier = [...roots]
 
   for (let hop = 0; hop < depth; hop += 1) {
     const next: string[] = []
