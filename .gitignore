@@ -26,3 +26,19 @@
 
 # direnv's cache for .envrc, which is itself tracked.
 .direnv/
+
+# Coverage and incremental-build output. Neither exists until somebody asks for
+# it — `vitest --coverage`, a `tsc` with `incremental` — which is exactly why
+# they are named here rather than after the first one has been committed by
+# accident.
+/frontend/coverage
+*.tsbuildinfo
+
+# Editors and desktops leave their own files in a repository and each of them
+# is one person's setting, not the project's. Listed rather than argued about:
+# whoever brings a different editor should not have to open a pull request to
+# ignore it.
+.vscode/
+.idea/
+*.swp
+.DS_Store
