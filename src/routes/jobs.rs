@@ -54,7 +54,7 @@ pub async fn list(
             "jobs": [],
         })));
     };
-    let jobs: Vec<Job> = ws.jobs(&state.ch, params.limit).await?;
+    let jobs: Vec<Job> = ws.jobs(params.limit).await?;
     Ok(Json(json!({ "available": true, "jobs": jobs })))
 }
 
@@ -131,7 +131,7 @@ pub async fn cancel(
         .as_ref()
         .expect("a runner implies a workspace");
     let job = ws
-        .job(&state.ch, &id)
+        .job(&id)
         .await?
         .ok_or_else(|| Error::NotFound(format!("there is no job `{id}`")))?;
     runner.cancel(&job, &ch).await?;

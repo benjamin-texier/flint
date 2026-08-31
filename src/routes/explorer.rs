@@ -72,6 +72,14 @@ pub async fn app_config(State(state): State<AppState>) -> Json<Value> {
         // Null when Flint is stateless, so the UI can explain why saving is off
         // rather than offering a button that fails.
         "workspace": state.config.workspace_database,
+        // Whether anything runs on a timer. A workspace used to imply this and
+        // no longer does: with FLINT_WORKSPACE_URL the workspace can be on a
+        // server of its own, and an unpinned Flint then keeps what you save
+        // while having no server to *ask* until somebody signs in. Alerts and
+        // reports are questions on a schedule, so they need both — and a
+        // section offered where nothing will ever run it is the "present and
+        // failing" state the stateless mode exists to avoid.
+        "scheduled": state.config.workspace_database.is_some() && state.config.pinned(),
         // So the alert form can say up front that a webhook will be recorded
         // but not sent, instead of leaving it to be discovered in the history.
         "alert_webhooks": state.config.alert_webhooks,

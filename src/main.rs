@@ -88,9 +88,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             tracing::info!(
                 tier = config.tier().as_str(),
                 infrastructure = config.infrastructure,
+                // "Stateless by construction" was the whole of this sentence
+                // until the workspace could be given a server of its own, and
+                // saying it to a Flint that is about to create ten tables
+                // would be the log contradicting itself four lines later.
+                // Which half is true now depends on the manifest.
                 "unpinned: FLINT_CLICKHOUSE_URL is unset, so the browser names the server at \
-                 sign-in. Stateless by construction — nothing runs on a schedule, because a \
-                 schedule has no session to borrow a server from."
+                 sign-in.{}",
+                if config.workspace_endpoint().is_some() {
+                    " The workspace has a server of its own, so what you save is still kept."
+                } else {
+                    " Stateless by construction — nothing runs on a schedule, because a schedule \
+                     has no session to borrow a server from."
+                }
             );
             // Said at boot and said loudly, because it is the one thing about
             // this mode an operator cannot see in the UI: without an allow-list,
@@ -109,17 +119,72 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    // The server Flint keeps its own tables on. Its own where the manifest
+    // names one, otherwise the one being explored — which is every deployment
+    // that existed before `FLINT_WORKSPACE_URL` did, and still the default.
+    //
+    // Probed separately when it is separate, and the reason is the whole cost
+    // of this feature: with two servers there are two ways to be down, and
+    // "workspace not ready" without an address sends an operator to look at the
+    // wrong one. Every line below names which server it means.
+    let workspace_ch = match clickhouse::Client::for_workspace(&config)? {
+        Some(client) => {
+            let endpoint = client.endpoint().to_string();
+            match clickhouse::meta::server_info(&client).await {
+                Ok(info) => {
+                    tracing::info!(
+                        version = %info.version,
+                        timezone = %info.timezone,
+                        "workspace server at {endpoint}"
+                    );
+                    // Its own zone, not the explored server's. Report schedules
+                    // are cut against the workspace's clock — `Workspace::clock`
+                    // asks this connection — so borrowing the other server's
+                    // offset would run the nine o'clock report at nine
+                    // somewhere else.
+                    client.with_timezone(info.timezone)
+                }
+                Err(e @ error::Error::ClickHouse { .. }) => {
+                    tracing::warn!(
+                        "reached the workspace server at {endpoint} but it refused: {} \
+                         — check FLINT_WORKSPACE_USER and FLINT_WORKSPACE_PASSWORD, which are \
+                         not inherited from the explored server's",
+                        e.to_string().lines().next().unwrap_or_default()
+                    );
+                    client
+                }
+                // Not fatal, the same bargain as the explored server: it may be
+                // starting up alongside us, and `ensure` runs again on first use.
+                Err(e) => {
+                    tracing::warn!("could not reach the workspace server at {endpoint}: {e}");
+                    client
+                }
+            }
+        }
+        // No server of its own: Flint's tables go on the server it explores,
+        // which is what a workspace has always meant.
+        None => ch.clone(),
+    };
+    if config.workspace_is_separate() && config.workspace_database.is_some() {
+        tracing::info!(
+            "the workspace is on a server of its own, so Flint creates nothing on the server it \
+             explores"
+        );
+    }
+
     // Opt-in persistence. Bootstrapped now so a misconfiguration shows up in
     // the log at boot, but not fatal: it is retried on first use, which covers
     // a ClickHouse that is still starting alongside us.
     let workspace = config
         .workspace_database
         .as_ref()
-        .map(|db| workspace::Workspace::new(db.clone()));
+        .map(|db| workspace::Workspace::new(db.clone(), workspace_ch.clone()));
     if let Some(ws) = &workspace {
-        match ws.ensure(&ch).await {
+        match ws.ensure().await {
             Ok(()) => {}
-            Err(e) => tracing::warn!("workspace not ready: {e}"),
+            // The address, because with two servers "not ready" is ambiguous
+            // and this is the line somebody reads first.
+            Err(e) => tracing::warn!("workspace not ready on {}: {e}", ws.endpoint()),
         }
     } else {
         tracing::info!("stateless: no workspace database configured, nothing will be written");
@@ -131,8 +196,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Kept as well as spawned: the reports page can ask for a run now, and it
     // must be the same runner the schedule uses — a second implementation of
     // "run a report" is two ways for an edition to be made.
+    //
+    // A workspace is no longer enough on its own. An alert is a question put to
+    // the *explored* server on a timer, and unpinned there is no such server
+    // until somebody signs in — the scheduler would tick every minute against
+    // an empty URL. So the schedule needs both: somewhere to record what it
+    // found, and somewhere to ask. A separate workspace supplies only the first.
     let mut runner = None;
-    if let Some(ws) = workspace.clone() {
+    if let (Some(ws), true) = (workspace.clone(), config.pinned()) {
         let http = clickhouse::webhook_client(
             config.clickhouse_ca_cert.as_deref(),
             std::time::Duration::from_secs(30),
@@ -148,14 +219,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Long operations, where there is somewhere to record them. Recovery runs
     // before the server listens: a browser that reconnects should find the job
     // it left already marked interrupted, not a spinner that will never stop.
-    let jobs = match workspace.clone() {
-        Some(ws) => {
+    //
+    // Pinned for the same reason as the scheduler: recovery runs before anybody
+    // has signed in, and a job is work done against the explored server.
+    let jobs = match (workspace.clone(), config.pinned()) {
+        (Some(ws), true) => {
             let runner = jobs::Runner::new(ch.clone(), ws);
             runner.recover().await;
             Some(runner)
         }
-        None => None,
+        _ => None,
     };
+
+    // Said out loud, because this is the half of the bargain somebody choosing
+    // an unpinned workspace has to know about, and the UI cannot show the
+    // absence of a scheduler. Saved queries, dashboards and published endpoints
+    // all keep working — they are answered by whoever is signed in.
+    if workspace.is_some() && !config.pinned() {
+        tracing::info!(
+            "unpinned with a workspace: what you save is kept, but nothing runs on a schedule — \
+             alerts, reports and long jobs all need a server to ask, and unpinned the browser \
+             names one only at sign-in. Set FLINT_CLICKHOUSE_URL to turn them on."
+        );
+    }
 
     if config.sign_in_required() {
         tracing::info!(
@@ -190,7 +276,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // nothing to publish and nothing to record.
     if let Some(workspace) = state.workspace.clone() {
         let calls = state.calls.clone();
-        let ch = state.ch.clone();
         tokio::spawn(async move {
             // A short tick rather than a sleep for the whole flush window: a
             // burst that fills the buffer should be written when it fills,
@@ -214,7 +299,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     );
                 }
                 let held = batch.len();
-                if let Err(e) = workspace.write_calls(&ch, &batch).await {
+                if let Err(e) = workspace.write_calls(&batch).await {
                     calls.give_back(batch);
                     // The backlog after the batch went back, which is the
                     // figure an operator wants: it says whether this is one

@@ -341,6 +341,48 @@ impl Client {
         })
     }
 
+    /// A connection to the server Flint keeps its own workspace on, where that
+    /// is a different server from the one being explored.
+    ///
+    /// `None` where `FLINT_WORKSPACE_URL` is unset, and the caller then uses the
+    /// explored server's client — which is what every deployment did before this
+    /// existed, and still the default.
+    ///
+    /// Built rather than cloned from the service client, and the reason is the
+    /// probe cache. `system_columns` is an `Arc` shared across clones so that one
+    /// person's sign-in does not re-probe what another already asked; sharing it
+    /// across two *servers* would answer a question about one with the other's
+    /// answer. Different builds, different system tables — the cache has to be
+    /// per-server, and a fresh client is how it becomes one.
+    ///
+    /// `readonly` is carried across unchanged, which looks wrong for a second and
+    /// is not. Flint's own writes already travel with `allow_write`, exempt from
+    /// `FLINT_READONLY` for the reason [`crate::workspace::Workspace::write_opts`]
+    /// gives; carrying the flag means everything *else* this client might be asked
+    /// to run obeys the deployment's setting rather than quietly escaping it.
+    pub fn for_workspace(config: &Config) -> Result<Option<Self>> {
+        let Some(url) = config.workspace_url.as_deref() else {
+            return Ok(None);
+        };
+
+        let http = http_client(
+            config.clickhouse_ca_cert.as_deref(),
+            std::time::Duration::from_secs(config.query_timeout_secs + 30),
+        )?;
+
+        Ok(Some(Self {
+            http,
+            url: url.trim_end_matches('/').to_string(),
+            user: config.workspace_user.clone(),
+            password: config.workspace_password.clone(),
+            readonly: config.readonly,
+            max_result_rows: config.max_result_rows,
+            timeout_secs: config.query_timeout_secs,
+            timezone: String::new(),
+            system_columns: Arc::new(RwLock::new(HashMap::new())),
+        }))
+    }
+
     /// Where this client sends. Empty on the service client of an unpinned
     /// Flint, which is the one client that has nowhere to send.
     pub fn endpoint(&self) -> &str {

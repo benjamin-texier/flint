@@ -1,15 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import {
-  activeSection,
-  allows,
-  countIn,
-  dataFor,
-  keeps,
-  spaceById,
-  spaceOf,
-  spacesFor,
-} from './spaces'
+import { activeSection, allows, countIn, dataFor, keeps, runs, spaceById, spaceOf, spacesFor } from './spaces'
 
 /** A deployment that has everything, for the tests that are about something
  *  else. Written out rather than defaulted, so a test that cares about a
@@ -57,17 +48,39 @@ describe('spacesFor', () => {
     ])
   })
 
-  it('keeps them once a workspace is named', () => {
-    expect(spacesFor({ workspace: 'flint' }).flatMap((s) => s.sections.map((x) => x.id))).toEqual([
-      'home',
-      'explore',
-      'query',
-      'dash',
-      'alerts',
-      'reports',
-      'apis',
-      'diagnose',
-    ])
+  it('keeps them once a workspace is named and something can run', () => {
+    expect(
+      spacesFor({ workspace: 'flint', scheduled: true }).flatMap((s) =>
+        s.sections.map((x) => x.id),
+      ),
+    ).toEqual(['home', 'explore', 'query', 'dash', 'alerts', 'reports', 'apis', 'diagnose'])
+  })
+
+  it('drops only the timed two where there is a workspace but nothing to ask', () => {
+    // The shape `FLINT_WORKSPACE_URL` made possible: unpinned, so the browser
+    // names the server at sign-in, with Flint's own tables on a server of its
+    // own. What you save is kept — Home, Dashboards and APIs all work — but an
+    // alert is a question on a timer and there is nothing to put it to.
+    expect(
+      spacesFor({ workspace: 'flint', scheduled: false }).flatMap((s) =>
+        s.sections.map((x) => x.id),
+      ),
+    ).toEqual(['home', 'explore', 'query', 'dash', 'apis', 'diagnose'])
+  })
+
+  it('keeps the Data link on the home when only the schedule is missing', () => {
+    // The home page is about the workspace, and the workspace is there. Only a
+    // deployment that keeps nothing sends `Data` back to the schema.
+    expect(dataFor({ workspace: 'flint', scheduled: false }).home).toBe('/home')
+  })
+
+  it('reads a missing schedule flag as no schedule', () => {
+    // Same bargain as `keeps`: an undefined config waits a tick rather than
+    // guessing, and a backend too old to send the field is a backend where the
+    // two came together anyway.
+    expect(runs(undefined)).toBe(false)
+    expect(runs({})).toBe(false)
+    expect(runs({ scheduled: true })).toBe(true)
   })
 
   it('withholds them until the config says there is one', () => {

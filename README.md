@@ -965,6 +965,21 @@ database of its own, not in a second datastore dragged in for the purpose. Set
 leave it unset and Flint writes nothing at all, which is what makes the
 stateless mode a real guarantee rather than a habit.
 
+Which server it goes on is a second decision, and `FLINT_WORKSPACE_URL` is where
+it is made. Unset — the default, and what every deployment did before the
+variable existed — Flint's tables land on the server it is exploring. Set, Flint
+holds a second connection and keeps its own bookkeeping there. That is worth
+doing for two reasons: a read-only Flint could always write its own workspace
+(`allow_write` is exempt from `FLINT_READONLY` on purpose, or the mode would be
+inert) but the tables still landed in somebody's production, and pointing them
+elsewhere makes "connecting Flint creates nothing" literally true. And it gives
+an unpinned Flint a memory, which it could not have when the only candidate
+server was one the browser named at sign-in. A local ClickHouse is enough —
+`clickhousectl local server start` — and `FLINT_WORKSPACE_USER` is deliberately
+not inherited from the explored server's account, because carrying one server's
+credentials to another is a guess that surfaces as an authentication error
+nobody can trace back to a default they never set.
+
 ClickHouse has no UPDATE, so the table is a log of versions over a
 `ReplacingMergeTree` and a delete is a tombstone. Reads collapse it with
 `argMax` rather than `FINAL`, which costs no more and lets `created_at` survive
@@ -2342,6 +2357,9 @@ Every option is a flag or an environment variable. `flint --help` lists them.
 | `FLINT_MAX_RESULT_ROWS` | `10000` | Row cap per query |
 | `FLINT_QUERY_TIMEOUT_SECS` | `120` | Server-side query timeout |
 | `FLINT_WORKSPACE_DATABASE` | — | Where Flint may keep its own metadata. Unset = stateless |
+| `FLINT_WORKSPACE_URL` | — | A server of Flint's own to keep that metadata on. Unset = the explored one |
+| `FLINT_WORKSPACE_USER` | `default` | Account on the workspace server. Not inherited from the explored one |
+| `FLINT_WORKSPACE_PASSWORD` | — | Password for the above |
 | `FLINT_CLICKHOUSE_CA_CERT` | — | PEM bundle for a private CA |
 | `FLINT_CORS_ORIGIN` | — | Extra allowed origin (dev only) |
 | `FLINT_LOG` | `flint=info` | `tracing` filter |
@@ -2500,11 +2518,19 @@ the narrowing is structural rather than a policy anyone chose:
   `Config::sign_in_required` is one method rather than a flag flipped at boot,
   so the invariant holds for any `AppState` — including one built in a test,
   which is where a gate gets quietly built without one.
-- **Nothing runs on a schedule.** Alerts, reports and long jobs run with nobody's
-  browser open, and a schedule has no session to borrow a server from. So
-  `FLINT_WORKSPACE_DATABASE` is *refused* here rather than ignored — a manifest
-  that asks for a workspace with no server to put it in does not boot — and an
-  unpinned Flint is stateless by construction.
+- **Nothing runs on a schedule.** Alerts, reports and long jobs are questions put
+  to the *explored* server with nobody's browser open, and a schedule has no
+  session to borrow one from. So they are off here — the scheduler and the job
+  runner are not spawned, the boot log says so, and `/api/config` answers
+  `scheduled: false` so the two sections are absent rather than present and
+  failing.
+- **Stateless is the default, not the only option.** `FLINT_WORKSPACE_DATABASE`
+  alone is still refused — a workspace with no server to put it in does not boot.
+  But `FLINT_WORKSPACE_URL` gives Flint's own tables a server of their own, and
+  then an unpinned Flint *keeps* things: saved queries, dashboards and published
+  endpoints all work, because each is answered by whoever is signed in. Only the
+  timed two stay off. This is also the shape worth having when pinned: with the
+  workspace elsewhere, connecting Flint to a server creates nothing on it.
 - **Two people can be on two different ClickHouses.** "Which server" stops being
   a fact about the deployment and becomes a fact about your session:
   `/api/config` answers `endpoint: null` and `pinned: false`, and `/api/session`
@@ -3663,8 +3689,10 @@ together on a server the browser named.
 
 `api-check.mjs` says up front that it does not apply, rather than failing halfway
 with advice that would make things worse: it is about published endpoints, which
-need a workspace, and setting `FLINT_WORKSPACE_DATABASE` on an unpinned Flint
-stops it booting.
+need a workspace, and `FLINT_WORKSPACE_DATABASE` on its own stops an unpinned
+Flint booting. Give the workspace a server of its own with `FLINT_WORKSPACE_URL`
+and the endpoints do exist unpinned — that combination is not what this target
+runs, so the check still declines rather than guessing which one you meant.
 
 `browser-check.mjs` holds no session, so on any Flint that signs people in —
 unpinned or `FLINT_AUTH=true` — every address serves the same sign-in screen, and
@@ -3683,7 +3711,16 @@ make run-unpinned    # env -u FLINT_CLICKHOUSE_URL -u FLINT_WORKSPACE_DATABASE
 
 Its own target because the dev shell exports both of those through direnv, so a
 plain `make run` is always pinned; and both rather than one, because a workspace
-with no server is a manifest Flint refuses to boot.
+with no server of its own and no pinned server is a manifest Flint refuses to
+boot. To keep the workspace unpinned instead, point it somewhere:
+
+```bash
+env -u FLINT_CLICKHOUSE_URL FLINT_WORKSPACE_URL=http://127.0.0.1:9000 \
+    FLINT_WORKSPACE_DATABASE=flint cargo run
+```
+
+A local ClickHouse started for the purpose — `clickhousectl local server start`
+is one line of it — is enough, and nothing Flint explores is written to.
 
 To build the way the container does — frontend embedded in the binary:
 

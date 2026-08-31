@@ -27,7 +27,7 @@ fn workspace(state: &AppState) -> Result<&crate::workspace::Workspace> {
 }
 
 pub async fn list(_: SignedIn, State(state): State<AppState>) -> Result<Json<Vec<SavedQuery>>> {
-    Ok(Json(workspace(&state)?.list(&state.ch).await?))
+    Ok(Json(workspace(&state)?.list().await?))
 }
 
 pub async fn save(
@@ -35,7 +35,7 @@ pub async fn save(
     State(state): State<AppState>,
     Json(input): Json<SaveInput>,
 ) -> Result<Json<SavedQuery>> {
-    Ok(Json(workspace(&state)?.save(&state.ch, input).await?))
+    Ok(Json(workspace(&state)?.save(input).await?))
 }
 
 /// Checked here rather than left to ClickHouse's UUID parameter, which rejects
@@ -58,7 +58,7 @@ pub async fn remove(
     if !valid_uuid(&id) {
         return Err(Error::BadRequest(format!("`{id}` is not a saved-query id")));
     }
-    workspace(&state)?.remove(&state.ch, &id).await?;
+    workspace(&state)?.remove(&id).await?;
     Ok(Json(json!({ "deleted": id })))
 }
 
@@ -66,7 +66,7 @@ pub async fn dashboards(
     _: SignedIn,
     State(state): State<AppState>,
 ) -> Result<Json<Vec<Dashboard>>> {
-    Ok(Json(workspace(&state)?.dashboards(&state.ch).await?))
+    Ok(Json(workspace(&state)?.dashboards().await?))
 }
 
 pub async fn save_dashboard(
@@ -74,9 +74,7 @@ pub async fn save_dashboard(
     State(state): State<AppState>,
     Json(input): Json<DashboardInput>,
 ) -> Result<Json<Dashboard>> {
-    Ok(Json(
-        workspace(&state)?.save_dashboard(&state.ch, input).await?,
-    ))
+    Ok(Json(workspace(&state)?.save_dashboard(input).await?))
 }
 
 pub async fn remove_dashboard(
@@ -87,7 +85,7 @@ pub async fn remove_dashboard(
     if !valid_uuid(&id) {
         return Err(Error::BadRequest(format!("`{id}` is not a dashboard id")));
     }
-    workspace(&state)?.remove_dashboard(&state.ch, &id).await?;
+    workspace(&state)?.remove_dashboard(&id).await?;
     Ok(Json(json!({ "deleted": id })))
 }
 
@@ -110,7 +108,7 @@ mod tests {
 // ── Alerts ─────────────────────────────────────────────────────────────────
 
 pub async fn alerts(_: SignedIn, State(state): State<AppState>) -> Result<Json<Vec<Alert>>> {
-    let mut list = workspace(&state)?.alerts(&state.ch).await?;
+    let mut list = workspace(&state)?.alerts().await?;
     place(&state, &mut list).await;
     Ok(Json(list))
 }
@@ -165,10 +163,10 @@ pub async fn save_alert(
     Json(input): Json<AlertInput>,
 ) -> Result<Json<Vec<Alert>>> {
     let ws = workspace(&state)?;
-    ws.save_alert(&state.ch, input).await?;
+    ws.save_alert(input).await?;
     // The list comes back rather than the one row: saving an alert changes what
     // the scheduler will do next, and the caller wants the new truth.
-    Ok(Json(ws.alerts(&state.ch).await?))
+    Ok(Json(ws.alerts().await?))
 }
 
 pub async fn remove_alert(
@@ -179,7 +177,7 @@ pub async fn remove_alert(
     if !valid_uuid(&id) {
         return Err(Error::BadRequest(format!("`{id}` is not an alert id")));
     }
-    workspace(&state)?.remove_alert(&state.ch, &id).await?;
+    workspace(&state)?.remove_alert(&id).await?;
     Ok(Json(json!({ "deleted": id })))
 }
 
@@ -207,7 +205,7 @@ pub async fn alert_events(
     }
     Ok(Json(
         workspace(&state)?
-            .alert_events(&state.ch, q.alert_id.as_deref(), q.limit)
+            .alert_events(q.alert_id.as_deref(), q.limit)
             .await?,
     ))
 }
@@ -215,7 +213,7 @@ pub async fn alert_events(
 // ── Reports ────────────────────────────────────────────────────────────────
 
 pub async fn reports(_: SignedIn, State(state): State<AppState>) -> Result<Json<Vec<Report>>> {
-    Ok(Json(workspace(&state)?.reports(&state.ch).await?))
+    Ok(Json(workspace(&state)?.reports().await?))
 }
 
 pub async fn save_report(
@@ -224,8 +222,8 @@ pub async fn save_report(
     Json(input): Json<ReportInput>,
 ) -> Result<Json<Vec<Report>>> {
     let ws = workspace(&state)?;
-    ws.save_report(&state.ch, input).await?;
-    Ok(Json(ws.reports(&state.ch).await?))
+    ws.save_report(input).await?;
+    Ok(Json(ws.reports().await?))
 }
 
 pub async fn remove_report(
@@ -236,7 +234,7 @@ pub async fn remove_report(
     if !valid_uuid(&id) {
         return Err(Error::BadRequest(format!("`{id}` is not a report id")));
     }
-    workspace(&state)?.remove_report(&state.ch, &id).await?;
+    workspace(&state)?.remove_report(&id).await?;
     Ok(Json(json!({ "deleted": id })))
 }
 
@@ -258,7 +256,7 @@ pub async fn run_report_now(
     }
     let ws = workspace(&state)?;
     let report = ws
-        .reports(&state.ch)
+        .reports()
         .await?
         .into_iter()
         .find(|r| r.id == id)
@@ -321,7 +319,7 @@ pub async fn report_runs(
     }
     Ok(Json(
         workspace(&state)?
-            .report_runs(&state.ch, q.report_id.as_deref(), q.limit)
+            .report_runs(q.report_id.as_deref(), q.limit)
             .await?,
     ))
 }
@@ -336,11 +334,7 @@ pub async fn report_snapshot(
     if !valid_uuid(&run_id) {
         return Err(Error::BadRequest(format!("`{run_id}` is not a run id")));
     }
-    Ok(Json(
-        workspace(&state)?
-            .report_snapshot(&state.ch, &run_id)
-            .await?,
-    ))
+    Ok(Json(workspace(&state)?.report_snapshot(&run_id).await?))
 }
 
 // ── Published statements ───────────────────────────────────────────────────
@@ -369,7 +363,7 @@ pub async fn published(
 ) -> Result<Json<Vec<PublishedRow>>> {
     Ok(Json(
         workspace(&state)?
-            .published(&state.ch)
+            .published()
             .await?
             .into_iter()
             .map(|endpoint| PublishedRow {
@@ -438,7 +432,7 @@ pub async fn new_revision(
 ) -> Result<Json<crate::workspace::PublishedSaved>> {
     Ok(Json(
         workspace(&state)?
-            .new_revision(&state.ch, &slug.to_lowercase())
+            .new_revision(&slug.to_lowercase())
             .await?,
     ))
 }
@@ -482,12 +476,12 @@ pub async fn set_state(
     };
     let ws = workspace(&state)?;
     let slug = ws
-        .published(&state.ch)
+        .published()
         .await?
         .into_iter()
         .find(|p| p.id == id)
         .map(|p| p.slug);
-    let saved = ws.set_state(&state.ch, &id, to).await?;
+    let saved = ws.set_state(&id, to).await?;
     if let Some(slug) = slug {
         state.api_cache.forget(&slug);
     }
@@ -521,7 +515,7 @@ pub async fn published_usage(
 ) -> Result<Json<UsageIndex>> {
     let hours = window.hours();
     let ws = workspace(&state)?;
-    Ok(Json(match ws.usage_index(&state.ch, hours).await {
+    Ok(Json(match ws.usage_index(hours).await {
         Ok(usage) => UsageIndex {
             available: true,
             reason: None,
@@ -552,7 +546,7 @@ pub async fn endpoint_usage(
     // callers experience it, and a retiring revision with a different one is a
     // detail of that revision's own page.
     let ttl = ws
-        .published_revisions(&state.ch, &slug)
+        .published_revisions(&slug)
         .await
         .ok()
         .and_then(|revisions| {
@@ -564,7 +558,7 @@ pub async fn endpoint_usage(
         })
         .unwrap_or(0);
 
-    let traffic = match ws.endpoint_traffic(&state.ch, &slug, hours).await {
+    let traffic = match ws.endpoint_traffic(&slug, hours).await {
         Ok(traffic) => traffic,
         Err(e) => {
             return Ok(Json(EndpointUsage {
@@ -637,9 +631,7 @@ pub async fn endpoint_columns(
     Query(pin): Query<RevisionPin>,
 ) -> Result<Json<EndpointColumns>> {
     let slug = slug.to_lowercase();
-    let revisions = workspace(&state)?
-        .published_revisions(&state.ch, &slug)
-        .await?;
+    let revisions = workspace(&state)?.published_revisions(&slug).await?;
     let endpoint = match pin.v {
         Some(v) => revisions.iter().find(|r| r.revision == v),
         // The live one, or the newest there is where nothing is live — the
@@ -685,7 +677,7 @@ pub struct EndpointColumns {
 // ── Keys ───────────────────────────────────────────────────────────────────
 
 pub async fn api_keys(_: SignedIn, State(state): State<AppState>) -> Result<Json<Vec<ApiKey>>> {
-    Ok(Json(workspace(&state)?.api_keys(&state.ch).await?))
+    Ok(Json(workspace(&state)?.api_keys().await?))
 }
 
 pub async fn save_api_key(
@@ -693,9 +685,7 @@ pub async fn save_api_key(
     State(state): State<AppState>,
     Json(input): Json<ApiKeyInput>,
 ) -> Result<Json<crate::workspace::ApiKeySaved>> {
-    Ok(Json(
-        workspace(&state)?.save_api_key(&state.ch, input).await?,
-    ))
+    Ok(Json(workspace(&state)?.save_api_key(input).await?))
 }
 
 pub async fn remove_api_key(
@@ -706,7 +696,7 @@ pub async fn remove_api_key(
     if !valid_uuid(&id) {
         return Err(Error::BadRequest(format!("`{id}` is not a key id")));
     }
-    workspace(&state)?.remove_api_key(&state.ch, &id).await?;
+    workspace(&state)?.remove_api_key(&id).await?;
     Ok(Json(json!({ "deleted": id })))
 }
 
@@ -720,12 +710,12 @@ pub async fn remove_published(
     }
     let ws = workspace(&state)?;
     let slug = ws
-        .published(&state.ch)
+        .published()
         .await?
         .into_iter()
         .find(|p| p.id == id)
         .map(|p| p.slug);
-    ws.remove_published(&state.ch, &id).await?;
+    ws.remove_published(&id).await?;
     if let Some(slug) = slug {
         state.api_cache.forget(&slug);
     }

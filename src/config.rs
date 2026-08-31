@@ -217,6 +217,49 @@ pub struct Config {
     #[arg(long, env = "FLINT_WORKSPACE_DATABASE")]
     pub workspace_database: Option<String>,
 
+    /// A server of Flint's own to keep the workspace on, instead of the one
+    /// being explored.
+    ///
+    /// Unset, the workspace lives on the server in the manifest, which is how
+    /// this has always worked and stays the default. Set, Flint holds a second
+    /// connection: reads about your data go to the explored server, and Flint's
+    /// own bookkeeping goes here. That buys two things worth having.
+    ///
+    /// It takes Flint's tables off the server it is exploring. A read-only
+    /// deployment could always write its own workspace — `allow_write` is
+    /// exempt from `FLINT_READONLY` on purpose — but the tables still landed in
+    /// somebody's production. Pointed elsewhere, connecting Flint to a server
+    /// now genuinely creates nothing on it.
+    ///
+    /// And it gives an unpinned Flint a memory. Unpinned the browser names the
+    /// server at sign-in, so there was no server to keep a workspace on and the
+    /// mode was stateless by construction. A workspace with its own address is
+    /// not borrowed from a session: it is there before anybody signs in, which
+    /// is what the alert scheduler and the report sweep need in order to exist.
+    #[arg(long, env = "FLINT_WORKSPACE_URL")]
+    pub workspace_url: Option<String>,
+
+    /// The account Flint uses on its own workspace server.
+    ///
+    /// Deliberately not inherited from `FLINT_CLICKHOUSE_USER`. A workspace
+    /// with its own address is a different server, and carrying the explored
+    /// server's credentials to it is a guess that fails as an authentication
+    /// error somebody then has to trace back to a default they never set. The
+    /// default here is ClickHouse's own, which is what a local server started
+    /// for the purpose answers to. Ignored unless `FLINT_WORKSPACE_URL` is set.
+    #[arg(long, env = "FLINT_WORKSPACE_USER", default_value = "default")]
+    pub workspace_user: String,
+
+    /// The password for [`Config::workspace_user`]. Ignored unless
+    /// `FLINT_WORKSPACE_URL` is set.
+    #[arg(
+        long,
+        env = "FLINT_WORKSPACE_PASSWORD",
+        default_value = "",
+        hide_env_values = true
+    )]
+    pub workspace_password: String,
+
     /// Whether alerts may POST to the webhook URLs people configure.
     ///
     /// On by default, because a webhook is what an alert is for. Turn it off
@@ -306,6 +349,7 @@ impl Config {
         }
         some_if_named(&mut self.clickhouse_url);
         some_if_named(&mut self.workspace_database);
+        some_if_named(&mut self.workspace_url);
         some_if_named(&mut self.backup_disk);
         some_if_named(&mut self.cors_origin);
     }
@@ -322,16 +366,35 @@ impl Config {
         }
         // A workspace is a database on *one* server, written by Flint's own
         // account, on a schedule that runs whether or not anybody is signed in.
-        // Unpinned there is no such server and no such account, so this is not
-        // a setting that degrades — it is a setting that cannot mean anything,
-        // and saying so at boot beats a scheduler that fails every minute into
-        // a log nobody reads.
-        if !self.pinned() && self.workspace_database.is_some() {
+        // What it needs is that server — not, as this once insisted, that the
+        // server be the one being explored. `FLINT_WORKSPACE_URL` names one of
+        // Flint's own, and an unpinned Flint with one is no longer a
+        // contradiction: nothing about a workspace on a known address is
+        // borrowed from a session.
+        //
+        // Unpinned with neither is still refused, and for the original reason.
+        // There is no server and no account, so this is not a setting that
+        // degrades — it is a setting that cannot mean anything, and saying so
+        // at boot beats a scheduler that fails every minute into a log nobody
+        // reads.
+        if self.workspace_database.is_some() && self.workspace_endpoint().is_none() {
             return Err(
-                "FLINT_WORKSPACE_DATABASE names a database on the server Flint connects to, and \
-                 this Flint has no server of its own — the browser names one at sign-in. Set \
-                 FLINT_CLICKHOUSE_URL to pin it, or unset the workspace: unpinned, Flint is \
-                 stateless."
+                "FLINT_WORKSPACE_DATABASE names a database on a server, and this Flint has no \
+                 server of its own — unpinned, the browser names one at sign-in, which is too \
+                 late for a schedule. Set FLINT_WORKSPACE_URL to give the workspace a server of \
+                 its own, or FLINT_CLICKHOUSE_URL to pin the explored one, or unset the \
+                 workspace: with none of the three, Flint is stateless."
+                    .into(),
+            );
+        }
+        // A server for a workspace that was never asked for is a connection
+        // Flint would open and never use. Cheap to get wrong — the two
+        // variables read alike — and silent, because the symptom is a Publish
+        // page that is still missing.
+        if self.workspace_url.is_some() && self.workspace_database.is_none() {
+            return Err(
+                "FLINT_WORKSPACE_URL names a server for a workspace, and FLINT_WORKSPACE_DATABASE \
+                 does not say which database on it. Set it, or unset the URL."
                     .into(),
             );
         }
@@ -365,6 +428,23 @@ impl Config {
             .as_deref()
             .map(str::trim)
             .filter(|url| !url.is_empty())
+    }
+
+    /// Where the workspace lives, or `None` where it can live nowhere.
+    ///
+    /// Its own server wins over the explored one, and falls back to it, so a
+    /// manifest that never heard of `FLINT_WORKSPACE_URL` behaves exactly as it
+    /// did. The fallback is what makes this one method rather than a condition
+    /// repeated at each of the places that need to know.
+    pub fn workspace_endpoint(&self) -> Option<&str> {
+        self.workspace_url.as_deref().or_else(|| self.endpoint())
+    }
+
+    /// Whether the workspace is on a server of its own rather than the explored
+    /// one. Decides whether Flint opens a second connection at boot, and
+    /// whether a failure to reach it should name which server it means.
+    pub fn workspace_is_separate(&self) -> bool {
+        self.workspace_url.is_some()
     }
 
     /// Whether everyone must sign in with their own ClickHouse credentials.
@@ -510,14 +590,18 @@ mod tests {
     }
 
     #[test]
-    fn a_workspace_needs_a_server_named_in_the_manifest() {
+    fn a_workspace_needs_a_server_somewhere() {
         let mut c = config(false, None);
         c.clickhouse_url = None;
         c.workspace_database = Some("flint".into());
         let err = c
             .check()
-            .expect_err("a workspace with no server must not boot");
+            .expect_err("a workspace with no server at all must not boot");
         assert!(err.contains("FLINT_WORKSPACE_DATABASE"), "{err}");
+        // Both ways out are named, because with two variables that could
+        // supply the server, an error naming one of them sends half the
+        // readers to the wrong fix.
+        assert!(err.contains("FLINT_WORKSPACE_URL"), "{err}");
         assert!(err.contains("FLINT_CLICKHOUSE_URL"), "{err}");
 
         // Unpinned and stateless is the supported pair, and pinned with a
@@ -527,6 +611,74 @@ mod tests {
         c.clickhouse_url = Some("http://ch:8123".into());
         c.workspace_database = Some("flint".into());
         assert!(c.check().is_ok());
+    }
+
+    #[test]
+    fn a_workspace_on_its_own_server_needs_no_pin() {
+        // The whole point of FLINT_WORKSPACE_URL. Unpinned used to imply
+        // stateless because there was no server to keep the tables on; naming
+        // one removes the reason, so the refusal has to go with it.
+        let mut c = config(false, None);
+        c.clickhouse_url = None;
+        c.workspace_database = Some("flint".into());
+        c.workspace_url = Some("http://127.0.0.1:9000".into());
+        assert!(c.check().is_ok(), "{:?}", c.check());
+        assert_eq!(c.workspace_endpoint(), Some("http://127.0.0.1:9000"));
+        assert!(c.workspace_is_separate());
+        // Still unpinned: the workspace having an address says nothing about
+        // the server being explored, and `main` gates the scheduler on this.
+        assert!(!c.pinned());
+    }
+
+    #[test]
+    fn the_workspace_server_wins_over_the_explored_one_and_falls_back_to_it() {
+        let mut c = config(false, None);
+        c.clickhouse_url = Some("http://ch:8123".into());
+        c.workspace_database = Some("flint".into());
+
+        // No address of its own: Flint's tables go where they always went.
+        assert_eq!(c.workspace_endpoint(), Some("http://ch:8123"));
+        assert!(!c.workspace_is_separate());
+
+        c.workspace_url = Some("http://127.0.0.1:9000".into());
+        assert_eq!(c.workspace_endpoint(), Some("http://127.0.0.1:9000"));
+        assert!(c.workspace_is_separate());
+    }
+
+    #[test]
+    fn a_workspace_server_with_no_database_is_refused() {
+        // The two variables read alike and the symptom of confusing them is
+        // silent: a second connection opened at boot, and a Publish page still
+        // missing with nothing in the log about why.
+        let mut c = config(false, None);
+        c.clickhouse_url = Some("http://ch:8123".into());
+        c.workspace_url = Some("http://127.0.0.1:9000".into());
+        c.workspace_database = None;
+        let err = c
+            .check()
+            .expect_err("a workspace server with nothing to put on it must not boot");
+        assert!(err.contains("FLINT_WORKSPACE_DATABASE"), "{err}");
+    }
+
+    #[test]
+    fn a_blank_workspace_url_is_no_workspace_url() {
+        // `FLINT_WORKSPACE_URL=` is how a compose file says "on the explored
+        // server" without deleting the line. Read as an address it would point
+        // the second connection at nowhere, and every save would fail on a URL
+        // that is not one — while `check` passed, because the string is there.
+        let mut c = config(false, None);
+        c.clickhouse_url = Some("http://ch:8123".into());
+        c.workspace_database = Some("flint".into());
+        for blank in ["", "   ", "\t"] {
+            c.workspace_url = Some(blank.into());
+            c.normalise();
+            assert!(
+                !c.workspace_is_separate(),
+                "{blank:?} was taken for an address"
+            );
+            assert_eq!(c.workspace_endpoint(), Some("http://ch:8123"));
+            assert!(c.check().is_ok());
+        }
     }
 
     #[test]

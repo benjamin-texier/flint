@@ -337,7 +337,7 @@ impl Scheduler {
 
     /// Run forever. Spawned once at startup when a workspace is configured.
     pub async fn run(self) {
-        match self.workspace.last_states(&self.ch).await {
+        match self.workspace.last_states().await {
             Ok(seed) => {
                 let count = seed.len();
                 *self.state.write().await = seed;
@@ -372,11 +372,11 @@ impl Scheduler {
     /// report again, and a Flint that was down at nine must still run it when
     /// it comes back.
     async fn sweep_reports(&self) -> Result<()> {
-        let reports = self.workspace.reports(&self.ch).await?;
+        let reports = self.workspace.reports().await?;
         if reports.iter().all(|r| !r.enabled) {
             return Ok(());
         }
-        let last = self.workspace.last_run_seconds(&self.ch).await?;
+        let last = self.workspace.last_run_seconds().await?;
 
         // One clock reading per distinct zone, not one per report: a fleet of
         // twenty reports in three places costs three round trips, and reports
@@ -389,7 +389,7 @@ impl Scheduler {
             .map(|r| r.timezone.clone())
             .collect::<std::collections::BTreeSet<_>>()
         {
-            match self.workspace.clock(&self.ch, &zone).await {
+            match self.workspace.clock(&zone).await {
                 Ok(clock) => {
                     clocks.insert(zone, clock);
                 }
@@ -426,7 +426,6 @@ impl Scheduler {
                 let _ = self
                     .workspace
                     .record_report_run(
-                        &self.ch,
                         &uuid::Uuid::new_v4().to_string(),
                         &report,
                         "skipped",
@@ -460,7 +459,6 @@ impl Scheduler {
                 let _ = self
                     .workspace
                     .record_report_run(
-                        &self.ch,
                         &run_id,
                         report,
                         "failed",
@@ -530,7 +528,6 @@ impl Scheduler {
         if let Err(e) = self
             .workspace
             .record_report_run(
-                &self.ch,
                 &run_id,
                 report,
                 status,
@@ -601,7 +598,7 @@ impl Scheduler {
     }
 
     async fn sweep(&self) -> Result<()> {
-        let alerts = self.workspace.alerts(&self.ch).await?;
+        let alerts = self.workspace.alerts().await?;
         for alert in alerts.into_iter().filter(|a| a.enabled) {
             if !self.due(&alert).await {
                 continue;
@@ -684,7 +681,7 @@ impl Scheduler {
         let delivery = self.deliver(alert, state, value, message).await;
         if let Err(e) = self
             .workspace
-            .record_alert_event(&self.ch, alert, state, value, message, &delivery)
+            .record_alert_event(alert, state, value, message, &delivery)
             .await
         {
             tracing::warn!(
