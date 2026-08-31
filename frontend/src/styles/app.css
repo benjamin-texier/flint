@@ -2132,6 +2132,8 @@
   stroke-linecap: round;
   stroke-dasharray: calc(var(--dot) * 1px) calc(var(--gap, 23) * 1px);
   opacity: 0.75;
+  /* token-exempt: `* 1s` is the unit conversion that turns a unitless --period
+     into a time, not a duration somebody chose. */
   animation: flow calc(var(--period) / var(--flow-speed) * 1s) linear infinite;
 }
 @keyframes flow {
@@ -3738,6 +3740,9 @@ tr:hover .stratum__fill {
 .grid__canvas.is-lifted .grid__frozen {
   box-shadow:
     1px 0 0 var(--line),
+    /* token-exempt: every --shadow-* token is a vertical drop with its colour
+       baked in, and this lift is cast sideways by a frozen column. There is no
+       token for the geometry, and half a token would be worse than a literal. */
     7px 0 11px -7px rgb(0 0 0 / 22%);
 }
 
@@ -5333,10 +5338,14 @@ tr:hover .stratum__fill {
   *,
   *::before,
   *::after {
-    animation-duration: 1ms !important;
+    /* token-exempt: the reduced-motion kill switch. 1ms rather than 0 because a
+     zero-length animation never fires animationend, and two listeners here wait
+     on it. */
+  animation-duration: 1ms !important;
     animation-delay: 0ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 1ms !important;
+    /* token-exempt: as above — the reduced-motion kill switch, not a duration. */
+  transition-duration: 1ms !important;
     scroll-behavior: auto !important;
   }
 }
@@ -6376,7 +6385,7 @@ tr:hover .stratum__fill {
   font-size: var(--size-label);
   color: var(--text-secondary);
   cursor: pointer;
-  transition: border-color 140ms var(--ease-out);
+  transition: border-color var(--motion-fast) var(--ease-out);
 }
 .chrome__find:hover {
   border-color: var(--accent);
