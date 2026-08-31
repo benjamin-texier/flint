@@ -466,7 +466,7 @@ previewed with the count it matches, progress against `system.mutations`, and a
 plain refusal where the predicate does not narrow to a partition. Same rule as
 dropping an absent figure rather than dashing it.
 
-### A2. Dashboards grow the controls a dashboard needs — **all but drag-to-arrange**
+### A2. Dashboards grow the controls a dashboard needs — **built**
 
 **A time range every tile can honour.** `DashboardSpec` carries `rangeHours`, and
 a tile follows it by declaring `{from:DateTime}` and `{to:DateTime}` — the
@@ -552,11 +552,37 @@ earlier: `:first-of-type` counts *per element type*, so a rule meant to keep the
 exit button also kept the first `<a class="btn">` beside it and the link to the
 reports page stayed on the wall. Named, not positional.
 
-Still missing from the brief: **drag-to-arrange**. Worth noting that the framing
-above — "instead of the width control and the reorder buttons" — is wrong as
-stated: those buttons are the keyboard path, and dragging is not. Drag would be
-an addition to them, never a replacement, or the feature would land as an
-accessibility regression.
+**Drag-to-arrange is there now**, and it is an addition to the two arrow
+buttons rather than a replacement for them. The framing this section used to
+carry — "instead of the width control and the reorder buttons" — was wrong as
+stated: those buttons are the keyboard path and dragging is not, so taking them
+out for a grip would have landed the feature as an accessibility regression.
+They are still there, still three per tile.
+
+Three things it settled:
+
+- **The grip starts the drag, not the card.** `draggable` is set on the tile at
+  the moment the grip is pressed and cleared on drop, rather than held in
+  state — the browser reads that attribute when it decides whether a
+  `pointerdown` begins a drag, and a React state change is not guaranteed to
+  have rendered by then. Doing it from the grip is also what keeps a tile's own
+  table selectable and scrollable while the dashboard is being arranged; a card
+  that is draggable everywhere turns a scroll gesture inside a tile into a
+  reorder.
+- **Both paths now speak, and neither did before.** A tile moved in silence is
+  legible only to somebody who can see it move, and that was as true of the
+  arrows — shipped months ago — as of the drag. Both go through one `rearrange`
+  that writes into a `role="status"` region: *"Moved Hourly volume to 1 of 3."*
+  The drag is what made the omission visible; the fix is older than the drag.
+- **One mover, not two.** The pointer path and the keyboard path both end in
+  `moveTile`, whose doc comment had been promising a drag handler since the
+  buttons were written. Two implementations of "move this tile there" is how
+  the two paths come to disagree about what dropping on the last tile means.
+
+Verified in a browser rather than in a test run, which is where the state
+classes had to be looked at: mid-flight the carried tile reads `is-dragging`
+and the tile it would displace reads `is-over`, and the drop reorders and
+announces. The arrows were exercised in the same pass.
 
 ### A3. Analysis — **built**
 
@@ -692,15 +718,98 @@ same columns in a different order is a different table to every query that
 filters on one of them, and "the sorting key changed" leaves the reader to notice
 that nothing was added or removed.
 
-### A4. The visualisation set the brief describes
+### A4. The visualisation set the brief describes — **the three are built**
 
-`ChartKind` is `stat | line | bar | scatter`. Also listed in the brief and not
-built as a *chart kind*: area, pie/donut, heatmap. The **histogram** exists, as
-part of A3's distribution rather than as something to configure — a histogram is
-not a way of drawing a result set, it is a question about a column, and the
-binning is the answer rather than an option. Later: maps — which needs the
-geographic column role the exploration heuristics do not yet detect — funnels,
-cohorts, anomaly charts.
+`ChartKind` is `stat | line | area | bar | donut | heatmap | scatter`. The
+**histogram** stays where it is, as part of A3's distribution rather than as
+something to configure — a histogram is not a way of drawing a result set, it
+is a question about a column, and the binning is the answer rather than an
+option. Later: maps — which needs the geographic column role the exploration
+heuristics do not yet detect — funnels, cohorts, anomaly charts.
+
+Each of the three had one decision in it worth more than the drawing.
+
+**Area is a stack, or it is nothing.** A single filled series is what `line`
+already draws, so offering `area` for one measure would be the same picture
+under a second name; it appears from two measures up. What a stack asserts is
+then the whole point: **the top edge is the sum**, and the offer says so in the
+picker rather than leaving it to be inferred. Flint cannot know whether the
+measures are parts of anything — `avg(d), max(d)` stacks as readily as
+`hits, misses` and the total means nothing — so it names the claim and lets the
+reader see in a glance whether it holds.
+
+The refusal that *can* be computed is computed. A negative has no place in a
+stack: the top edge stops being the sum the moment a band descends. The picker
+works from the shape of a result and never sees a value, so the check happens
+where the values are, and the answer is a sentence rather than a drawing —
+*"These measures go negative, and a stack cannot draw that."* ClickHouse
+produces them readily, out of a `sum(delta)` or a difference between two counts.
+A missing value is a third case and gets a third answer: its band pinches shut
+and the edge above drops by exactly what is absent, because interpolating would
+put a figure in the total the query never returned.
+
+**A donut is withheld rather than annotated.** This is the form that fits Flint's
+rules worst, and the resolution is the same one the rest of the product uses for
+a fold it cannot honestly draw. A ring asserts that its slices are *everything*,
+which is a claim almost no ClickHouse result can make: `ORDER BY c DESC LIMIT 10`
+is complete as asked and is still the top ten of something larger. So the form is
+offered on three conditions — six slices at most, a result Flint did not cut, a
+label and one measure — and where any of them fails the same numbers are a bar,
+which asserts nothing about a whole. The six is a refusal to offer the form and
+not a cap on the slices, which is what keeps "say what was left out" satisfied:
+nothing is left out, because nothing was drawn.
+
+A donut and not a pie for one reason that is not taste: **the hole is where the
+total goes**. A share with no total beside it cannot be checked against anything,
+and a pie has nowhere to put that number.
+
+And the label came off the band. Printing the share inside its own slice puts
+type on a categorical hue, which this codebase forbids everywhere else because a
+hue is illegible as text — and here it was measured failing outright: the surface
+white it needs reaches 4.32:1 on the first slot and 4.10:1 on the fourth, against
+the 4.5 that 10.5px demands. Outside the ring the label wears a text token and
+the contrast is the page's, whatever colour the slice is.
+
+**A heatmap scrolls rather than truncating a label.** Every other axis in the
+chart file has a fixed band to fit its labels into and drops them all when they
+do not all fit — the rule that stops thirty bars reading `segm…`. A grid has a
+scroll container, so the room is there for the asking and the honest answer is to
+give each label the length it needs.
+
+Which made the sizing arithmetic load-bearing, and the first version of it was
+wrong in the direction that clips. `textWidth` measures on a canvas, which cannot
+be told about `font-variant-numeric: tabular-nums` — and these labels are dates
+and identifiers, which is to say almost all figures, where tabular is the wider
+of the two — and it answers with the fallback face where the webfont has not
+loaded. Both errors run the same way. Measured in the browser before it was
+fixed: all 25 column labels over the top edge by 8px and the last one 23px past
+the right. The room is now the larger of what the canvas says and what the
+character count implies at the pessimistic width the bar labels already use.
+
+Its colour is sequential and not categorical, which is the one thing a grid
+cannot get wrong: six hues across the cells would say they are six different
+kinds of thing rather than one thing at six magnitudes. It is the same physics
+as the partition grid and the co-access matrix — `barScale`'s 90th percentile
+and the shared `CELL_FLOOR` — so a single outlying crossing does not wash the
+grid out, and the cells past the scale are drawn full and *counted*. A crossing
+the query never returned is an outline rather than the palest step of the ramp,
+because the palest step is what a real zero wears and the two are different
+answers.
+
+**One shape it does not catch, said out loud.** `GROUP BY toHour(ts), host` is
+the canonical heatmap and Flint does not offer a grid for it: `toHour` returns a
+`UInt8`, and a bare integer is a measure here, not an axis. That follows from the
+rule that classification reads the declared type and never the values, which is
+what keeps a 64-bit integer arriving as a JSON string from being guessed at.
+`toStartOfHour` and `toDate` are time and do get the grid. Relaxing it would mean
+guessing which of two numbers is the aggregate, and this codebase does not guess.
+
+**A stored tile survives all three.** `parseSpec`'s reader had the kinds written
+out a second time, so a form it did not recognise fell through to `null` and the
+tile came back as a table with no error anywhere saying a chart had been dropped
+— the one failure nobody sees. It is keyed off `ChartKind` now, and the test
+asserts every member of the union rather than the two that happened to be on
+somebody's dashboard.
 
 ### A5. Ingestion APIs
 
