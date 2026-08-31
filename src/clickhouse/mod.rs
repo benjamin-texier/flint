@@ -20,6 +20,7 @@ pub mod health;
 pub mod limits;
 pub mod mass;
 pub mod meta;
+pub mod mutate;
 pub mod news;
 pub mod now;
 pub mod outside;

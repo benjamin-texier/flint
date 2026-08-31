@@ -43,13 +43,14 @@ import { SchemaReview } from '../components/SchemaReview'
 import { EmptyNote, ErrorNote, Loading } from '../components/Note'
 import { Dash } from '../components/Dash'
 import { AddRow } from '../components/AddRow'
+import { ChangeRows } from '../components/ChangeRows'
 import { Stream } from '../components/Stream'
 import { ExternalPanel } from '../components/ExternalSource'
 
 const TABS = [
   'columns',
   'preview',
-  'add',
+  'write',
   'stream',
   'sources',
   'readby',
@@ -140,7 +141,7 @@ export function TableView({ database, table }: { database: string; table: string
        "has rows already" would withhold the form from precisely the table
        somebody wants to put a first row into. An engine that refuses an insert
        says so itself; a list of insertable engines kept here would drift. */
-    ...((t.kind === 'table' && mayWrite ? [['add', 'Add rows', null]] : []) as [
+    ...((t.kind === 'table' && mayWrite ? [['write', 'Write rows', null]] : []) as [
       Tab,
       string,
       number | null,
@@ -303,8 +304,20 @@ export function TableView({ database, table }: { database: string; table: string
             <ReadBy database={database} table={table} columns={t.columns} />
           </div>
         ) : null}
-        {tab === 'add' ? (
-          <AddRow database={database} table={table} columns={t.columns} />
+        {tab === 'write' ? (
+          <div className="stack">
+            {/* Adding first, changing second: the order the two questions come
+                in, and the destructive one is not the thing a mis-click lands
+                on when the tab opens. */}
+            <section className="writepane">
+              <h3 className="writepane__head">Add a row</h3>
+              <AddRow database={database} table={table} columns={t.columns} />
+            </section>
+            <section className="writepane">
+              <h3 className="writepane__head">Change or delete rows</h3>
+              <ChangeRows database={database} table={table} columns={t.columns} />
+            </section>
+          </div>
         ) : null}
         {tab === 'stream' ? <Stream database={database} table={table} /> : null}
         {tab === 'path' ? <PathTab database={database} table={table} /> : null}

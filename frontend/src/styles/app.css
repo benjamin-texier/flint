@@ -4780,6 +4780,91 @@ tr:hover .stratum__fill {
   word-break: break-word;
 }
 
+/* ═══ Changing rows that are there ════════════════════════════════════════
+ * A predicate, what it reaches, and a job. Never a grid with a pencil on it:
+ * ClickHouse has no cell edit, and the icon would lie about what the click
+ * does. The preview is not decoration either — the button that runs the
+ * mutation does not exist until the server has said how many parts it
+ * rewrites, because that figure and the row count are different numbers. */
+
+.writepane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.writepane__head {
+  font-size: var(--size-body);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.chrows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  max-width: 720px;
+}
+
+.chrows__row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}
+
+.chrows__sets {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s2);
+}
+
+.chrows__set {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  width: 100%;
+}
+
+.chrows__eq {
+  font-family: var(--font-data);
+  color: var(--text-muted);
+}
+
+.chrows__foot {
+  display: flex;
+  gap: var(--s3);
+}
+
+.chrows__preview {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s2);
+  padding: var(--s3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-2);
+}
+
+/* The one sentence on this page that is allowed to be loud, because it is the
+ * one a reader most often finds out about afterwards: a predicate on an
+ * unindexed column rewrites every part, and the row count does not say so. */
+.chrows__loud {
+  padding: var(--s2) var(--s3);
+  border-left: 2px solid var(--warning);
+  background: var(--warning-weak);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--size-label);
+}
+
+.chrows__pending {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
 /* Arranging by hand. The grip is the only part of a tile that starts a drag,
  * which is what keeps the table inside one selectable and scrollable while the
  * dashboard is being arranged. */

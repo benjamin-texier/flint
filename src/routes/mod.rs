@@ -339,6 +339,12 @@ pub fn router(state: AppState) -> Router {
         // so it sits with the reader rather than under `/infra` with the
         // statements that change structure.
         .route("/rows", post(rows::insert))
+        // A read, so it is gated on nothing: the preview exists so somebody
+        // does not run the wrong mutation, and putting it behind the tier that
+        // runs one would make doing it the only way to find out.
+        .route("/rows/preview", post(rows::preview))
+        .route("/rows/mutate", post(rows::mutate_rows))
+        .route("/rows/pending", get(rows::pending))
         .route("/outside", get(explorer::outside_tables))
         .route("/schema", get(explorer::schema))
         .route("/history", get(explorer::history))

@@ -193,6 +193,43 @@ export interface TableDetailResponse extends Omit<TableDetail, 'columns'> {
   columns: ColumnDetail[]
 }
 
+export interface MutateBody {
+  database: string
+  table: string
+  /** The `WHERE`, as written. An expression, so it is spliced rather than
+   *  bound — there is no binding for one. */
+  predicate: string
+  /** Empty for a delete. */
+  set?: { column: string; expression: string }[]
+}
+
+export interface MutationPreview {
+  /** Rows the predicate matches — how many actually change. */
+  matches: number
+  /** What a read with this predicate would touch, against the table's totals.
+   *  The parts are the figure that matters: a mutation rewrites whole parts. */
+  estimate: {
+    parts: number
+    rows: number
+    marks: number
+    total_parts: number
+    total_rows: number
+  }
+  narrows: boolean
+  statement: string
+  /** What is worth saying before the button, built by the backend so the
+   *  wording is not written a second time in the browser. */
+  says: string[]
+}
+
+export interface PendingMutation {
+  mutation_id: string
+  command: string
+  created: string
+  parts_to_do: number
+  fail_reason: string
+}
+
 export interface QueryResult {
   query_id: string
   columns: { name: string; type: string }[]
@@ -1192,6 +1229,17 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+
+  /** What a mutation would reach, before anything runs. A read, so it is not
+   *  behind the tier that runs one — finding out must not require doing it. */
+  previewMutation: (body: MutateBody) =>
+    request<MutationPreview>('/rows/preview', { method: 'POST', body: JSON.stringify(body) }),
+  mutateRows: (body: MutateBody) =>
+    request<import('./job').Job>('/rows/mutate', { method: 'POST', body: JSON.stringify(body) }),
+  pendingMutations: (database: string, table: string) =>
+    request<PendingMutation[]>(
+      `/rows/pending?database=${enc(database)}&table=${enc(table)}`,
+    ),
 
   savedQueries: () => request<SavedQuery[]>('/saved-queries'),
   saveQuery: (body: { id?: string; name: string; sql: string; database: string }) =>
