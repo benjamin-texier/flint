@@ -111,15 +111,17 @@ export function ReportsPage() {
         <div className="page__titlerow">
           <h1 className="page__title page__title--hero">What the numbers were</h1>
           {!stateless ? (
-            <button
-              className="btn btn--spark"
-              onClick={() => {
-                setEditing(null)
-                setAdding(true)
-              }}
-            >
-              New report
-            </button>
+            <div className="page__actions">
+              <button
+                className="btn btn--spark"
+                onClick={() => {
+                  setEditing(null)
+                  setAdding(true)
+                }}
+              >
+                New report
+              </button>
+            </div>
           ) : null}
         </div>
         <p className="page__lead">

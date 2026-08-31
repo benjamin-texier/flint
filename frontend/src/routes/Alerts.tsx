@@ -94,15 +94,17 @@ export function AlertsPage() {
         <div className="page__titlerow">
           <h1 className="page__title page__title--hero">Watched for you</h1>
           {!stateless ? (
-            <button
-              className="btn btn--spark"
-              onClick={() => {
-                setEditing(null)
-                setAdding(true)
-              }}
-            >
-              New alert
-            </button>
+            <div className="page__actions">
+              <button
+                className="btn btn--spark"
+                onClick={() => {
+                  setEditing(null)
+                  setAdding(true)
+                }}
+              >
+                New alert
+              </button>
+            </div>
           ) : null}
         </div>
         <p className="page__lead">

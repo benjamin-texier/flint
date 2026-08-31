@@ -13,6 +13,7 @@ import type { ChartSpec } from '../lib/chart'
 import { columnInsertion, tableInsertion } from '../lib/insert'
 import type { Insertion } from '../lib/insert'
 import { formStillOwns, startingSpec, type QuerySpec } from '../lib/query'
+import { readSpec } from '../lib/readSql'
 
 /** Which face a tab is wearing.
  *
@@ -95,8 +96,9 @@ interface TabsApi {
   select: (id: string) => void
   patch: (id: string, changes: Partial<QueryTab>) => void
   /** Turn one tab over. See `canSwitch` for when a tab may go back to its
-   *  form — this does not check, because the control that offers it does. */
-  setMode: (id: string, mode: TabMode) => void
+   *  form — this does not check, because the control that offers it does, and
+   *  hands back the spec it read for `carry`. */
+  setMode: (id: string, mode: TabMode, carry?: QuerySpec) => void
   /** Called by the editor on mount and unmount. */
   bindWriter: (writer: CaretWriter | null) => void
   /** Put text in the query being written. `build` is asked for an insertion
@@ -113,36 +115,46 @@ interface TabsApi {
 
 const TabsContext = createContext<TabsApi | null>(null)
 
-/** Whether a tab may be switched to the form, and what to say when it may not.
+/** Whether a tab may be switched, what the form will hold when it is, and what
+ *  to say when it cannot be switched at all.
  *
- *  The one-way door, stated once. A form can always be turned into a statement,
- *  because that is a translation the product already does on every keystroke.
- *  The other direction is not a translation — nothing in Flint reads SQL back
- *  into a spec — so it is only ever the *return* of a statement that came out
- *  of a form and has not been touched since.
+ *  This used to be a one-way door. A form becomes a statement on every
+ *  keystroke; the other direction was refused outright, because nothing in
+ *  Flint read SQL back into a spec. The refusal was honest and the door was
+ *  still locked — and it was locked on every tab the explorer had ever opened,
+ *  which is most of them.
  *
- *  Saying so on the control is the point. A switch that silently kept the form
- *  and dropped your edits, or silently kept the edits and reset the form, would
- *  be the mode switch that eats your work; a disabled switch with a sentence on
- *  it is a door somebody can see is locked. */
-export function canSwitch(tab: QueryTab, to: TabMode): { ok: true } | { ok: false; why: string } {
+ *  So there are three answers now instead of two.
+ *
+ *  **The statement is the form's own**, untouched since it generated it: the
+ *  switch is free and nothing is carried, because the form is already right.
+ *
+ *  **The statement can be read**: `lib/readSql` translates as much of it as the
+ *  form can hold and names everything it could not — the caller installs the
+ *  spec it returns and shows the list. Best effort, said out loud. A question
+ *  that comes back missing its `multiIf` is a question somebody can fix; a
+ *  question that comes back missing it *silently* is a bug they will find in
+ *  the rows.
+ *
+ *  **The statement is not a question the form has a shape for at all** — a
+ *  join, a UNION, something that is not a SELECT. Those are refused with the
+ *  reason on the control, because dropping half of a join is not a loss, it is
+ *  a different question. */
+export type Switchable =
+  | { ok: true; spec?: QuerySpec; dropped?: string[] }
+  | { ok: false; why: string }
+
+export function canSwitch(tab: QueryTab, to: TabMode): Switchable {
   if (tab.mode === to) return { ok: true }
   if (to === 'sql') return { ok: true }
-  if (tab.spec === null) {
-    // Nothing typed, nothing to lose: this tab has never been anything.
-    if (!tab.sql.trim()) return { ok: true }
-    return {
-      ok: false,
-      why: 'This statement was written by hand, and nothing here reads SQL back into a form. Open a new form tab instead — the + does both.',
-    }
-  }
-  if (!formStillOwns(tab.sql, tab.specSql)) {
-    return {
-      ok: false,
-      why: 'The statement has been edited since the form wrote it, and the form cannot read those edits back. Undo them to return, or keep the SQL.',
-    }
-  }
-  return { ok: true }
+  // Nothing typed, nothing to read: this tab has never been anything.
+  if (tab.spec === null && !tab.sql.trim()) return { ok: true }
+  // The lossless return: the form wrote this and nobody has touched it.
+  if (tab.spec !== null && formStillOwns(tab.sql, tab.specSql)) return { ok: true }
+
+  const reading = readSpec(tab.sql, { database: tab.database, prior: tab.spec })
+  if ('unread' in reading) return { ok: false, why: reading.unread }
+  return { ok: true, spec: reading.spec, dropped: reading.dropped }
 }
 
 /** Tabs and the active id are one value on purpose. Held separately they can
@@ -269,12 +281,27 @@ export function TabsProvider({ children }: { children: ReactNode }) {
     }))
   }, [])
 
-  const setMode = useCallback((id: string, mode: TabMode) => {
+  const setMode = useCallback((id: string, mode: TabMode, carry?: QuerySpec) => {
     setState((s) => ({
       ...s,
       tabs: s.tabs.map((t) => {
         if (t.id !== id || t.mode === mode) return t
         if (mode === 'build') {
+          if (carry) {
+            // A spec read out of the statement. `specSql` is cleared rather
+            // than kept: the form does not own this text yet, and claiming it
+            // did would let a later switch back skip the read and lose the
+            // very edits that were just carried over. The editor's own effect
+            // writes both the moment the server renders the form's statement.
+            return {
+              ...t,
+              mode,
+              spec: carry,
+              specSql: null,
+              database: carry.database || t.database,
+              title: carry.table || t.title,
+            }
+          }
           return {
             ...t,
             mode,

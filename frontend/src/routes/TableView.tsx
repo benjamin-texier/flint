@@ -261,7 +261,7 @@ export function TableView({ database, table }: { database: string; table: string
         {t.comment ? <p className="page__sub">{t.comment}</p> : null}
       </header>
 
-      <MetricLine metrics={headline(t, rows, disk, compression)} />
+      <MetricLine metrics={headline(t, rows, disk, compression)} lead />
 
       <ShapeStrip detail={t} database={database} definition={definition} />
 
@@ -439,7 +439,11 @@ function ShapeStrip({
   const teachable = present.some(([key]) => CLAUSE_MEANING[key])
 
   return (
-    <dl className="shape">
+    /* The plate carries the object's kind on its edge, in the same four colours
+       the rail, the diagram and the glyph beside the title use. It is not
+       decoration: the kind is why half these rows exist — a view has no
+       partition and no parts, a dictionary has neither and a source instead. */
+    <dl className={`shape shape--${detail.kind}`}>
       {teachable ? (
         <button
           className="shape__toggle"
@@ -451,7 +455,9 @@ function ShapeStrip({
         </button>
       ) : null}
       {present.map(([key, value]) => (
-        <div className="shape__item" key={key}>
+        /* The engine gets the plate's headline treatment: it is the fact that
+           decides how every other line here reads. */
+        <div className={`shape__item${key === 'engine' ? ' shape__item--engine' : ''}`} key={key}>
           <dt className="shape__key">{key}</dt>
           <dd className="shape__value">{value}</dd>
           {explain && CLAUSE_MEANING[key] ? (
@@ -460,7 +466,7 @@ function ShapeStrip({
         </div>
       ))}
       {detail.dependents.length > 0 || readsFrom.length > 0 ? (
-        <div className="shape__item shape__item--wide">
+        <div className="shape__item">
           <dt className="shape__key">
             lineage
             {!declared && readsFrom.length > 0 ? (
