@@ -71,6 +71,7 @@ export function ServerPage() {
           { value: count(totalRows), label: 'rows' },
           { value: bytes(totalBytes), label: 'on disk' },
         ]}
+        lead
       />
 
       <section className="section">

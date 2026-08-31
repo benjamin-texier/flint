@@ -206,7 +206,7 @@ function Form({
         </p>
       ) : null}
       {error ? (
-        <p className="says says--throw">
+        <p className="says says--wide says--throw">
           {error instanceof Error ? error.message : 'it was refused'}
         </p>
       ) : null}

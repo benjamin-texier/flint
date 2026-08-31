@@ -305,6 +305,7 @@ export function DatabasePage({ database }: { database: string }) {
           { value: bytes(totalBytes), label: 'on disk' },
           { value: pipelines ? exact(pipelines) : <Dash />, label: 'dependencies' },
         ]}
+        lead
       />
 
       <section className="schema">

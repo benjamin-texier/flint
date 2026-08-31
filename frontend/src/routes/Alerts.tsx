@@ -477,7 +477,7 @@ function AlertForm({
         label="What would this do right now?"
       />
       {webhook.trim() && config && !config.alert_webhooks ? (
-        <p className="says says--watch">
+        <p className="says says--wide says--watch">
           Webhook delivery is switched off on this Flint, so this alert will record its changes
           but send nothing.
         </p>
@@ -489,7 +489,7 @@ function AlertForm({
         </p>
       ) : null}
 
-      {problem ? <p className="says says--watch">{problem}</p> : null}
+      {problem ? <p className="says says--wide says--watch">{problem}</p> : null}
       {save.error ? <ErrorNote error={save.error} /> : null}
 
       <div className="aform__actions">

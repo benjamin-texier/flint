@@ -22,7 +22,7 @@ function useGovern(done: () => void) {
 function Refusal({ error }: { error: unknown }) {
   if (!error) return null
   return (
-    <p className="says says--throw">
+    <p className="says says--wide says--throw">
       {error instanceof Error ? error.message : 'the server refused it'}
     </p>
   )

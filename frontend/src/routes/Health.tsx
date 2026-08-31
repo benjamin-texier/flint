@@ -180,7 +180,7 @@ function RightNow({ activity }: { activity: Q<ActivityReport> }) {
       {/* Named rather than shown as empty: "nothing is running" and "you may
           not see what is running" are different answers. */}
       {[...denied].map((what) => (
-        <p className="says says--watch" key={what}>
+        <p className="says says--wide says--watch" key={what}>
           This user is not granted SELECT on system.{what}, so that list is missing rather than
           empty.
         </p>
@@ -281,7 +281,7 @@ function Running({ running }: { running: RunningQuery[] }) {
       <h3 className="diag__sub2">
         {running.length} running {running.length === 1 ? 'query' : 'queries'}
       </h3>
-      {failed ? <p className="says says--watch">{failed}</p> : null}
+      {failed ? <p className="says says--wide says--watch">{failed}</p> : null}
       <table className="tbl">
         <thead>
           <tr>

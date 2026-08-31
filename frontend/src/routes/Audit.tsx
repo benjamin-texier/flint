@@ -66,7 +66,7 @@ export function AuditPage() {
       {/* Two halves, two reasons. A single "unavailable" would hide whichever
           one still worked, and they are fixed in different places. */}
       {blocked.map((why) => (
-        <p className="says says--watch" key={why}>
+        <p className="says says--wide says--watch" key={why}>
           {why}
         </p>
       ))}
