@@ -198,6 +198,27 @@ export function DashboardView() {
 
   const edit = (next: DashboardSpec) => setDraft(next)
 
+  /* Dragging is an *addition* to the two arrow buttons, never a replacement:
+     those are the keyboard path, and dragging is not one. Taking them out for
+     a grip would land this feature as an accessibility regression.
+
+     What the two paths did share was silence — a tile moved and nothing said
+     so, which is unreadable without sight of the grid. Both go through
+     `rearrange` now, and it speaks. */
+  const [dragging, setDragging] = useState<string | null>(null)
+  const [over, setOver] = useState<string | null>(null)
+  const [moved, setMoved] = useState('')
+
+  const rearrange = (tileId: string, to: number) => {
+    const from = spec.tiles.findIndex((t) => t.id === tileId)
+    const target = Math.min(spec.tiles.length - 1, Math.max(0, to))
+    if (from === -1 || from === target) return
+    edit(moveTile(spec, tileId, target))
+    setMoved(
+      `Moved ${spec.tiles[from]!.title} to ${target + 1} of ${spec.tiles.length}.`,
+    )
+  }
+
   /* Where nothing can be stored no dashboard can exist, so an id in the URL is
      necessarily a link from somewhere else — a bookmark, or another Flint. The
      list is where the reason lives; it is one page and it says all of it. */
@@ -325,12 +346,31 @@ export function DashboardView() {
               spec={spec}
               editing={editing}
               serverZone={server.data?.timezone}
-              onMove={(to) => edit(moveTile(spec, tile.id, to))}
+              dragging={dragging === tile.id}
+              over={over === tile.id && dragging !== null && dragging !== tile.id}
+              onGrab={() => setDragging(tile.id)}
+              onDrop={() => {
+                if (dragging && dragging !== tile.id) rearrange(dragging, index)
+                setDragging(null)
+                setOver(null)
+              }}
+              onOver={() => setOver(tile.id)}
+              onRelease={() => {
+                setDragging(null)
+                setOver(null)
+              }}
+              onMove={(to) => rearrange(tile.id, to)}
               onWidth={(w) => edit(patchTile(spec, tile.id, { w }))}
               onRemove={() => edit(removeTile(spec, tile.id))}
             />
           ))}
         </div>
+
+        {/* One announcement for both paths. A grid rearranged in silence is
+            legible only to whoever can see it move. */}
+        <p className="sr-only" role="status">
+          {moved}
+        </p>
         </>
       )}
     </article>
@@ -466,6 +506,12 @@ function TileCard({
   spec,
   editing,
   serverZone,
+  dragging,
+  over,
+  onGrab,
+  onOver,
+  onDrop,
+  onRelease,
   onMove,
   onWidth,
   onRemove,
@@ -479,6 +525,14 @@ function TileCard({
   variables: Record<string, string>
   spec: DashboardSpec
   editing: boolean
+  /** This tile is the one being carried. */
+  dragging: boolean
+  /** Another tile is being carried and would land here. */
+  over: boolean
+  onGrab: () => void
+  onOver: () => void
+  onDrop: () => void
+  onRelease: () => void
   onMove: (to: number) => void
   onWidth: (w: number) => void
   onRemove: () => void
@@ -525,10 +579,45 @@ function TileCard({
       ? tileZone(tile.sql, serverZone)
       : undefined
 
+  /* `draggable` is set on the node at the moment the grip is pressed rather
+     than held in state, and that is a requirement rather than a shortcut: the
+     browser reads the attribute when it decides whether a `pointerdown` is the
+     start of a drag, and a React state change is not guaranteed to have
+     rendered by then. Setting it from the grip and not on the card is what
+     keeps a tile's own table selectable and scrollable while arranging. */
+  const card = useRef<HTMLElement>(null)
+  const grip = (on: boolean) => () => {
+    if (card.current) card.current.draggable = on
+  }
+
   return (
     <section
-      className={`tile${editing ? ' is-editing' : ''}${result.isFetching ? ' is-busy' : ''}`}
+      ref={card}
+      className={`tile${editing ? ' is-editing' : ''}${result.isFetching ? ' is-busy' : ''}${
+        dragging ? ' is-dragging' : ''
+      }${over ? ' is-over' : ''}`}
       style={{ gridColumn: `span ${tile.w}` }}
+      onDragStart={(e) => {
+        // A drag with no payload is refused outright by Firefox.
+        e.dataTransfer.setData('text/plain', tile.id)
+        e.dataTransfer.effectAllowed = 'move'
+        onGrab()
+      }}
+      onDragEnd={() => {
+        grip(false)()
+        onRelease()
+      }}
+      onDragOver={(e) => {
+        // Without this the drop never fires: the default is to refuse.
+        e.preventDefault()
+        e.dataTransfer.dropEffect = 'move'
+        onOver()
+      }}
+      onDrop={(e) => {
+        e.preventDefault()
+        grip(false)()
+        onDrop()
+      }}
     >
       <header className="tile__head">
         {/* The full title on hover, because the line beside it can now be long
@@ -542,6 +631,21 @@ function TileCard({
         <span className="panel__spacer" />
         {editing ? (
           <>
+            {/* A grip and not a control: the arrows beside it are the whole
+                keyboard contract, and a third focusable thing that does the
+                same job only lengthens the tab order. Hidden from assistive
+                technology for the same reason — dragging is not a gesture it
+                can offer, and announcing a handle nobody can use is worse than
+                announcing nothing. */}
+            <span
+              className="tile__grip"
+              aria-hidden="true"
+              title="Drag to arrange"
+              onPointerDown={grip(true)}
+              onPointerUp={grip(false)}
+            >
+              ⠿
+            </span>
             <button
               className="savedrow__act"
               disabled={index === 0}

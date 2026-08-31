@@ -4455,6 +4455,37 @@ tr:hover .stratum__fill {
   opacity: 0.55;
 }
 
+/* Arranging by hand. The grip is the only part of a tile that starts a drag,
+ * which is what keeps the table inside one selectable and scrollable while the
+ * dashboard is being arranged. */
+.tile__grip {
+  cursor: grab;
+  padding: 0 var(--s1);
+  line-height: 1;
+  color: var(--text-muted);
+  user-select: none;
+  touch-action: none;
+}
+.tile__grip:active {
+  cursor: grabbing;
+}
+
+/* The tile being carried stays legible rather than vanishing: it is the thing
+ * the reader is aiming, and a placeholder they cannot identify is a placeholder
+ * they drop in the wrong place. */
+.tile.is-dragging {
+  opacity: 0.5;
+}
+
+/* Where it would land, on the leading edge of the tile it would take the place
+ * of — a line and not a highlight, because the question is "between which two"
+ * rather than "on which one". */
+.tile.is-over {
+  box-shadow:
+    inset 3px 0 0 0 var(--accent),
+    var(--shadow-card);
+}
+
 .tile__head {
   display: flex;
   align-items: center;
