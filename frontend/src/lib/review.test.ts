@@ -119,9 +119,45 @@ describe('a Nullable that has never been null', () => {
     const found = of([column({ name: 'host', type: 'Nullable(String)', nulls: 0 })])
     const drop = found.find((f) => f.proposal === 'String')!
     expect(drop.headline).toBe('Nullable(String) → String')
-    expect(drop.ddl).toBe('ALTER TABLE default.events\n  MODIFY COLUMN host String')
     expect(drop.severity).toBe('save')
-    expect(drop.caution).toContain('could')
+  })
+
+  // The server refuses `MODIFY COLUMN host String` over a Nullable outright:
+  // dropping the wrapper asks what a null becomes and it will not guess. So the
+  // DDL carries a DEFAULT, and a second statement takes it off again — without
+  // that second one the column keeps a default it was never asked for, and the
+  // headline above it, which promised a plain `String`, is a lie about the
+  // schema this DDL produces.
+  it('states what a null becomes, then puts the column back to a plain type', () => {
+    const found = of([column({ name: 'host', type: 'Nullable(String)', nulls: 0 })])
+    const drop = found.find((f) => f.proposal === 'String')!
+    expect(drop.ddl).toBe(
+      "ALTER TABLE default.events\n  MODIFY COLUMN host String DEFAULT defaultValueOfTypeName('String');\n\n" +
+        'ALTER TABLE default.events\n  MODIFY COLUMN host REMOVE DEFAULT',
+    )
+  })
+
+  // The caution used to say the ALTER would fail on a null, which was true
+  // while the statement had no DEFAULT and is the opposite of true now: the
+  // clause the server demands is also a licence to overwrite. Measured — a
+  // table with one null in it takes the statement without a word.
+  it('warns that a null is absorbed rather than refused', () => {
+    const found = of([column({ name: 'host', type: 'Nullable(String)', nulls: 0 })])
+    const drop = found.find((f) => f.proposal === 'String')!
+    expect(drop.caution).toContain('DEFAULT')
+    expect(drop.caution).toContain('silently becomes')
+    expect(drop.caution).not.toContain('makes this ALTER fail')
+  })
+
+  // A proposal that narrows *inside* the wrapper is not dropping anything, and
+  // a DEFAULT on it would be noise the reader has to rule out.
+  it('adds nothing when the Nullable survives the change', () => {
+    const found = of([
+      column({ name: 'n', type: 'Nullable(Int64)', min: '0', max: '200', nulls: 3 }),
+    ])
+    const narrow = found.find((f) => f.kind === 'width')!
+    expect(narrow.proposal).toBe('Nullable(UInt8)')
+    expect(narrow.ddl).toBe('ALTER TABLE default.events\n  MODIFY COLUMN n Nullable(UInt8)')
   })
 
   it('counts empty strings apart, because they are not nulls', () => {
