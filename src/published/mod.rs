@@ -13,9 +13,14 @@
 //! someone deliberately made it public — a URL that ends up pasted into a
 //! spreadsheet has a much longer life than a session.
 
+pub mod cache;
+pub mod contract;
 pub mod cursor;
+pub mod log;
 pub mod openapi;
 pub mod shape;
+pub mod tool;
+pub mod usage;
 
 use std::collections::BTreeSet;
 
@@ -153,6 +158,17 @@ impl Format {
         }
     }
 
+    /// The name the caller wrote, canonicalised. Short enough for a cache
+    /// key, and stable — `jsonl` and `ndjson` are one format and must not be
+    /// two entries holding identical bytes.
+    pub fn name(self) -> &'static str {
+        match self {
+            Format::Json => "json",
+            Format::Csv => "csv",
+            Format::Ndjson => "ndjson",
+        }
+    }
+
     pub fn content_type(self) -> &'static str {
         match self {
             Format::Json => "application/json; charset=utf-8",
@@ -281,7 +297,13 @@ pub fn to_ndjson(columns: &[String], rows: &[Vec<serde_json::Value>]) -> String 
 /// headers a server explicitly exposes, and for CSV and NDJSON these *are* the
 /// paging — there is no envelope to fall back on, so an unexposed `Link` is a
 /// caller that cannot find page two.
-pub const TOLD_HEADERS: [&str; 8] = [
+///
+/// The zone is here for exactly that reason. A CSV of daily figures is the
+/// most likely thing anyone pipes into a spreadsheet, and a column of dates
+/// with no zone on it is a column that cannot be reconciled against the same
+/// question asked from anywhere else.
+pub const TOLD_HEADERS: [&str; 9] = [
+    "x-flint-timezone",
     "x-flint-limit",
     "x-flint-offset",
     "x-flint-returned",
@@ -297,6 +319,18 @@ pub const CALL_TAG_PREFIX: &str = "flint:api:";
 
 pub fn call_tag(slug: &str) -> String {
     format!("{CALL_TAG_PREFIX}{slug}")
+}
+
+/// The prefix every dataset read is tagged with in `system.query_log`.
+///
+/// Separate from a published call's, because they are different things and the
+/// usage page has to be able to say which. A published endpoint is an object
+/// somebody made on purpose and can be named; a dataset read is a question
+/// asked once, and what there is to count is the *dataset*.
+pub const DATASET_TAG_PREFIX: &str = "flint:dataset:";
+
+pub fn dataset_tag(label: &str) -> String {
+    format!("{DATASET_TAG_PREFIX}{label}")
 }
 
 /// The slug back out of a tag, for reading usage. `None` for anything that is
@@ -315,16 +349,67 @@ pub fn mint_token() -> String {
     )
 }
 
+/// The prefix that tells a stored hash from a token this workspace kept in
+/// clear before it knew better.
+///
+/// A marker rather than a length check, because it has to be one: a minted
+/// token is 64 hex characters and so is a SHA-256 digest, so the two are
+/// indistinguishable by shape. Without this prefix, turning on hashing would
+/// have silently stopped every existing endpoint from authenticating anybody.
+const HASH_PREFIX: &str = "sha256:";
+
+/// What gets stored, given what the caller will send.
+///
+/// Plain SHA-256, unsalted and un-stretched, and that is the right choice here
+/// rather than a shortcut: a token is 256 bits from the platform's CSPRNG, so
+/// there is no dictionary to attack and nothing for a work factor to slow down.
+/// bcrypt on a value nobody can guess buys latency on every call and no safety.
+/// What this *does* buy is that a workspace someone can read — a backup, a
+/// replica, a colleague with `SELECT` on `flint.published` — is no longer a
+/// list of live credentials.
+pub fn hash_token(token: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(token.as_bytes());
+    let mut out = String::with_capacity(HASH_PREFIX.len() + digest.len() * 2);
+    out.push_str(HASH_PREFIX);
+    for byte in digest {
+        out.push_str(&format!("{byte:02x}"));
+    }
+    out
+}
+
+/// Whether this stored value is a hash rather than a token in clear.
+///
+/// Read by the UI, so that an endpoint made before hashing can be *told* to
+/// rotate rather than left looking identical to one that is safe.
+pub fn is_hashed(stored: &str) -> bool {
+    stored.starts_with(HASH_PREFIX)
+}
+
+/// Whether the token a caller sent is this endpoint's.
+///
+/// Two stored shapes, and both are compared in constant time. The legacy one is
+/// a token in clear, from a workspace written before this function hashed
+/// anything: it keeps working, because an upgrade that silently broke every
+/// caller of every endpoint would be a worse outcome than a token at rest for
+/// as long as it takes somebody to rotate it. `is_hashed` is how the page says
+/// which is which.
+pub fn token_matches(stored: &str, given: &str) -> bool {
+    if is_hashed(stored) {
+        return constant_time_eq(stored, &hash_token(given));
+    }
+    constant_time_eq(stored, given)
+}
+
 /// Constant-time-ish comparison. Not a defence against a determined attacker on
 /// a shared host, but it costs nothing and removes the easy timing signal.
-pub fn token_matches(expected: &str, given: &str) -> bool {
-    if expected.len() != given.len() {
+fn constant_time_eq(a: &str, b: &str) -> bool {
+    if a.len() != b.len() {
         return false;
     }
-    expected
-        .bytes()
-        .zip(given.bytes())
-        .fold(0u8, |acc, (a, b)| acc | (a ^ b))
+    a.bytes()
+        .zip(b.bytes())
+        .fold(0u8, |acc, (x, y)| acc | (x ^ y))
         == 0
 }
 
@@ -472,6 +557,39 @@ mod tests {
         assert_eq!(slug_of_tag("flint:introspection"), None);
         // A tag that claims a slug the rules forbid is not one of ours.
         assert_eq!(slug_of_tag("flint:api:Not A Slug"), None);
+    }
+
+    #[test]
+    fn a_hash_is_what_is_stored_and_the_token_still_opens_it() {
+        let token = mint_token();
+        let stored = hash_token(&token);
+        assert!(is_hashed(&stored));
+        // The thing that makes the workspace no longer a list of credentials.
+        assert!(!stored.contains(&token));
+        assert!(token_matches(&stored, &token));
+        assert!(!token_matches(&stored, &mint_token()));
+    }
+
+    #[test]
+    fn a_hash_and_a_token_cannot_be_told_apart_by_shape() {
+        // Why the prefix exists rather than a length check: both are 64 hex
+        // characters, so without a marker the migration would have been a
+        // guess, and a wrong guess locks every caller out at once.
+        let token = mint_token();
+        let bare = hash_token(&token).trim_start_matches("sha256:").to_string();
+        assert_eq!(bare.len(), token.len());
+        assert!(bare.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn a_token_kept_in_clear_before_hashing_goes_on_working() {
+        // An upgrade that silently stopped every published endpoint from
+        // authenticating anybody would be worse than a token at rest until
+        // somebody rotates it — and the page can say which is which.
+        let legacy = mint_token();
+        assert!(!is_hashed(&legacy));
+        assert!(token_matches(&legacy, &legacy));
+        assert!(!token_matches(&legacy, &mint_token()));
     }
 
     #[test]
