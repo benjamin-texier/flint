@@ -17,6 +17,7 @@ pub mod govern;
 pub mod grants;
 pub mod graph;
 pub mod health;
+pub mod ingest;
 pub mod limits;
 pub mod mass;
 pub mod meta;
@@ -694,6 +695,75 @@ impl Client {
 
     /// Ask ClickHouse to stop a running query. `ASYNC` returns immediately —
     /// the in-flight request fails on its own with QUERY_WAS_CANCELLED.
+    /// Send rows for an `INSERT … FORMAT X`: the statement rides in the query
+    /// string and the data streams through the body.
+    ///
+    /// Its own method rather than a flag on `dispatch`, because it inverts what
+    /// that function is for — there the body *is* the statement. Streaming
+    /// rather than buffering is the whole point of the feature it serves: a
+    /// file import that held the file in Flint's memory would fall over on
+    /// exactly the file somebody could not load any other way.
+    ///
+    /// Answers with the server's own summary, which reports the rows it
+    /// *accepted*. It does not report the ones it turned away — see
+    /// `ingest.rs`, where that measurement decided the shape of the feature.
+    pub async fn insert_rows(
+        &self,
+        sql: &str,
+        body: reqwest::Body,
+        settings: &[(String, String)],
+    ) -> Result<InsertSummary> {
+        let mut params: Vec<(String, String)> = vec![
+            ("query".into(), sql.to_string()),
+            ("max_execution_time".into(), self.timeout_secs.to_string()),
+        ];
+        if self.readonly {
+            // Not a fabricated refusal: `readonly=2` is what the server would
+            // be sent anyway, and it rejects DML. Said here so the reader gets
+            // Flint's sentence rather than the server's code.
+            return Err(Error::BadRequest(
+                "this Flint is read-only, so it will not write rows".into(),
+            ));
+        }
+        for (name, value) in settings {
+            params.push((name.clone(), value.clone()));
+        }
+        let response = self
+            .http
+            .post(&self.url)
+            .query(&params)
+            .header("X-ClickHouse-User", &self.user)
+            .header("X-ClickHouse-Key", &self.password)
+            .header("Content-Type", "application/octet-stream")
+            .body(body)
+            .send()
+            .await
+            .map_err(|source| Error::Transport {
+                url: self.url.clone(),
+                source: source.without_url(),
+            })?;
+
+        let status = response.status();
+        let summary = response
+            .headers()
+            .get("x-clickhouse-summary")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| serde_json::from_str::<InsertSummary>(v).ok())
+            .unwrap_or_default();
+        if status.is_success() {
+            return Ok(summary);
+        }
+        let vouched = vouches_for_clickhouse(&response);
+        let text = response.text().await.map_err(|source| Error::Transport {
+            url: self.url.clone(),
+            source: source.without_url(),
+        })?;
+        if !vouched {
+            return Err(not_clickhouse(&self.url, status, &text));
+        }
+        Err(parse_exception(&text))
+    }
+
     pub async fn cancel(&self, query_id: &str) -> Result<()> {
         let sql = "KILL QUERY WHERE query_id = {id:String} ASYNC";
         self.send(
@@ -818,6 +888,23 @@ fn summary_of(response: &reqwest::Response) -> Summary {
 /// The three callers that need this are a report's schedule, a published
 /// endpoint's buckets, and a dataset request's own zone. They had no business
 /// each carrying their own copy of the rule.
+/// What the server reports after taking rows.
+///
+/// Every field arrives as a *string* in `X-ClickHouse-Summary`, which is not a
+/// quirk to work around but the reason this has a type of its own: a row count
+/// past 2^53 would lose precision if it were read as a JSON number.
+#[derive(Debug, Default, Clone, serde::Deserialize, serde::Serialize)]
+pub struct InsertSummary {
+    #[serde(default)]
+    pub read_rows: String,
+    #[serde(default)]
+    pub written_rows: String,
+    #[serde(default)]
+    pub written_bytes: String,
+    #[serde(default)]
+    pub elapsed_ns: String,
+}
+
 pub async fn check_timezone(ch: &Client, name: &str) -> Result<()> {
     if name.is_empty() {
         return Ok(());

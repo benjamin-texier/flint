@@ -230,6 +230,20 @@ export interface PendingMutation {
   fail_reason: string
 }
 
+export interface Inspected {
+  /** The columns the file turned out to have, as the server inferred them. */
+  columns: { name: string; type: string }[]
+  /** A page of it, parsed with the format the import will use. */
+  rows: string[][]
+  mapping: {
+    matched: string[]
+    unmatched: string[]
+    defaulted: string[]
+    by_name: boolean
+  }
+  statement: string
+}
+
 export interface QueryResult {
   query_id: string
   columns: { name: string; type: string }[]
@@ -1239,6 +1253,21 @@ export const api = {
   pendingMutations: (database: string, table: string) =>
     request<PendingMutation[]>(
       `/rows/pending?database=${enc(database)}&table=${enc(table)}`,
+    ),
+
+  /** What a file holds, before anything is written. A sample of it, as text. */
+  inspectFile: (body: { database: string; table: string; format: string; sample: string }) =>
+    request<Inspected>('/rows/inspect', { method: 'POST', body: JSON.stringify(body) }),
+  /** The file itself. `fetch` streams a `File` body, so nothing is held in
+   *  the tab — which is the point for a file too big to load another way. */
+  importFile: (
+    q: { database: string; table: string; format: string },
+    file: File,
+  ) =>
+    request<{ before: number; after: number; written: number; statement: string }>(
+      `/rows/import?database=${enc(q.database)}&table=${enc(q.table)}&format=${enc(q.format)}`,
+      // Overrides the JSON default the helper sets: the body is a file.
+      { method: 'POST', body: file, headers: { 'Content-Type': 'application/octet-stream' } },
     ),
 
   savedQueries: () => request<SavedQuery[]>('/saved-queries'),

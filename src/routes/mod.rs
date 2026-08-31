@@ -345,6 +345,8 @@ pub fn router(state: AppState) -> Router {
         .route("/rows/preview", post(rows::preview))
         .route("/rows/mutate", post(rows::mutate_rows))
         .route("/rows/pending", get(rows::pending))
+        .route("/rows/inspect", post(rows::inspect))
+        .route("/rows/import", post(rows::import))
         .route("/outside", get(explorer::outside_tables))
         .route("/schema", get(explorer::schema))
         .route("/history", get(explorer::history))
