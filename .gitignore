@@ -3,6 +3,11 @@
 /frontend/node_modules
 /frontend/dist
 
+# Vitest writes its cache to a `node_modules/.vite` beside the *root* rather
+# than beside the frontend it is testing, so the rule above never sees it. Two
+# directories of the same name, one of them twenty kilobytes of nothing.
+/node_modules
+
 # pnpm's content-addressed store, when the project keeps one locally. It is
 # 130 MB of tarballs that `pnpm-lock.yaml` can rebuild byte for byte, and it
 # sits inside `frontend/` rather than inside `node_modules/`, so none of the
