@@ -2928,6 +2928,42 @@ table it held, and says so in the row rather than greying out in silence.
 To develop against any of this you need a destination, which a default ClickHouse
 does not have: `contrib/dev-backups.xml` gives the compose fixture one.
 
+### Where a table's rows actually are
+
+A dozen of ClickHouse's engines store nothing of their own. `S3` reads objects out
+of a bucket, `PostgreSQL` queries somebody else's database on every `SELECT`,
+`Kafka` drains a topic. Flint used to draw those as a MergeTree with an odd name
+and no size, which is the one thing they are not: the question in front of an `S3`
+table is *which bucket*, and the answer was already on the page — folded into
+`engine_full`, and shown nowhere but the DDL tab.
+
+So the object page reads it, under the sentence that says what the engine does. A
+bucket is split into the parts somebody would read out loud — `flint/events/*.parquet`
+**on** `s3:9000`, its region where the host names one, its format, its compression.
+A `PostgreSQL` table says `shop.public.orders` on `pg.internal:5432` and the user it
+connects as. A `Kafka` table says its topics, its brokers, its consumer group. The
+same line appears on the diagram's side panel, where the address is what tells two
+otherwise identical nodes apart. A database engine gets the same treatment: a
+`PostgreSQL` database makes every table under it a table on another server, and said
+so nowhere before.
+
+**Nothing in it is guessed.** These signatures are positional and several are
+variadic — `S3` takes a path, or a path and a format, or a path with two credentials
+wedged between them — so an argument Flint cannot name is *counted* rather than
+labelled, and the panel says how many. A host presented as a database name is worse
+than an argument the page admits it did not read. The credentials never appear
+because ClickHouse itself replaces them with `[HIDDEN]` unless
+`format_display_secrets_in_show_and_select` is on, which Flint never asks for — and
+the panel says so, once, so nobody goes looking for the setting in Flint.
+
+Reading these tables also settled what their *figures* mean. `system.columns` does
+not report zero for an `S3`, a `URL` or a `File` table: it reports ClickHouse's own
+planning estimate, a flat 100 MB compressed and 1 GB raw per column, identical down
+the table — which Flint drew as "95 MiB on disk, 954 MiB raw, 10×" on a table holding
+nothing at all. Those columns are now dropped. So are the zeroes the diagram drew for
+the same tables, which read as an empty table rather than as a table this server has
+never held; a node whose rows are elsewhere counts its columns instead.
+
 ### How a table got here
 
 The DDL tab shows a table's definition. Underneath it, Flint now shows the record:
@@ -3832,6 +3868,14 @@ is per object, not per edge: an edge here is a dependency rather than a call, an
 Kiali's edge thickness measures requests between services, which is not a thing
 this graph has. Dashboard tiles are reordered with buttons and a width control
 rather than by dragging.
+
+An external table's *address* is read; its **state** is not. `system.kafka_consumers`
+knows a topic's assignments, offsets, last poll and last exception, and
+`system.s3queue_log` knows which objects a queue has already taken — neither is on
+the page, so Flint can say where a `Kafka` table points and not whether anything is
+arriving. Nor does a `PostgreSQL` or `MySQL` *database* list the tables on the far
+end: ClickHouse resolves those on demand, and a database that cannot be reached
+reads as an empty one.
 
 Replication is read-only, and two of its verdicts have been exercised against a
 live server while three have not. A healthy replica and one with its Keeper

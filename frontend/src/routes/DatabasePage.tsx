@@ -30,6 +30,7 @@ import { ShareBar } from '../components/StratumBar'
 import { KindGlyph } from '../components/TypeBadge'
 import { Dash } from '../components/Dash'
 import { EmptyNote, ErrorNote, Loading } from '../components/Note'
+import { ExternalPanel } from '../components/ExternalSource'
 
 /** The window the diagram's traffic overlay asks for. A week is long enough
  *  that a weekly report still counts as read and short enough to be current. */
@@ -138,6 +139,11 @@ export function DatabasePage({ database }: { database: string }) {
   }
   const tables = useQuery({ queryKey: ['tables', database], queryFn: () => api.tables(database) })
   const graph = useQuery({ queryKey: ['graph', database], queryFn: () => api.graph(database) })
+  /* Only for the header, and only ever a cache hit in practice: the rail and
+     the switcher have both asked for this list already. A database engine is
+     the one thing about a database that its own tables cannot tell you — a
+     `PostgreSQL` database has no tables of its own until somebody looks. */
+  const catalogue = useQuery({ queryKey: ['databases'], queryFn: api.databases })
   /* The time axis is fetched only once somebody asks for it: it is a
      `GROUP BY table, partition` over `system.parts`, which is cheap but not
      free, and nobody should pay for it on a page they opened for the diagram. */
@@ -230,6 +236,7 @@ export function DatabasePage({ database }: { database: string }) {
   const totalRows = list.reduce((sum, t) => sum + (t.total_rows ?? t.parts_rows), 0)
   const objects = list.filter((t) => !internalName(t.name)).length
   const pipelines = graph.data?.edges.length ?? 0
+  const external = catalogue.data?.find((d) => d.name === database)
 
   return (
     <article className="page page--database page--wide">
@@ -241,6 +248,12 @@ export function DatabasePage({ database }: { database: string }) {
             Query this database
           </Link>
         </div>
+        {/* A database engine that points somewhere else — `PostgreSQL`,
+            `MySQL`, `S3` — makes every table under it a table on another
+            server, and says so nowhere but here. */}
+        {external ? (
+          <ExternalPanel engine={external.engine} engineFull={external.engine_full} scope="database" />
+        ) : null}
       </header>
 
       <MetricLine

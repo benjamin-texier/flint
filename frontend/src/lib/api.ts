@@ -92,6 +92,10 @@ export interface ServerInfo {
 export interface DatabaseSummary {
   name: string
   engine: string
+  /** The engine with its arguments. For a `PostgreSQL` or an `S3` database it
+   *  is where the far end is written down; for an `Atomic` one it is the word
+   *  `Atomic` again. */
+  engine_full: string
   comment: string
   tables: number
   views: number

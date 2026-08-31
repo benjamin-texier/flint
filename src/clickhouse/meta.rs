@@ -101,6 +101,12 @@ pub struct DatabaseSummary {
     pub name: String,
     #[serde(default)]
     pub engine: String,
+    /// The engine with its arguments, which for `PostgreSQL`, `MySQL` or `S3`
+    /// is the only place the address of the far end is written down. The
+    /// server has already replaced the password with `[HIDDEN]`; Flint never
+    /// asks it not to.
+    #[serde(default)]
+    pub engine_full: String,
     #[serde(default)]
     pub comment: String,
     #[serde(default)]
@@ -119,6 +125,9 @@ pub struct DatabaseSummary {
 
 pub async fn databases(ch: &Client) -> Result<Vec<DatabaseSummary>> {
     let comment = ch.col_or("databases", "comment", "''").await?;
+    // Degraded rather than dropped on a server too old to publish it: an engine
+    // with no arguments is what a plain `Atomic` database has anyway.
+    let engine_full = ch.col_or("databases", "engine_full", "engine").await?;
 
     // Built twice from one template rather than edited afterwards: the fallback
     // has to be a query that really has no `system.parts` in it, and string
@@ -140,6 +149,7 @@ pub async fn databases(ch: &Client) -> Result<Vec<DatabaseSummary>> {
         format!(
             "SELECT d.name                            AS name, \
                     d.engine                           AS engine, \
+                    {engine_full}                      AS engine_full, \
                     {comment}                          AS comment, \
                     coalesce(c.tables, 0)              AS tables, \
                     coalesce(c.views, 0)               AS views, \
@@ -1092,6 +1102,7 @@ mod tests {
         DatabaseSummary {
             name: name.into(),
             engine: "Atomic".into(),
+            engine_full: "Atomic".into(),
             comment: String::new(),
             tables: 0,
             views: 10,

@@ -9,6 +9,7 @@ import { ShareBar, StratumBar } from '../components/StratumBar'
 import { TypeBadge, KindGlyph } from '../components/TypeBadge'
 import { TypeIcon } from '../components/TypeIcon'
 import { CLAUSE_MEANING, KIND_LABEL, KIND_MEANING, explainEngine } from '../lib/explain'
+import { isExternalEngine } from '../lib/external'
 import { formatDdl, tokenize } from '../lib/ddl'
 import { depthOf, lineagePath } from '../lib/path'
 import { lineageSubgraph } from '../lib/graph'
@@ -40,6 +41,7 @@ import { ProjectionAdvisor } from '../components/ProjectionAdvisor'
 import { SchemaReview } from '../components/SchemaReview'
 import { EmptyNote, ErrorNote, Loading } from '../components/Note'
 import { Dash } from '../components/Dash'
+import { ExternalPanel } from '../components/ExternalSource'
 
 const TABS = [
   'columns',
@@ -193,6 +195,10 @@ export function TableView({ database, table }: { database: string; table: string
         {/* One sentence on what this kind of object actually does. The engine
             name stays above it, so the expert never has to read past it. */}
         <p className="page__lead">{explainEngine(t.engine) ?? KIND_MEANING[t.kind]}</p>
+        {/* And *where*, for the engines that hold nothing themselves. The
+            sentence above says an S3 table reads files outside ClickHouse; the
+            only follow-up anybody has is which ones. */}
+        <ExternalPanel engine={t.engine} engineFull={t.engine_full} paths={t.data_paths} />
         {/* The figures below belong to a table nobody wrote, so the page says
             which one rather than presenting them as the view's own. */}
         {t.storage ? (
@@ -228,7 +234,12 @@ export function TableView({ database, table }: { database: string; table: string
 
       <div className="tabpanel" id="tabpanel" role="tabpanel" aria-labelledby={`tab-${tab}`}>
         {tab === 'columns' ? (
-          <Columns columns={t.columns} definition={definition} database={database} />
+          <Columns
+            columns={t.columns}
+            definition={definition}
+            database={database}
+            external={isExternalEngine(t.engine)}
+          />
         ) : null}
         {tab === 'sources' ? (
           <Sources definition={definition} database={database} outputs={t.columns} />
@@ -414,15 +425,28 @@ function Columns({
   columns,
   definition,
   database,
+  external = false,
 }: {
   columns: ColumnDetail[]
   definition: Definition | null
   database: string
+  /** True where the rows are not on this server, which makes the per-column
+   *  sizes below not a measurement of anything here. */
+  external?: boolean
 }) {
   // Views, materialized views and dictionaries report no per-column storage.
   // A scale of 0 makes the bars render as nothing rather than as a row of ticks
   // that look like data.
-  const anySizes = columns.some((c) => c.uncompressed_bytes > 0)
+  //
+  // An external table is worse than that, and it is why `external` exists.
+  // `system.columns` does not report zero for an `S3`, a `URL` or a `File`
+  // table: it reports ClickHouse's own planning estimate, a flat 100 MB
+  // compressed and 1 GB raw *per column*, identical down the table. Flint drew
+  // that as "95 MiB on disk, 954 MiB raw, 10×" on a table holding nothing at
+  // all. The rows are in a bucket; nothing on this server has measured them,
+  // and the columns are dropped rather than filled with a number the server
+  // made up to cost a query plan with.
+  const anySizes = !external && columns.some((c) => c.uncompressed_bytes > 0)
   const max = useMemo(
     () => (anySizes ? barScale(columns.map((c) => c.uncompressed_bytes)) : 0),
     [columns, anySizes],
