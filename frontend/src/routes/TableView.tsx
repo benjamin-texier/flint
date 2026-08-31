@@ -10,11 +10,14 @@ import { TypeBadge, KindGlyph } from '../components/TypeBadge'
 import { TypeIcon } from '../components/TypeIcon'
 import { CLAUSE_MEANING, KIND_LABEL, KIND_MEANING, explainEngine } from '../lib/explain'
 import { formatDdl, tokenize } from '../lib/ddl'
-import { depthOf, lineagePath, type Level } from '../lib/path'
+import { depthOf, lineagePath } from '../lib/path'
+import { lineageSubgraph } from '../lib/graph'
+import { SchemaCanvas } from '../components/SchemaCanvas'
 import {
   LIMITS,
   costOf,
   exploreSql,
+  exportSql,
   startingFilter,
   startingSpec,
   timeColumns,
@@ -24,8 +27,17 @@ import { OP_LABEL, opTakesNoValue, opsFor, type ColumnInfo, type Condition } fro
 import { shortType } from '../lib/chType'
 import { analyseDefinition, columnUsage, type ColumnOrigin, type Definition } from '../lib/lineage'
 import { barScale } from '../lib/scale'
+import { Download } from '../components/Download'
 import { ResultsGrid } from '../components/ResultsGrid'
+import { tableDownloadNote } from '../lib/export'
+import { Changes } from '../components/Changes'
+import { Impact } from '../components/Impact'
 import { Profile } from '../components/Profile'
+import { Compare } from '../components/Compare'
+import { Drift } from '../components/Drift'
+import { Relations } from '../components/Relations'
+import { ProjectionAdvisor } from '../components/ProjectionAdvisor'
+import { SchemaReview } from '../components/SchemaReview'
 import { EmptyNote, ErrorNote, Loading } from '../components/Note'
 import { Dash } from '../components/Dash'
 
@@ -36,6 +48,10 @@ const TABS = [
   'readby',
   'path',
   'profile',
+  'relations',
+  'drift',
+  'compare',
+  'review',
   'partitions',
   'projections',
   'ddl',
@@ -98,6 +114,17 @@ export function TableView({ database, table }: { database: string; table: string
     ['readby', 'Read by', null],
     ['path', 'Path', null],
     ['profile', 'Profile', null],
+    /* The three that read the rows rather than the definition, kept together and
+       in the order the questions come: what is in it, what its columns say about
+       each other, and whether any of that has changed. Both of the last two were
+       reachable only by typing the URL until this list was the thing that got
+       forgotten — which is exactly the failure a tab strip exists to prevent. */
+    ['relations', 'Relations', null],
+    ['drift', 'Over time', null],
+    ['compare', 'Compare', null],
+    // Only where there is a schema to review: a view has no parts and no types
+    // of its own to change.
+    ...((stores ? [['review', 'Schema review', null]] : []) as [Tab, string, number | null][]),
     // A tab badged zero is a promise of nothing: dropped, the same way an
     // absent figure is dropped from the headline rather than dashed.
     // A link to ?tab=partitions keeps its tab even when the count is zero, so
@@ -105,8 +132,12 @@ export function TableView({ database, table }: { database: string; table: string
     ...((t.partitions.length > 0 || tab === 'partitions'
       ? [['partitions', 'Partitions', t.partitions.length]]
       : []) as [Tab, string, number | null][]),
-    ...((t.projections.length > 0 || tab === 'projections'
-      ? [['projections', 'Projections', t.projections.length]]
+    /* Present wherever there are parts to hold one, not only where one exists
+       already: the question this tab answers is whether the workload argues for
+       a projection, and "none yet" is the case it is most useful in. The badge
+       still counts only what is there — a zero would promise nothing. */
+    ...((stores || tab === 'projections'
+      ? [['projections', 'Projections', t.projections.length || null]]
       : []) as [Tab, string, number | null][]),
     ['ddl', 'DDL', null],
   ]
@@ -203,19 +234,51 @@ export function TableView({ database, table }: { database: string; table: string
           <Sources definition={definition} database={database} outputs={t.columns} />
         ) : null}
         {tab === 'readby' ? (
-          <ReadBy database={database} table={table} columns={t.columns} />
+          <div className="stack">
+            {/* The decision above the exploration. `Read by` answers who uses
+                this and which columns; this answers what breaks if it goes —
+                transitively, and with what would be lost. Same graph, and the
+                one somebody is about to act on comes first. */}
+            <Impact database={database} table={table} />
+            <ReadBy database={database} table={table} columns={t.columns} />
+          </div>
         ) : null}
         {tab === 'path' ? <PathTab database={database} table={table} /> : null}
         {tab === 'profile' ? <Profile database={database} table={table} /> : null}
+        {tab === 'relations' ? <Relations database={database} table={table} /> : null}
+        {tab === 'drift' ? <Drift database={database} table={table} /> : null}
+        {tab === 'compare' ? <Compare database={database} table={table} /> : null}
+        {tab === 'review' ? <SchemaReview database={database} table={table} /> : null}
         {tab === 'partitions' ? <Partitions detail={t} /> : null}
-        {tab === 'projections' ? <Projections detail={t} /> : null}
-        {tab === 'ddl' ? <Ddl detail={t} /> : null}
+        {/* Eager like every other tab here, and measured before it was left
+            that way: the advisor and its rules cost 30.4 kB minified, 9.0 kB
+            gzipped, on an entry chunk that is already a megabyte. That is the
+            same order as the schema review beside it, and the landing chunk's
+            size is a question for all of these tabs at once rather than one for
+            whichever was added last. */}
+        {tab === 'projections' ? <ProjectionAdvisor database={database} table={table} /> : null}
+        {tab === 'ddl' ? (
+          <div className="stack">
+            {/* The definition is *what* it is; the record underneath is *how*. */}
+            <Ddl detail={t} />
+            <Changes database={database} table={table} />
+          </div>
+        ) : null}
         {tab === 'preview' ? (
           <Preview
             database={database}
             table={table}
             columns={t.columns}
             sortingKey={t.sorting_key}
+            /* Gated on `stores`, not on the numbers themselves. A view sends
+               `total_rows: null` and `parts_rows: 0` — and `0` is "no parts",
+               not "no rows", so `??` walks straight past the null and lands on
+               it. That put "Downloads all 0 rows" under a view holding 3,780,
+               which is worse than saying nothing: it promises an empty file.
+               `stores` is the question actually being asked — does this object
+               keep rows of its own — and it is the same one the tab list uses,
+               so the two cannot drift. */
+            totalRows={stores ? (t.total_rows ?? t.parts_rows ?? null) : null}
           />
         ) : null}
       </div>
@@ -970,35 +1033,6 @@ function Partitions({ detail }: { detail: TableDetailResponse }) {
   )
 }
 
-function Projections({ detail }: { detail: TableDetailResponse }) {
-  if (detail.projections.length === 0) {
-    return (
-      <EmptyNote title="No projections">
-        Projections store an alternate sort order for this table. Add one when a common query
-        cannot use the primary key.
-      </EmptyNote>
-    )
-  }
-  return (
-    <div className="stack">
-      {detail.projections.map((p) => (
-        <section className="card" key={p.name}>
-          <header className="card__head">
-            <h3 className="card__title">{p.name}</h3>
-            <span className="pill">{p.type}</span>
-          </header>
-          {p.sorting_key.length > 0 ? (
-            <p className="card__line">
-              <span className="label">order by</span> {p.sorting_key.join(', ')}
-            </p>
-          ) : null}
-          {p.query ? <pre className="code">{p.query}</pre> : null}
-        </section>
-      ))}
-    </div>
-  )
-}
-
 function Ddl({ detail }: { detail: TableDetailResponse }) {
   // A view's CREATE statement is its definition, plus the column list ClickHouse
   // generates from that definition, plus the settings of the session that
@@ -1090,23 +1124,40 @@ function Sql({ sql }: { sql: string }) {
   )
 }
 
-/** The whole path this object sits on, as a chain.
+/** The whole path this object sits on, drawn.
  *
  *  `Sources` and `Read by` answer about the immediate neighbours. The question
- *  that needs a whole page is the one that spans them: where do these rows
- *  ultimately come from, and where do they ultimately end up. */
+ *  that needs a whole tab is the one that spans them: where do these rows
+ *  ultimately come from, and where do they ultimately end up.
+ *
+ *  This was a chain of rows, one hop per row, and the argument for it was that a
+ *  chain is honest about depth in a way a picture is not. It was also, on the
+ *  overwhelmingly common shape — one hop down to one view — four words and a
+ *  pill in an otherwise empty tab, which is not a reading of anything. So the
+ *  depth moved into the caption, where it is still stated, and the path itself
+ *  is drawn by the same canvas the database page draws: same nodes, same
+ *  engines, same panel when you click one, same full screen. There is no second
+ *  diagram in this product, and there is no second answer to "what feeds this".
+ *
+ *  `lineageSubgraph` is the same function the database page's own "whole path
+ *  through…" uses, so the two views cannot disagree about what the path is. */
 function PathTab({ database, table }: { database: string; table: string }) {
   const graph = useQuery({
     queryKey: ['graph', database],
     queryFn: () => api.graph(database),
   })
+  const id = `${database}.${table}`
   const path = useMemo(
-    () => (graph.data ? lineagePath(graph.data, `${database}.${table}`) : null),
-    [graph.data, database, table],
+    () => (graph.data ? lineagePath(graph.data, id) : null),
+    [graph.data, id],
+  )
+  const drawn = useMemo(
+    () => (graph.data ? lineageSubgraph(graph.data, id) : null),
+    [graph.data, id],
   )
 
   if (graph.error) return <ErrorNote error={graph.error} retry={() => graph.refetch()} />
-  if (!path) return <Loading label="Following the arrows" />
+  if (!path || !drawn || !graph.data) return <Loading label="Following the arrows" />
 
   const { up, down } = depthOf(path)
   if (up === 0 && down === 0) {
@@ -1118,27 +1169,27 @@ function PathTab({ database, table }: { database: string; table: string }) {
     )
   }
 
+  /* The count follows the drawing, and the depths follow the count: "3 of 41
+     objects" is what was kept, and the hops are how far it reaches in each
+     direction — which is the one thing a picture of six boxes does not tell you
+     at a glance. */
+  const bar = (
+    <div className="focusbar">
+      <span className="focusbar__text">
+        The whole path through <span className="focusbar__name">{table}</span>
+        <span className="focusbar__rest">
+          {' '}
+          · {drawn.graph.nodes.length} of {graph.data.nodes.length} objects ·{' '}
+          {up > 0 ? `${up} hop${up === 1 ? '' : 's'} back to a source` : 'nothing feeds this'} ·{' '}
+          {down > 0 ? `${down} hop${down === 1 ? '' : 's'} on to a leaf` : 'nothing reads it'}
+        </span>
+      </span>
+    </div>
+  )
+
   return (
     <div className="lpath">
-      <p className="lpath__lead">
-        {up > 0 ? `${up} hop${up === 1 ? '' : 's'} back to a source` : 'Nothing feeds this'} ·{' '}
-        {down > 0 ? `${down} hop${down === 1 ? '' : 's'} on to a leaf` : 'nothing reads it'}
-      </p>
-
-      {/* Furthest first going up, so the page reads top-to-bottom in the
-          direction the rows actually travel. */}
-      {[...path.upstream].reverse().map((level) => (
-        <Hop key={`up-${level.depth}`} level={level} label={`${level.depth} up`} />
-      ))}
-
-      <div className="lpath__self">
-        <span className="lpath__here">{table}</span>
-        <span className="label">you are here</span>
-      </div>
-
-      {path.downstream.map((level) => (
-        <Hop key={`down-${level.depth}`} level={level} label={`${level.depth} down`} />
-      ))}
+      <SchemaCanvas graph={drawn.graph} here={id} bar={bar} key={id} />
 
       {path.incomplete.length > 0 ? (
         <p className="lpath__note">
@@ -1149,27 +1200,6 @@ function PathTab({ database, table }: { database: string; table: string }) {
           {path.incomplete.length === 1 ? 'it' : 'one'} to keep following.
         </p>
       ) : null}
-    </div>
-  )
-}
-
-function Hop({ level, label }: { level: Level; label: string }) {
-  return (
-    <div className="lpath__hop">
-      <span className="lpath__depth label">{label}</span>
-      <div className="lpath__steps">
-        {level.steps.map((step) => (
-          <Link
-            className={`lpath__step lpath__step--${step.kind}`}
-            key={step.id}
-            to={`/db/${encodeURIComponent(step.database)}/${encodeURIComponent(step.name)}`}
-            title={`${step.database}.${step.name}`}
-          >
-            <KindGlyph kind={step.kind} />
-            {step.external ? step.id : step.name}
-          </Link>
-        ))}
-      </div>
     </div>
   )
 }
@@ -1185,11 +1215,13 @@ function Preview({
   table,
   columns,
   sortingKey,
+  totalRows,
 }: {
   database: string
   table: string
   columns: ColumnDetail[]
   sortingKey: string
+  totalRows: number | null
 }) {
   const info: ColumnInfo[] = useMemo(
     () => columns.map((c) => ({ name: c.name, type: c.type })),
@@ -1202,6 +1234,9 @@ function Preview({
   const [inspect, setInspect] = useState<number | null>(null)
 
   const sql = useMemo(() => exploreSql(spec, info), [spec, info])
+  // The same question without the preview's limit: everything the reader chose,
+  // and all the rows that match it.
+  const fileSql = useMemo(() => exportSql(spec, info), [spec, info])
   const cost = useMemo(() => costOf(spec, info, sortingKey), [spec, info, sortingKey])
   const times = useMemo(() => timeColumns(info), [info])
 
@@ -1372,11 +1407,23 @@ function Preview({
           </EmptyNote>
         ) : (
           <>
-            <p className="explore__note label">
-              {rows.data.rows.length} rows · {bytes(rows.data.statistics.bytes_read)} read ·{' '}
-              {count(rows.data.statistics.rows_read)} rows scanned
-              {rows.data.truncated ? ' · more behind this' : ''}
-            </p>
+            <div className="explore__notebar">
+              <p className="explore__note label">
+                {rows.data.rows.length} rows · {bytes(rows.data.statistics.bytes_read)} read ·{' '}
+                {count(rows.data.statistics.rows_read)} rows scanned
+                {rows.data.truncated ? ' · more behind this' : ''}
+              </p>
+              {/* Beside what the preview cost, because that is the line a
+                  reader is already using to judge the size of what they are
+                  looking at — and this one says the size of what they would
+                  get instead. */}
+              <Download
+                sql={fileSql}
+                database={database}
+                stem={`${database}.${table}`}
+                note={tableDownloadNote(totalRows, spec.filters.length > 0, rows.data.rows.length)}
+              />
+            </div>
             <div className="explore__grid">
               <ResultsGrid result={rows.data} />
             </div>
@@ -1533,7 +1580,7 @@ function headline(
   const out: Metric[] = []
   if (rows) out.push({ value: count(rows), label: 'rows' })
   if (disk) out.push({ value: bytes(disk), label: 'on disk' })
-  if (compression) out.push({ value: compression, label: 'compression', accent: true })
+  if (compression) out.push({ value: compression, label: 'compression' })
   out.push({ value: exact(t.columns.length), label: 'columns' })
   if (t.parts) out.push({ value: exact(t.parts), label: partsLabel(t.parts, t.partitions.length) })
   if (!rows && !disk && t.depends_on.length > 0) {

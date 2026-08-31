@@ -1,7 +1,9 @@
 import { useMemo } from 'react'
+import { Fragment, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
 import { api } from '../lib/api'
+import { Shape } from './Shape'
 import {
   ROLE_LABEL,
   ROLE_MEANING,
@@ -23,6 +25,7 @@ import { EmptyNote, ErrorNote, Loading } from './Note'
  *  which are the measurements, which are the categories — and the per-column
  *  detail sits under them. */
 export function Profile({ database, table }: { database: string; table: string }) {
+  const [shown, setShown] = useState<string | null>(null)
   const profile = useQuery({
     queryKey: ['profile', database, table],
     queryFn: () => api.profile(database, table),
@@ -106,13 +109,23 @@ export function Profile({ database, table }: { database: string; table: string }
               {profile.data.columns.map((c) => {
                 const role = roleOf(c, scanned)
                 const ratio = nullRatio(c, scanned)
+                const open = shown === c.name
                 return (
-                  <tr key={c.name}>
+                  <Fragment key={c.name}>
+                  <tr>
                     <td className="tbl__key">
-                      <span className="tbl__head">
+                      {/* One open at a time. Two shapes side by side in a table
+                          invite a comparison their axes do not support: each is
+                          scaled to its own tallest bar, which is what makes a
+                          small column's shape visible at all. */}
+                      <button
+                        className="tbl__head shape__open"
+                        aria-expanded={open}
+                        onClick={() => setShown(open ? null : c.name)}
+                      >
                         <TypeIcon type={c.type} />
                         {c.name}
-                      </span>
+                      </button>
                       <span className="tbl__note">{c.type}</span>
                     </td>
                     <td>
@@ -139,6 +152,14 @@ export function Profile({ database, table }: { database: string; table: string }
                       )}
                     </td>
                   </tr>
+                  {open ? (
+                    <tr className="shape__row">
+                      <td colSpan={8}>
+                        <Shape database={database} table={table} column={c.name} />
+                      </td>
+                    </tr>
+                  ) : null}
+                  </Fragment>
                 )
               })}
             </tbody>

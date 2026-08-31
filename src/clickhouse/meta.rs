@@ -72,6 +72,26 @@ pub async fn server_info(ch: &Client) -> Result<ServerInfo> {
     .ok_or_else(|| Error::Decode("ClickHouse returned no server info".into()))
 }
 
+/// Every timezone this server knows, in its own words.
+///
+/// Asked of ClickHouse rather than of the browser on purpose. A report's zone
+/// is read by the server when the schedule comes round, so the list a person
+/// picks from has to be the list the server will accept — otherwise a name the
+/// browser knows and this one does not becomes a refusal at save time, for a
+/// choice that looked offered.
+pub async fn timezones(ch: &Client) -> Result<Vec<String>> {
+    #[derive(Deserialize)]
+    struct Row {
+        time_zone: String,
+    }
+    Ok(ch
+        .rows::<Row>("SELECT time_zone FROM system.time_zones ORDER BY time_zone")
+        .await?
+        .into_iter()
+        .map(|r| r.time_zone)
+        .collect())
+}
+
 // ---------------------------------------------------------------------------
 // Databases
 // ---------------------------------------------------------------------------
@@ -326,7 +346,7 @@ fn collapse_case_aliases(database: &str, rows: &mut Vec<TableSummary>) {
 // One table, in full
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ColumnDetail {
     pub name: String,
     pub r#type: String,
@@ -828,7 +848,9 @@ pub async fn history(ch: &Client, limit: u64) -> Result<History> {
                 reason: "this user is not granted SELECT on system.query_log".into(),
             })
         }
-        super::Reach::Absent => {
+        // The query log needs no Keeper, so `Unconfigured` cannot arise here;
+        // folded in because "not enabled" is the right thing to say either way.
+        super::Reach::Absent | super::Reach::Unconfigured => {
             return Ok(History::Unavailable {
                 reason: "system.query_log is not enabled on this server".into(),
             })
@@ -891,6 +913,175 @@ pub async fn history(ch: &Client, limit: u64) -> Result<History> {
         }
         Err(e) => Err(e),
     }
+}
+
+/// One thing that happened to an object's structure.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Change {
+    pub at: String,
+    pub user: String,
+    /// `Create`, `Alter`, `Drop`, `Rename` — ClickHouse's own word for it.
+    pub kind: String,
+    pub statement: String,
+    /// Whether it went through Flint. Recognised from the `query_id` its job
+    /// runner sets, so nothing extra is written to the log to make this work —
+    /// and a statement somebody ran in `clickhouse-client` is honestly marked as
+    /// not having come from here.
+    pub through_flint: bool,
+    /// Empty unless it failed. A refused `DROP` is part of this history: knowing
+    /// somebody tried is often the point.
+    pub error: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ChangeReport {
+    pub available: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    pub changes: Vec<Change>,
+    /// How far back the log itself actually goes, which is not the window asked
+    /// for. `system.query_log` has a TTL, and a history that stops is a history
+    /// that has to say where.
+    pub oldest: String,
+}
+
+/// How this object's structure came to be what it is.
+///
+/// From `system.query_log`, which records `query_kind` and the tables a statement
+/// touched. Two limits, stated because a history that quietly stops is worse than
+/// none:
+///
+/// - **The log has a TTL.** Thirty days by default, often less. Whatever it has
+///   dropped, this cannot show, so the answer carries the oldest entry it found.
+/// - **A `CREATE DATABASE` names no table**, so it will never appear here. The
+///   same is true of anything ClickHouse did not attribute to this object.
+pub async fn changes(ch: &Client, database: &str, table: &str, days: u64) -> Result<ChangeReport> {
+    match ch.reach("query_log").await? {
+        super::Reach::Readable => {}
+        super::Reach::Denied => {
+            return Ok(ChangeReport {
+                available: false,
+                reason: Some("this user is not granted SELECT on system.query_log".into()),
+                changes: Vec::new(),
+                oldest: String::new(),
+            })
+        }
+        _ => {
+            return Ok(ChangeReport {
+                available: false,
+                reason: Some(
+                    "system.query_log is not enabled on this server, so nothing recorded what \
+                     happened to this object"
+                        .into(),
+                ),
+                changes: Vec::new(),
+                oldest: String::new(),
+            })
+        }
+    }
+
+    let qualified = format!("{database}.{table}");
+    let sql = format!(
+        "SELECT toString(event_time)                          AS at, \
+                user                                          AS user, \
+                toString(query_kind)                          AS kind, \
+                query                                         AS statement, \
+                CAST(startsWith(query_id, 'flint-job-') AS Bool) AS through_flint, \
+                exception                                     AS error \
+         FROM system.query_log \
+         WHERE has(tables, {{q:String}}) \
+           AND query_kind IN ('Create', 'Alter', 'Drop', 'Rename') \
+           AND event_time > now() - INTERVAL {days} DAY \
+           AND type != 'QueryStart' \
+         ORDER BY event_time DESC \
+         LIMIT 200"
+    );
+    let changes: Vec<Change> = ch
+        .rows_with(
+            &sql,
+            QueryOptions {
+                params: vec![("q".into(), qualified)],
+                ..QueryOptions::internal()
+            },
+        )
+        .await?;
+
+    #[derive(Deserialize)]
+    struct Oldest {
+        at: String,
+    }
+    let oldest: Option<Oldest> = ch
+        .row_with(
+            "SELECT toString(min(event_time)) AS at FROM system.query_log",
+            QueryOptions::internal(),
+        )
+        .await?;
+
+    Ok(ChangeReport {
+        available: true,
+        reason: None,
+        changes,
+        oldest: oldest.map(|o| o.at).unwrap_or_default(),
+    })
+}
+
+/// The definition the server holds for one object.
+///
+/// `create_table_query` as `system.tables` reports it, which round-trips: the
+/// same text with the name changed creates the same shape. It carries no `UUID`
+/// clause unless `show_table_uuid_in_table_create_query_if_not_nil` is on, and
+/// that is off by default — so it is a starting point somebody can edit, rather
+/// than a template Flint would have to assemble.
+pub async fn definition(ch: &Client, database: &str, table: &str) -> Result<String> {
+    #[derive(Deserialize)]
+    struct Row {
+        ddl: String,
+    }
+    let row: Option<Row> = ch
+        .row_with(
+            "SELECT create_table_query AS ddl FROM system.tables \
+             WHERE database = {db:String} AND name = {tbl:String}",
+            QueryOptions {
+                params: vec![
+                    ("db".into(), database.to_string()),
+                    ("tbl".into(), table.to_string()),
+                ],
+                quote_64bit_integers: false,
+                introspection: true,
+                ..Default::default()
+            },
+        )
+        .await?;
+    Ok(row.map(|r| r.ddl).unwrap_or_default())
+}
+
+/// Active parts and their rows, for one table.
+///
+/// `TableSummary` carries `parts_rows` and `parts_bytes` but not the *count* of
+/// parts, and the count is what a sentence about a rewrite needs: "400,000 rows
+/// across two parts" is the cost, and the rows alone do not say it.
+pub async fn table_extent(ch: &Client, database: &str, table: &str) -> Result<(u64, u64)> {
+    #[derive(Deserialize)]
+    struct Row {
+        parts: u64,
+        rows: u64,
+    }
+    let row: Option<Row> = ch
+        .row_with(
+            "SELECT count() AS parts, sum(rows) AS rows FROM system.parts \
+             WHERE database = {db:String} AND table = {tbl:String} AND active",
+            QueryOptions {
+                params: vec![
+                    ("db".into(), database.to_string()),
+                    ("tbl".into(), table.to_string()),
+                ],
+                quote_64bit_integers: false,
+                introspection: true,
+                ..Default::default()
+            },
+        )
+        .await?;
+    Ok(row.map(|r| (r.parts, r.rows)).unwrap_or((0, 0)))
 }
 
 #[cfg(test)]

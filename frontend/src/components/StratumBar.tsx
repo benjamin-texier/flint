@@ -1,3 +1,5 @@
+import type { Level } from '../lib/diagnose'
+
 /** The stratum bar — Flint's signature read on a column store.
  *
  *  The ghost outline is the column's *uncompressed* extent, the solid fill its
@@ -51,12 +53,26 @@ export function StratumBar({
 
 /** A single-value variant for partition rows, where there is no compression
  *  story to tell — only relative size. */
-export function ShareBar({ value, max }: { value: number; max: number }) {
+export function ShareBar({
+  value,
+  max,
+  level,
+}: {
+  value: number
+  max: number
+  /** Colours the fill by the product's own verdict, where the caller has one.
+   *
+   *  Left off by default: most share bars are a proportion of something with no
+   *  good or bad about it — a table's share of a database is just its size — and
+   *  colouring those would spend the alarm palette on arithmetic. A disk has a
+   *  verdict, and there the colour is the fastest thing on the row to read. */
+  level?: Level
+}) {
   const width = max > 0 ? Math.min(100, (value / max) * 100) : 0
   return (
     <div className="stratum" aria-hidden="true">
       <div
-        className="stratum__fill"
+        className={`stratum__fill${level && level !== 'ok' ? ` stratum__fill--${level}` : ''}`}
         style={{ width: `${value > 0 ? Math.max(width, FLOOR) : 0}%` }}
       />
     </div>

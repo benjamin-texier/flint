@@ -1,15 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  alertConcerns,
-  concise,
-  concerns,
-  countFor,
-  endpointConcerns,
-  replicaConcerns,
-  reportConcerns,
-  summarise,
-  withoutName,
-} from './attention'
+import { alertConcerns, concerns, concise, countFor, endpointConcerns, replicaConcerns, reportConcerns, summarise, withoutName, withoutTrace } from './attention'
 import type { Alert } from './alert'
 import type { Report } from './report'
 import type { Replica } from './replication'
@@ -19,6 +9,8 @@ const alert = (over: Partial<Alert> = {}): Alert => ({
   name: 'Errors',
   sql: 'SELECT 1',
   database: '',
+  space: 'data',
+  space_note: '',
   condition: '{}',
   interval_seconds: 300,
   webhook: '',
@@ -38,6 +30,7 @@ const report = (over: Partial<Report> = {}): Report => ({
   name: 'Monday',
   spec: '{}',
   schedule: '{}',
+  timezone: '',
   webhook: '',
   enabled: true,
   created_at: '',
@@ -162,6 +155,32 @@ describe('summarise', () => {
   })
 })
 
+describe('withoutTrace', () => {
+  it('drops the preamble ClickHouse appends to every exception', () => {
+    // It arrives on the same line as the message, so splitting on newlines
+    // leaves it in — which is how "always include the lines below" ended up in
+    // a table cell with no lines below it.
+    const raw =
+      "Code: 318. DB::Exception: The 'backups.allowed_disk' configuration parameter is not " +
+      'set. (INVALID_CONFIG_PARAMETER), Stack trace (when copying this message, always ' +
+      'include the lines below):\n\n0. ./build/src/Common/Exception.cpp:107'
+    const out = withoutTrace(raw)
+    expect(out).toMatch(/allowed_disk/)
+    expect(out).not.toMatch(/Stack trace/)
+    expect(out).not.toMatch(/Exception.cpp/)
+  })
+
+  it('keeps a message that has no trace attached', () => {
+    // Unlike `concise`, which would cut this at "Code: 318." and throw away the
+    // half that says what happened.
+    expect(withoutTrace('Code: 60. Unknown table x')).toBe('Code: 60. Unknown table x')
+  })
+
+  it('handles an empty message', () => {
+    expect(withoutTrace('')).toBe('')
+  })
+})
+
 describe('concise', () => {
   it('keeps a short line whole', () => {
     expect(concise('is firing: rows > 0 (measured 3)')).toBe('is firing: rows > 0 (measured 3)')
@@ -255,7 +274,7 @@ describe('replicaConcerns', () => {
     expect(item.name).toBe('analytics.rep_events')
     // Infrastructure's page, not Data's: the space that can act on it owns the
     // link, and `countIn` files the concern by reading this very path.
-    expect(item.to).toBe('/infra/replication')
+    expect(item.to).toBe('/infra/cluster')
   })
 
   it('raises falling behind as partial, not as an alarm', () => {
@@ -269,5 +288,31 @@ describe('replicaConcerns', () => {
       replicas: [replica({ is_readonly: true, readonly_for: 3600 })],
     })
     expect(items.every((i) => i.says.length <= 96)).toBe(true)
+  })
+})
+
+describe('where an unhappy alert sends you', () => {
+  it('follows the space its subject lives in, not the page that writes alerts', () => {
+    // The badge on each space counts the items whose destination is in it, so a
+    // firing alert on `system.replicas` sent to `/alerts` would raise a number
+    // on Data and then not appear in the list it points at.
+    const infra = alertConcerns([
+      alert({ name: 'Replicas read-only', space: 'infra', state: 'firing', enabled: true }),
+    ])
+    expect(infra[0]?.to).toBe('/infra/health')
+
+    const data = alertConcerns([
+      alert({ name: 'Orders stopped', space: 'data', state: 'firing', enabled: true }),
+    ])
+    expect(data[0]?.to).toBe('/alerts')
+  })
+
+  it('sends one nobody can place to where it can be edited', () => {
+    // A `merge(...)` alert is listed in both spaces; only one of them has the
+    // form that can change it.
+    const any = alertConcerns([
+      alert({ name: 'A merge of logs', space: 'unplaceable', state: 'error', enabled: true }),
+    ])
+    expect(any[0]?.to).toBe('/alerts')
   })
 })

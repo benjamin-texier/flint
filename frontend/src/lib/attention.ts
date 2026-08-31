@@ -51,6 +51,37 @@ export function concise(message: string, cap = 96): string {
   return line.length <= cap ? line : `${line.slice(0, cap - 1).trimEnd()}…`
 }
 
+/** The message without the invitation to paste a stack trace.
+ *
+ *  `concise` cuts at a sentence, which is right for an alert's own wording and
+ *  wrong for a ClickHouse exception: the first sentence of one is "Code: 318."
+ *  and the useful clause is the second. What actually needs removing is the
+ *  preamble the server appends to every exception — ", Stack trace (when copying
+ *  this message, always include the lines below):" — which arrives on the *same*
+ *  line as the message and so survives a split on newlines.
+ *
+ *  Whole otherwise. A reader who wants the frames can hover; a reader who wants
+ *  to know what went wrong should not have to read past a request to include
+ *  lines they cannot see. */
+export function withoutTrace(message: string): string {
+  const line = message.split('\n')[0] ?? ''
+  const at = line.indexOf(', Stack trace')
+  return (at > 0 ? line.slice(0, at) : line).trim()
+}
+
+/** Where an unhappy alert sends the reader.
+ *
+ *  The same rule the lists use: an alert is found where its subject lives. It
+ *  matters twice over here, because the badge on each space counts the items
+ *  whose destination is in it — so an operator's firing alert sent to `/alerts`
+ *  would raise a number on Data and then not be in the list it points at.
+ *
+ *  What cannot be placed goes to `/alerts`, which is where it can be edited and
+ *  where it is listed alongside its own explanation. */
+function alertGoesTo(alert: Alert): string {
+  return alert.space === 'infra' ? '/infra/health' : '/alerts'
+}
+
 export function alertConcerns(alerts: Alert[] | undefined): Item[] {
   return (alerts ?? [])
     .filter((a) => a.enabled)
@@ -61,7 +92,7 @@ export function alertConcerns(alerts: Alert[] | undefined): Item[] {
             concern: 'firing',
             name: a.name,
             says: concise(withoutName(a.last_message, a.name)) || 'is firing',
-            to: '/alerts',
+            to: alertGoesTo(a),
           },
         ]
       }
@@ -73,7 +104,7 @@ export function alertConcerns(alerts: Alert[] | undefined): Item[] {
             says: a.last_message
               ? concise(withoutName(a.last_message, a.name))
               : 'cannot run, so it is telling you nothing',
-            to: '/alerts',
+            to: alertGoesTo(a),
           },
         ]
       }
@@ -130,7 +161,7 @@ export function replicaConcerns(report: ReplicationReport | undefined): Item[] {
         concern: verdict.health === 'lost' || verdict.health === 'stuck' ? 'broken' : 'partial',
         name: `${replica.database}.${replica.table}`,
         says: concise(verdict.says),
-        to: '/infra/replication',
+        to: '/infra/cluster',
       },
     ]
   })

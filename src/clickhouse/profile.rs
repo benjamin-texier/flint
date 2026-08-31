@@ -62,7 +62,7 @@ pub struct TableProfile {
 
 /// Which family a ClickHouse type belongs to, for deciding what to measure.
 /// Mirrors the frontend's `chType` so both sides classify alike.
-fn family(ch_type: &str) -> &'static str {
+pub(super) fn family(ch_type: &str) -> &'static str {
     // `Nullable(Nothing)` is the type of a literal NULL — what a view selecting
     // `NULL AS x` produces. Nothing aggregates over it: `topK` returns
     // `Nullable(Nothing)` rather than an array, and `uniqCombined` returns
@@ -107,7 +107,7 @@ fn family(ch_type: &str) -> &'static str {
     }
 }
 
-fn quote_ident(name: &str) -> String {
+pub(super) fn quote_ident(name: &str) -> String {
     if !name.is_empty()
         && name
             .chars()
@@ -218,6 +218,10 @@ pub async fn profile(
                 &sql,
                 QueryOptions {
                     quote_64bit_integers: false,
+                    // Tagged as Flint's own. Untagged, the profile shows up in
+                    // the schema review's usage figures as one of the biggest
+                    // readers of the very table it was asked about.
+                    introspection: true,
                     ..Default::default()
                 },
             )
