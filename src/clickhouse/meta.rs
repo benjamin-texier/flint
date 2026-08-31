@@ -806,7 +806,20 @@ pub struct SchemaEntry {
     #[serde(default)]
     pub kind: String,
     /// Only used to derive `kind`; not sent to the client.
-    #[serde(default, skip_serializing)]
+    ///
+    /// Null-tolerant, and it has to be. The empty string above is what a default
+    /// ClickHouse returns for the unmatched half of the LEFT JOIN below; a server
+    /// with `join_use_nulls=1` returns `null` instead, and `#[serde(default)]`
+    /// does not cover an explicit null — it covers an absent key, and JSONEachRow
+    /// never omits one. Flint now pins `join_use_nulls=0` on its own statements,
+    /// so this is the belt rather than the guard, but a field whose whole purpose
+    /// is "empty where there was no row" should not be the thing that fails when
+    /// there is no row.
+    #[serde(
+        default,
+        skip_serializing,
+        deserialize_with = "crate::clickhouse::de_null_as_default"
+    )]
     pub engine: String,
 }
 
@@ -1130,6 +1143,30 @@ pub async fn table_extent(ch: &Client, database: &str, table: &str) -> Result<(u
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_schema_entry_survives_an_engine_that_came_back_null() {
+        // The shape a server with `join_use_nulls=1` returns for a table
+        // `system.columns` knows about and `system.tables` does not. It used to
+        // fail the whole autocomplete snapshot with "invalid type: null,
+        // expected a string" and answer the editor a 502 — for one row, on a
+        // field that is only ever used to pick a word for the search result.
+        let row = r#"{"database":"d","table":"t","columns":["a"],"types":["UInt8"],"engine":null}"#;
+        let entry: super::SchemaEntry = serde_json::from_str(row).expect("null engine must decode");
+        assert_eq!(entry.engine, "");
+        assert_eq!(entry.table, "t");
+    }
+
+    #[test]
+    fn an_absent_engine_and_a_null_one_land_in_the_same_place() {
+        // `#[serde(default)]` already covered the first and never covered the
+        // second, which is the whole reason this needed a deserializer.
+        let absent = r#"{"database":"d","table":"t"}"#;
+        let null = r#"{"database":"d","table":"t","engine":null}"#;
+        let a: super::SchemaEntry = serde_json::from_str(absent).expect("absent");
+        let n: super::SchemaEntry = serde_json::from_str(null).expect("null");
+        assert_eq!(a.engine, n.engine);
+    }
+
     use super::*;
 
     fn database(name: &str) -> DatabaseSummary {

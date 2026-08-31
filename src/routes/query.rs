@@ -8,7 +8,7 @@ use axum::Json;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use crate::clickhouse::{QueryOptions, TableResult, ATTACHED_SETTINGS};
+use crate::clickhouse::{QueryOptions, TableResult, ATTACHED_SETTINGS, INTROSPECTION_ONLY};
 use crate::error::{Error, Result};
 use crate::export;
 
@@ -48,7 +48,7 @@ pub struct RunRequest {
 
 /// Settings a caller may not name, on top of the ones Flint already attaches.
 ///
-/// `ATTACHED_SETTINGS` covers the twelve Flint sends on every statement —
+/// `ATTACHED_SETTINGS` covers what Flint sends on every statement —
 /// `readonly` and `max_result_rows` among them, which is the whole point: a
 /// deployment configured read-only must not be arguable with from the console,
 /// and a result cap that the client could raise is not a cap. These four are
@@ -67,6 +67,11 @@ pub fn reserved_settings() -> Vec<&'static str> {
     ATTACHED_SETTINGS
         .iter()
         .copied()
+        // Not everything Flint sends is Flint's to withhold. See
+        // `INTROSPECTION_ONLY`: those ride on Flint's own statements and on
+        // nobody else's, so refusing them here would take away a setting the
+        // console never had a reason to lose.
+        .filter(|name| !INTROSPECTION_ONLY.contains(name))
         .chain(REFUSED_EXTRA)
         .collect()
 }
@@ -104,7 +109,8 @@ fn vet_settings(asked: &BTreeMap<String, String>) -> Result<Vec<(String, String)
         }
 
         let lower = name.to_ascii_lowercase();
-        if ATTACHED_SETTINGS.contains(&lower.as_str())
+        if (ATTACHED_SETTINGS.contains(&lower.as_str())
+            && !INTROSPECTION_ONLY.contains(&lower.as_str()))
             || REFUSED_EXTRA.contains(&lower.as_str())
             || lower.starts_with("param_")
         {
@@ -360,6 +366,37 @@ pub async fn cancel(Caller(ch): Caller, Path(query_id): Path<String>) -> Result<
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_console_may_still_set_what_flint_only_sends_to_itself() {
+        // `join_use_nulls` is in ATTACHED_SETTINGS so the configuration page
+        // does not report Flint's value as the server's. That must not turn
+        // into the console refusing it: Flint pins it on its own introspection
+        // and never on a statement somebody wrote, so on your statement it is
+        // yours.
+        let reserved = super::reserved_settings();
+        assert!(!reserved.contains(&"join_use_nulls"), "{reserved:?}");
+
+        let asked =
+            std::collections::BTreeMap::from([("join_use_nulls".to_string(), "1".to_string())]);
+        let carried = super::vet_settings(&asked).expect("the console may set this");
+        assert_eq!(
+            carried,
+            vec![("join_use_nulls".to_string(), "1".to_string())]
+        );
+    }
+
+    #[test]
+    fn the_settings_that_are_flints_are_still_refused() {
+        // The other half, so the filter above cannot quietly widen: a cap the
+        // client can raise is not a cap.
+        let reserved = super::reserved_settings();
+        for name in ["readonly", "max_result_rows", "log_comment", "role"] {
+            assert!(reserved.contains(&name), "`{name}` fell out of the refusal");
+        }
+        let asked = std::collections::BTreeMap::from([("readonly".to_string(), "0".to_string())]);
+        assert!(super::vet_settings(&asked).is_err());
+    }
+
     use super::*;
 
     #[test]

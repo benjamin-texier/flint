@@ -190,7 +190,7 @@ pub const INTROSPECTION_TAG: &str = "flint:introspection";
 /// configuration page reading `flint:introspection`, presented as this server's
 /// own. A name Flint never sends costs nothing to have here; one it does send
 /// and that is missing is a lie on a page about configuration.
-pub const ATTACHED_SETTINGS: [&str; 12] = [
+pub const ATTACHED_SETTINGS: [&str; 13] = [
     "wait_end_of_query",
     "max_execution_time",
     "enable_http_compression",
@@ -203,7 +203,20 @@ pub const ATTACHED_SETTINGS: [&str; 12] = [
     "output_format_json_quote_64bit_integers",
     "output_format_json_quote_denormals",
     "database",
+    "join_use_nulls",
 ];
+
+/// The subset of [`ATTACHED_SETTINGS`] that rides only on Flint's *own*
+/// statements, never on one somebody wrote.
+///
+/// It is in that list because the configuration page must not report Flint's
+/// value as the server's — the test there is "did Flint send it", and Flint
+/// does. It is named separately here because the console's refusal asks a
+/// different question: "is this Flint's to control on *your* statement". For
+/// `readonly` and `max_result_rows` the answer is yes and must be. For this one
+/// it is no — Flint never attaches it to a statement you wrote, so setting it
+/// there changes nothing of Flint's and is yours to change.
+pub const INTROSPECTION_ONLY: [&str; 1] = ["join_use_nulls"];
 
 impl QueryOptions {
     fn internal() -> Self {
@@ -235,6 +248,21 @@ pub struct Summary {
     pub result_bytes: u64,
     #[serde(default, deserialize_with = "de_stringy_u64")]
     pub elapsed_ns: u64,
+}
+
+/// A JSON `null` read as the type's default.
+///
+/// `#[serde(default)]` does not cover this and the difference is easy to miss:
+/// `default` fires when the *key is absent*, and ClickHouse's JSONEachRow always
+/// writes the key. A Nullable column therefore arrives as `"engine":null`, which
+/// a `String` field rejects outright — the field's `default` never gets a say.
+pub fn de_null_as_default<'de, D, T>(d: D) -> std::result::Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::Deserialize<'de> + Default,
+{
+    use serde::Deserialize as _;
+    Ok(Option::<T>::deserialize(d)?.unwrap_or_default())
 }
 
 /// ClickHouse serialises the summary counters as strings.
@@ -575,6 +603,23 @@ impl Client {
         if (self.readonly || opts.force_readonly) && !opts.allow_write {
             // readonly=2 permits SELECT and SET but rejects DDL and DML.
             params.push(("readonly".into(), "2".into()));
+        }
+        if opts.introspection {
+            // Flint's own SQL is written against ClickHouse's default, where an
+            // unmatched LEFT JOIN yields the column type's default — an empty
+            // string, a zero. A profile with `join_use_nulls=1` silently changes
+            // that to NULL for every LEFT JOIN Flint sends, and the structs on
+            // this side are not written for it: `meta::schema` reads
+            // `any(t.engine)` into a `String` and its comment says "empty where
+            // `system.tables` had no row", which is true on a default server and
+            // a 502 on that one.
+            //
+            // Pinned rather than tolerated, because the alternative is auditing
+            // every LEFT JOIN in the codebase against a setting the operator can
+            // change tomorrow. Only on introspection: a statement somebody wrote
+            // themselves runs with their settings, and overriding those would be
+            // Flint editing their SQL's meaning.
+            params.push(("join_use_nulls".into(), "0".into()));
         }
         if let Some(db) = &opts.database {
             params.push(("database".into(), db.clone()));
