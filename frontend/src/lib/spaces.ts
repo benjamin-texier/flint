@@ -139,6 +139,26 @@ export function spaceOf(pathname: string): SpaceId {
   return pathname === '/infra' || pathname.startsWith('/infra/') ? 'infra' : 'data'
 }
 
+/** The one page that belongs to neither space.
+ *
+ *  The membership rule above is load-bearing and this is a deliberate
+ *  exception to it, so it is written here beside the rule rather than left to
+ *  be discovered in the chrome.
+ *
+ *  The checkup reports on the schema, the workload, the machine and what is
+ *  not covered — which is both spaces at once, and putting it in either would
+ *  make half of what it says look like it belonged somewhere else. It gets to
+ *  do that because **it holds no controls**: every finding links to the page
+ *  that acts, and that page keeps its own space, its own tier and its own
+ *  confirmation. The rule the two spaces exist to enforce is about controls,
+ *  and this page has none to misplace.
+ *
+ *  A page reached from here therefore *changes* space, which is why the link
+ *  to it sits outside the space bar rather than in either space's sections. */
+export function outsideSpaces(pathname: string): boolean {
+  return pathname === '/checkup'
+}
+
 /** The spaces this deployment has, with the sections it can actually serve.
  *
  *  Infrastructure can be switched off whole, which is the point of it being a

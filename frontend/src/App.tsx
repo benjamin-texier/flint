@@ -10,6 +10,7 @@ import { Palette, usePaletteShortcut } from './components/Palette'
 import { Console } from './components/Console'
 import { AlertsRail } from './components/AlertsRail'
 import { ExplorerRail } from './components/ExplorerRail'
+import { CheckupPage } from './routes/Checkup'
 import { ServerPage } from './routes/ServerPage'
 import { OverviewPage } from './routes/Overview'
 import { DatabasePage } from './routes/DatabasePage'
@@ -195,6 +196,9 @@ export function App() {
                   </Suspense>
                 }
               />
+              {/* Neither space's, deliberately — see `outsideSpaces` in
+                  `lib/spaces`. It reports on both and holds no controls. */}
+              <Route path="/checkup" element={<CheckupPage />} />
               <Route path="/server" element={<ServerPage />} />
               <Route path="/db/:database" element={<DatabaseRoute />} />
               <Route path="/db/:database/:table" element={<TableRoute />} />
