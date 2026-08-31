@@ -699,6 +699,13 @@ export const api = {
     request<QueryResult>(
       `/databases/${enc(db)}/tables/${enc(table)}/preview?limit=${limit}`,
     ),
+  /** What a table's background reader is doing — a Kafka consumer's position
+   *  and errors, or an S3Queue's log. Empty for every other engine, which is an
+   *  answer rather than a failure. */
+  stream: (db: string, table: string) =>
+    request<import('./stream').StreamReport>(
+      `/databases/${enc(db)}/tables/${enc(table)}/stream`,
+    ),
   schema: () => request<SchemaEntry[]>('/schema'),
   graph: (db: string) => request<import('./graph').SchemaGraph>(`/databases/${enc(db)}/graph`),
   /** The same database on a time axis: tables against partitions. Its own call

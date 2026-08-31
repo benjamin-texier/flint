@@ -5,7 +5,7 @@ use serde_json::{json, Value};
 
 use crate::clickhouse::{
     affinity, compare, distribution, drift, graph, mass, meta, probe, profile, projection,
-    relations, review, timeline, QueryOptions, TableResult,
+    relations, review, streams, timeline, QueryOptions, TableResult,
 };
 use crate::error::{Error, Result};
 
@@ -237,6 +237,21 @@ pub async fn table_drift(
     Path((database, table)): Path<(String, String)>,
 ) -> Result<Json<drift::Drift>> {
     Ok(Json(drift::drift(&ch, &database, &table).await?))
+}
+
+/// What a `Kafka` or an `S3Queue` table's background reader is doing.
+///
+/// The engine is read here rather than taken from the caller: which of the two
+/// system tables to open is decided by what the table *is*, and a client that
+/// could name the reading could ask for a Kafka read of a MergeTree.
+pub async fn table_stream(
+    Caller(ch): Caller,
+    Path((database, table)): Path<(String, String)>,
+) -> Result<Json<streams::StreamReport>> {
+    let engine = crate::clickhouse::meta::table_engine(&ch, &database, &table).await?;
+    Ok(Json(
+        streams::stream(&ch, &database, &table, &engine).await?,
+    ))
 }
 
 /// Two tables, side by side: both column lists and both storage settings, in one

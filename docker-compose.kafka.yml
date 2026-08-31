@@ -1,0 +1,91 @@
+# A broker, so the consuming tab can be watched to work.
+#
+# `system.kafka_consumers` was the last thing in the streaming work that looked
+# finished in code and had never had a message through it. This is the fixture
+# that removes the excuse: a Redpanda on the same network as the development
+# ClickHouse, a topic with rows in it, and — deliberately — one message that
+# cannot be parsed.
+#
+#     docker compose -f docker-compose.dev.yml -f docker-compose.kafka.yml up -d
+#
+# Unlike the S3 overlay this one adds services and changes nothing about the
+# ClickHouse service: a Kafka table whose broker is missing does not stop the
+# server from starting, it just retries. So the tables are created by an init
+# container afterwards rather than mounted as an entrypoint script, which also
+# means this overlay can be brought up against a development stack that is
+# already running.
+services:
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.2.7
+    container_name: flint-redpanda
+    command:
+      - redpanda
+      - start
+      - --mode
+      - dev-container
+      - --smp
+      - '1'
+      - --kafka-addr
+      - PLAINTEXT://0.0.0.0:9092
+      # The name ClickHouse will be told to connect to, which has to be the
+      # name on this network rather than localhost: the address a broker
+      # advertises is the address its clients then use, and a broker that
+      # advertises `localhost` sends every consumer to itself.
+      - --advertise-kafka-addr
+      - PLAINTEXT://redpanda:9092
+    healthcheck:
+      test: ['CMD-SHELL', 'rpk cluster health | grep -q "Healthy:.*true"']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    networks:
+      default:
+        aliases:
+          - redpanda
+
+  # Make the topic, fill it, then poison it, then get out of the way.
+  #
+  # Forty messages that parse and one that does not. The one is enough:
+  # ClickHouse inserts a *block* at a time, so the bad message does not cost you
+  # the bad message — it fails the whole block, commits nothing, and the block
+  # is read again. The consumer then polls for hours with a message counter in
+  # the thousands and a target table holding nothing, which is a pipeline that
+  # looks busy in every view ClickHouse offers and has delivered zero rows.
+  kafka-init:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.2.7
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    # Idempotent, because an overlay is brought up against a stack that may
+    # already be running: `rpk topic create` on a topic that exists exits 1,
+    # which stopped the whole overlay the first time this was re-run. A topic
+    # that is already there has already been seeded, poison message included.
+    entrypoint: >
+      sh -c "rpk --brokers redpanda:9092 topic describe events >/dev/null 2>&1 && echo 'topic already seeded' ||
+             { rpk --brokers redpanda:9092 topic create events -p 3 &&
+               for i in $$(seq 1 40); do echo '{\"id\":'$$i',\"kind\":\"click\",\"at\":\"2026-01-01 00:00:00\"}'; done | rpk --brokers redpanda:9092 topic produce events &&
+               echo 'this is not json at all' | rpk --brokers redpanda:9092 topic produce events &&
+               echo topic ready; }"
+    restart: 'no'
+
+  # And the tables, once there is a broker to point them at. Its own container
+  # rather than an init script on the ClickHouse service, so bringing this
+  # overlay up does not recreate a development server somebody is using.
+  kafka-tables:
+    image: clickhouse/clickhouse-server:latest
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    volumes:
+      - ./contrib/dev-kafka.sql:/dev-kafka.sql:ro
+    # Every line break here falls after an `&&`, and that is not a style
+    # choice. A YAML folded scalar keeps the newline on any line indented
+    # further than the first, so a command split across two lines for
+    # readability arrives at `sh` as two commands — which is how this first
+    # shipped, with the `until` loop waiting forever on a server that had been
+    # answering all along.
+    entrypoint: >
+      sh -c "until clickhouse-client --host clickhouse --user default --password flint --query 'SELECT 1' >/dev/null 2>&1; do sleep 1; done &&
+             clickhouse-client --host clickhouse --user default --password flint --multiquery < /dev-kafka.sql &&
+             echo tables ready"
+    restart: 'no'

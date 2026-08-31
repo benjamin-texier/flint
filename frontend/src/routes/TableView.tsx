@@ -9,7 +9,7 @@ import { ShareBar, StratumBar } from '../components/StratumBar'
 import { TypeBadge, KindGlyph } from '../components/TypeBadge'
 import { TypeIcon } from '../components/TypeIcon'
 import { CLAUSE_MEANING, KIND_LABEL, KIND_MEANING, explainEngine } from '../lib/explain'
-import { isExternalEngine } from '../lib/external'
+import { backgroundReader, isExternalEngine } from '../lib/external'
 import { formatDdl, tokenize } from '../lib/ddl'
 import { depthOf, lineagePath } from '../lib/path'
 import { lineageSubgraph } from '../lib/graph'
@@ -41,11 +41,13 @@ import { ProjectionAdvisor } from '../components/ProjectionAdvisor'
 import { SchemaReview } from '../components/SchemaReview'
 import { EmptyNote, ErrorNote, Loading } from '../components/Note'
 import { Dash } from '../components/Dash'
+import { Stream } from '../components/Stream'
 import { ExternalPanel } from '../components/ExternalSource'
 
 const TABS = [
   'columns',
   'preview',
+  'stream',
   'sources',
   'readby',
   'path',
@@ -75,7 +77,7 @@ export function TableView({ database, table }: { database: string; table: string
     const updated = new URLSearchParams(params)
     // The default is whichever tab this object opens on, so the URL stays clean
     // for it and explicit for everything else.
-    if (next === (stores ? 'preview' : 'columns')) updated.delete('tab')
+    if (next === defaultTab) updated.delete('tab')
     else updated.set('tab', next)
     setParams(updated, { replace: true })
   }
@@ -92,7 +94,17 @@ export function TableView({ database, table }: { database: string; table: string
      is not what they expected. An object that stores nothing has nothing to
      open on, so it keeps its columns. */
   const stores = Boolean(detail.data && (detail.data.total_rows || detail.data.parts_rows))
-  const tab: Tab = isTab(raw) ? raw : stores ? 'preview' : 'columns'
+  /* And a streaming table opens on what it is doing. A `Kafka` table's preview
+     is a `SELECT` that steals messages from its own consumer group — the one
+     tab in this product that changes what it looks at — and its columns are a
+     declaration nobody is asking about. Whether anything is arriving is the
+     question, so it is the tab. */
+  const defaultTab: Tab = detail.data && backgroundReader(detail.data.engine)
+    ? 'stream'
+    : stores
+      ? 'preview'
+      : 'columns'
+  const tab: Tab = isTab(raw) ? raw : defaultTab
 
   const asSelect = detail.data?.as_select ?? ''
   const definition = useMemo(() => analyseDefinition(asSelect), [asSelect])
@@ -107,9 +119,19 @@ export function TableView({ database, table }: { database: string; table: string
 
   const namedSources = (definition?.sources ?? []).filter((source) => source.table)
 
+  const reader = backgroundReader(t.engine)
+
   const tabs: [Tab, string, number | null][] = [
     ['columns', 'Columns', t.columns.length],
     ['preview', 'Preview', null],
+    /* Only for the two engines that have one, and second because for those two
+       it is the tab somebody came for: a Kafka table's columns are a
+       declaration, and whether anything is arriving is the question. */
+    ...((reader ? [['stream', reader === 'kafka' ? 'Consuming' : 'Queue', null]] : []) as [
+      Tab,
+      string,
+      number | null,
+    ][]),
     ...((namedSources.length > 0
       ? [['sources', 'Sources', namedSources.length]]
       : []) as [Tab, string, number | null][]),
@@ -254,6 +276,7 @@ export function TableView({ database, table }: { database: string; table: string
             <ReadBy database={database} table={table} columns={t.columns} />
           </div>
         ) : null}
+        {tab === 'stream' ? <Stream database={database} table={table} /> : null}
         {tab === 'path' ? <PathTab database={database} table={table} /> : null}
         {tab === 'profile' ? <Profile database={database} table={table} /> : null}
         {tab === 'relations' ? <Relations database={database} table={table} /> : null}

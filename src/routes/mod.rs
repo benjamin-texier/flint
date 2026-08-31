@@ -278,6 +278,10 @@ pub fn router(state: AppState) -> Router {
             get(explorer::table_drift),
         )
         .route(
+            "/databases/{database}/tables/{table}/stream",
+            get(explorer::table_stream),
+        )
+        .route(
             "/databases/{database}/tables/{table}/columns/{column}/distribution",
             get(explorer::column_distribution),
         )

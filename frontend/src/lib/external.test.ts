@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  backgroundReader,
   externalNotes,
   externalSource,
   externalWhere,
@@ -267,5 +268,21 @@ describe('externalWhere', () => {
     expect(externalWhere(externalSource('URL', "URL('https://e.org/a.csv')")!)).toBe(
       'https://e.org/a.csv',
     )
+  })
+})
+
+describe('backgroundReader', () => {
+  it('names the two engines that read on their own', () => {
+    expect(backgroundReader('Kafka')).toBe('kafka')
+    expect(backgroundReader('S3Queue')).toBe('queue')
+  })
+
+  it('does not mistake S3 for the queue that starts with the same two letters', () => {
+    expect(backgroundReader('S3')).toBeNull()
+  })
+
+  it('is null for an engine read only when somebody asks', () => {
+    expect(backgroundReader('PostgreSQL')).toBeNull()
+    expect(backgroundReader('MergeTree')).toBeNull()
   })
 })

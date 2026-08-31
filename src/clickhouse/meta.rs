@@ -499,6 +499,40 @@ struct DepRow {
     engine: String,
 }
 
+/// The engine of one object, asked of the server.
+///
+/// Its own read rather than a field off `table_detail`: the callers that want
+/// it — "may this table be merged", "which background reader does this table
+/// have" — want one word, and `table_detail` is a dozen queries.
+pub async fn table_engine(ch: &Client, database: &str, table: &str) -> Result<String> {
+    #[derive(Deserialize)]
+    struct Row {
+        engine: String,
+    }
+    let row: Option<Row> = ch
+        .row_with(
+            "SELECT engine AS engine FROM system.tables \
+             WHERE database = {db:String} AND name = {tbl:String}",
+            QueryOptions {
+                params: vec![
+                    ("db".into(), database.to_string()),
+                    ("tbl".into(), table.to_string()),
+                ],
+                quote_64bit_integers: false,
+                introspection: true,
+                ..Default::default()
+            },
+        )
+        .await?;
+    row.map(|r| r.engine).ok_or_else(|| {
+        // Or it exists and this user may not see it, which `system.tables`
+        // cannot tell apart — it is filtered by grants.
+        Error::NotFound(format!(
+            "there is no `{database}.{table}` that this user can see"
+        ))
+    })
+}
+
 pub async fn table_detail(ch: &Client, database: &str, table: &str) -> Result<TableDetail> {
     let params = vec![
         ("db".into(), database.to_string()),
