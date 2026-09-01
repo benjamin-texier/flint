@@ -2,7 +2,7 @@ use axum::extract::{Query, State};
 use axum::Json;
 use serde::Deserialize;
 
-use crate::clickhouse::{backups, cluster, cold, diagnostics, health, news, parts};
+use crate::clickhouse::{backups, cluster, cold, diagnostics, health, news, parts, spend};
 use crate::error::Result;
 
 use super::{AppState, Caller};
@@ -460,6 +460,18 @@ pub async fn cold_bytes(
         )
         .await?,
     ))
+}
+
+/// Who this server has been working for.
+///
+/// The other half of `diagnostics::queries`: that one ranks statement shapes by
+/// cost, which says *what* is expensive; this says *who* it was expensive for,
+/// which is usually the more actionable of the two.
+pub async fn spend_by_user(
+    Caller(ch): Caller,
+    Query(w): Query<Window>,
+) -> Result<Json<spend::SpendReport>> {
+    Ok(Json(spend::spend(&ch, w.days, w.limit).await?))
 }
 
 /// Which database a reading is about, where it may be about one or about all.

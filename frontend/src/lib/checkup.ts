@@ -36,6 +36,7 @@
 import type { Heavy } from './api'
 import { saysCost, saysTable, trustworthy, type ColdReport } from './cold'
 import { bytes } from './format'
+import { nameOf, notable, saysCaveat, saysSpender, type SpendReport } from './spend'
 import type { BackupReport } from './backups'
 import type { QueryReport, StorageReport, TrafficReport } from './diagnose'
 import { partitionVerdict } from './diagnose'
@@ -413,6 +414,36 @@ export function fromCold(report: ColdReport, floorBytes = 1024 * 1024 * 1024): F
         },
       }
     })
+}
+
+/** Who the server is working for.
+ *
+ *  Never `now`: an account taking most of a server is not a fault, it is a fact
+ *  about how the server is used, and half the time it is the correct answer —
+ *  one dashboard service reading one rollup all day is a well-built pipeline.
+ *  What makes it a finding is *concentration*: most of one account's time on one
+ *  table is somewhere to look, and the link goes to the workload page that can
+ *  say which statements.
+ *
+ *  The gain is seconds and it is the seconds of the *window*, not of a day: a
+ *  page that mixed "4 s per run" with "18 min a week" in one column would let a
+ *  reader compare two things that are not comparable. `lib/checkup` only ever
+ *  ranks within a unit, which is what keeps that safe.
+ */
+export function fromSpend(report: SpendReport): Finding[] {
+  return notable(report).map((s) => ({
+    id: `queries:spend:${s.background ? '__background' : s.user}`,
+    area: 'queries' as const,
+    urgency: 'worth' as const,
+    title: `${nameOf(s)} — ${Math.round(s.share * 100)}% of this server’s query time`,
+    why: saysSpender(s, report),
+    evidence: `${s.statements.toLocaleString('en')} statements, ${Math.round(s.seconds)} s of ${Math.round(report.total_seconds)} s in the window${
+      s.failed ? `, ${s.failed} of them failed` : ''
+    }.${saysCaveat(report) ? ` ${saysCaveat(report)}` : ''}`,
+    gain: { kind: 'seconds' as const, n: s.seconds },
+    object: s.busiest_table || undefined,
+    act: { to: '/diagnose', label: 'What the statements cost' },
+  }))
 }
 
 /** Where the bytes are.

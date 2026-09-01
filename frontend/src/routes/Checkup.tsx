@@ -11,6 +11,7 @@ import {
   fromHeavy,
   fromCold,
   fromQueries,
+  fromSpend,
   fromStorage,
   fromTraffic,
   SESSION_KEY,
@@ -129,6 +130,14 @@ export function CheckupPage() {
     queryFn: () => api.cold({ days: 7 }),
     enabled: read !== null,
   })
+  /* Behind the same button, and always over the seven days for the same reason
+     the cold reading is: who spends a ten-minute session is a question about
+     ten minutes, which `lib/spend` refuses to answer anyway. */
+  const spend = useQuery({
+    queryKey: ['diag', 'spend', 7],
+    queryFn: () => api.spend(7),
+    enabled: read !== null,
+  })
 
   /* Where the bytes are, per database. Metadata only — no sampling — which is
      what lets it run on open. It proposes nothing; the review does that, and
@@ -154,12 +163,23 @@ export function CheckupPage() {
       ...(queries.data ? fromQueries(queries.data) : []),
       ...(traffic.data ? fromTraffic(traffic.data) : []),
       ...(cold.data ? fromCold(cold.data) : []),
+      ...(spend.data ? fromSpend(spend.data) : []),
     ],
-    [storage.data, detached.data, backups.data, heavy.data, queries.data, traffic.data, cold.data],
+    [
+      storage.data,
+      detached.data,
+      backups.data,
+      heavy.data,
+      queries.data,
+      traffic.data,
+      cold.data,
+      spend.data,
+    ],
   )
 
   const workloadAsked = read !== null
-  const workloadPending = queries.isFetching || traffic.isFetching || cold.isFetching
+  const workloadPending =
+    queries.isFetching || traffic.isFetching || cold.isFetching || spend.isFetching
 
   return (
     <article className="page page--checkup">

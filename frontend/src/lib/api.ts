@@ -898,6 +898,10 @@ export const api = {
       `/diagnostics/traffic?${seconds === undefined ? `days=${days}` : `seconds=${seconds}`}`,
     ),
   diagnoseStorage: () => request<import('./diagnose').StorageReport>('/diagnostics/storage'),
+  /** Who the server has been working for. The other half of `diagnoseQueries`:
+   *  that ranks statement shapes, this ranks the accounts behind them. */
+  spend: (days = 7, limit = 20) =>
+    request<import('./spend').SpendReport>(`/diagnostics/spend?days=${days}&limit=${limit}`),
   /** What this server pays for and nothing reads. `database` narrows it to one;
    *  `floorBytes` is what a table has to hold in cold bytes to be listed at all,
    *  and a page about one table passes 0 because it is not choosing between

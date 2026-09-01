@@ -10,6 +10,7 @@ import {
   fromHeavy,
   fromCold,
   fromQueries,
+  fromSpend,
   fromStorage,
   fromTraffic,
   type Finding,
@@ -114,6 +115,10 @@ export function ArrivalPage() {
      the disk is doing any work. Same cache key as the checkup's, so whichever
      page is opened second pays nothing. */
   const cold = useQuery({ queryKey: ['diag', 'cold', DAYS], queryFn: () => api.cold({ days: DAYS }) })
+  /* And who the server has been working for. Its own request beside the cost of
+     the statements, because the two answer different halves of one question and
+     one of them being denied must not take the other with it. */
+  const spend = useQuery({ queryKey: ['diag', 'spend', DAYS], queryFn: () => api.spend(DAYS) })
 
   const findings: Finding[] = useMemo(
     () => [
@@ -124,8 +129,18 @@ export function ArrivalPage() {
       ...(queries.data ? fromQueries(queries.data) : []),
       ...(traffic.data ? fromTraffic(traffic.data) : []),
       ...(cold.data ? fromCold(cold.data) : []),
+      ...(spend.data ? fromSpend(spend.data) : []),
     ],
-    [storage.data, detached.data, backups.data, heavy.data, queries.data, traffic.data, cold.data],
+    [
+      storage.data,
+      detached.data,
+      backups.data,
+      heavy.data,
+      queries.data,
+      traffic.data,
+      cold.data,
+      spend.data,
+    ],
   )
 
   /* What each reading is doing, in the words the caption uses. `available:
@@ -141,6 +156,7 @@ export function ArrivalPage() {
     said('the query log', queries),
     said('what each table is read for', traffic),
     said('what nothing has read', cold),
+    said('who the server works for', spend),
   ]
 
   const ordered = inOrder(findings, SHOWN)
