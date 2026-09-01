@@ -744,14 +744,44 @@ and `⌘↵`, the same Stop, the same statistics, the same grid, the same charts
 the same Save, Send to…, Explain, History and download sit under both, because
 they are the same code. What changes is the surface above them.
 
-The form runs dataset → columns → filters → sort → limit, in that order across
-the band, and the generated ClickHouse SQL is on screen the whole time with the
-question written out in English above it. Choosing a column with no aggregate
-makes it a grouping, so `GROUP BY` writes itself. Everything you type is encoded
-rather than interpolated: a value of `' OR 1=1 --` becomes a string containing
-that text. Relative times like `now() - INTERVAL 7 DAY` pass through unquoted,
-but only by matching a closed grammar — `now() + INTERVAL 1 DAY` does not, and
-becomes a literal.
+The form is two panes. On the left the question, as a stack of clauses in the
+order SQL writes them — `from`, `show`, `where`, `having`, `order`, `limit`, and
+the timezone when there is a day boundary to place. Each one is a single line
+until it holds something, so a fresh question is five short lines rather than a
+band of empty sections. The keywords are the same words the clause strip under
+the results uses, deliberately: same question, same vocabulary, whichever face
+the tab is wearing.
+
+On the right the table's columns, searchable, with the ones in the sorting key
+underlined and a count of what is not being shown — `15 of 17 columns · 2 already
+in the question`. That pane gets the room because that is where the clicking
+happens: `hits` is 105 columns wide, and a wall of 105 chips is a wall whichever
+column of the band it sits in.
+
+The generated ClickHouse SQL is on screen the whole time with the question
+written out in English above it. Choosing a column with no aggregate makes it a
+grouping, so `GROUP BY` writes itself. Everything you type is encoded rather than
+interpolated: a value of `' OR 1=1 --` becomes a string containing that text.
+Relative times like `now() - INTERVAL 7 DAY` pass through unquoted, but only by
+matching a closed grammar — `now() + INTERVAL 1 DAY` does not, and becomes a
+literal.
+
+**A fresh tab offers questions rather than explaining the keyboard.** What used
+to be a grey card in a very large empty rectangle is now the table's own first
+questions — how many rows, a hundred rows of it, rows by the hour on its
+timestamp, the commonest value of its lowest-cardinality column — each with the
+statement it will run printed on it before it is pressed. Only questions the
+columns can actually answer are offered: no hour bucket on a table with no
+timestamp. Under them, the last few statements this server was asked, out of
+`system.query_log`. A blank SQL tab has no table to be about, so it offers the
+two statements a fresh console is always for instead: what is in this database,
+and what is running right now.
+
+**The page is two blocks, not six bands.** The composing band, the tabs and the
+clause strip are the question; the figures — rows read, bytes, elapsed, returned
+— are the head of the answer, which is a card on the ground underneath. The
+figures used to be a band of their own *between* the statement and its own
+clauses, so the page read question, how-it-went, question again, answer.
 
 **The switch is honest about the one direction it cannot go.** A form always
 becomes SQL. SQL becomes a form again only while it is still the statement the
@@ -763,8 +793,8 @@ on it. The form is not discarded, though: undo the edit and the way back opens.
 **And the grid edits whichever one you are in.** A click on a column header
 sorts, a cell filters, a column can be dropped — in SQL that rewrites the text,
 and in the form it edits the form. The form knows something the text does not:
-a filter on a total belongs *after* the grouping, so it lands in "filters on the
-totals" by itself. Where it cannot express a gesture it says so rather than
+a filter on a total belongs *after* the grouping, so it lands in `having` by
+itself. Where it cannot express a gesture it says so rather than
 doing nothing — filtering `ts_day` is refused with "it is `ts` folded by day,
 and a filter runs on the rows before the folding".
 

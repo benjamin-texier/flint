@@ -7,6 +7,9 @@ import { EmptyNote, ErrorNote, Loading } from '../components/Note'
 /** Recent SELECTs from `system.query_log`, one click from being re-run.
  *  Deliberately a panel over the results rather than a separate page: you
  *  reach for history mid-query, not as a destination. */
+/** A sentence, whether or not whoever wrote it stopped. */
+const ended = (text: string) => (/[.!?]$/.test(text.trim()) ? text.trim() : `${text.trim()}.`)
+
 export function HistoryPanel({
   onPick,
   onClose,
@@ -37,7 +40,13 @@ export function HistoryPanel({
 
         {history.data && !history.data.available ? (
           <EmptyNote title="No query history">
-            {history.data.reason ?? 'system.query_log is not available.'} Enable it in
+            {/* The server's own reason, ended. It arrives as a clause — "…is
+                not enabled on this server" — and was printed straight against
+                the next sentence, so the panel read "…on this server Enable it
+                in ClickHouse". Punctuated here rather than in the backend: the
+                reason is a fact, and where a sentence ends is this page's
+                business. */}
+            {ended(history.data.reason ?? 'system.query_log is not available')} Enable it in
             ClickHouse to see what has been running.
           </EmptyNote>
         ) : null}
