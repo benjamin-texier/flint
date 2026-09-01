@@ -13,6 +13,7 @@ import { formatDdl } from '../lib/ddl'
 import { ResultView } from '../components/ResultView'
 import type { GridQuery } from '../components/ResultsGrid'
 import { EmptyNote, ErrorNote, Loading } from '../components/Note'
+import { StartHere } from '../components/StartHere'
 import { HistoryPanel } from './History'
 import { SavedPanel } from './Saved'
 import { DashPanel } from './DashPanel'
@@ -85,13 +86,26 @@ import { TypeIcon } from '../components/TypeIcon'
 export function Editor() {
   const [params, setParams] = useSearchParams()
   const navigate = useNavigate()
-  const [historyOpen, setHistoryOpen] = useState(false)
-  const [settingsOpen, setSettingsOpen] = useState(false)
-  const [savedOpen, setSavedOpen] = useState(false)
-  const [dashOpen, setDashOpen] = useState(false)
+  /* Which drawer is open under the results, or none.
+   *
+   *  Four booleans before, and they could all be true at once — the render only
+   *  ever showed the first, so pressing Saved while History was open lit two
+   *  buttons and answered one of them. `aria-pressed` on a control that is on
+   *  and not showing is worse than no state at all: it is the page telling a
+   *  screen reader something the screen does not say. One value, so the buttons
+   *  cannot lie, and the second press on the open one closes it. */
+  const [panel, setPanel] = useState<Panel | null>(null)
+  const toggle = useCallback(
+    (which: Panel) => setPanel((open) => (open === which ? null : which)),
+    [],
+  )
   // null = follow the content. A drag pins it, and a double-click on the grip
   // hands it back.
   const [codeHeight, setCodeHeight] = useState<number | null>(null)
+  /** How tall the form's clauses are, as the form measures them. Null until it
+   *  has said, and irrelevant in SQL — an editor's own content height is a line
+   *  count, which this side can work out for itself. */
+  const [formHeight, setFormHeight] = useState<number | null>(null)
   /** Why a gesture on the grid could not be carried into the form — the
    *  bucketed column that cannot be filtered, the total that cannot be matched
    *  with `contains`. Cleared as soon as anything else happens. */
@@ -167,7 +181,7 @@ export function Editor() {
   useEffect(() => {
     if (params.get('panel') !== 'saved' || seededPanel.current) return
     seededPanel.current = true
-    setSavedOpen(true)
+    setPanel('saved')
     setParams(new URLSearchParams(), { replace: true })
   }, [params, setParams])
 
@@ -290,14 +304,33 @@ export function Editor() {
     if (target) tabs.patch(active.id, { database: target })
   }, [mode, active, databases.data, tabs])
 
+  /** The table this tab is about, or null when it is about nothing yet.
+   *
+   *  The form always knows: it is the dataset picker's value. In SQL it is read
+   *  off whatever is in the band — the statement being written, not the one that
+   *  ran — because the empty state's job is to offer a first question about the
+   *  table somebody has already started typing, and `ranSql` is null in exactly
+   *  the state that matters. A statement too compound to have one table has
+   *  none, and the offers stay away rather than guessing which of the two the
+   *  reader meant. */
+  const subject = useMemo(() => {
+    if (mode === 'build') return spec?.table ?? null
+    const text = active?.sql.trim()
+    if (!text) return null
+    const shaped = shapeOf(text)
+    return rewritable(shaped) ? (fromRef(shaped)?.table ?? null) : null
+  }, [mode, spec?.table, active?.sql])
+
   /* The question in words, above the SQL, because the mistake it catches — "by
      city" where you meant "by day" — is invisible in a SELECT and obvious in
      English. The column list is the same one the form reads: React Query hands
-     back the one request, not two. */
+     back the one request, not two — and the empty state's first questions read
+     it too, which is why this is keyed on the subject rather than on the form's
+     own table. */
   const built = useQuery({
-    queryKey: ['table', database, spec?.table],
-    queryFn: () => api.table(database!, spec!.table),
-    enabled: mode === 'build' && Boolean(database && spec?.table),
+    queryKey: ['table', database, subject],
+    queryFn: () => api.table(database!, subject!),
+    enabled: Boolean(database && subject),
     staleTime: 5 * 60_000,
   })
   const sentence = useMemo(
@@ -712,59 +745,87 @@ export function Editor() {
   // that the grid can edit the statement, the statement is something you read a
   // line of and the rows are what you look at.
   const lines = active.sql.split('\n').length
+  /* The form follows its content now, which it could not when it was five
+     columns: a section had a column whether or not anything was in it, so the
+     band had to open tall enough for the emptiest possible form and then stayed
+     that tall for ever. What the clauses occupy is measured by the form itself
+     and handed up — see `onNaturalHeight`.
+
+     The floor is the column palette's: a one-clause question would otherwise
+     squeeze the pane the picking happens in down to a line. The ceiling is a bit
+     under half the window — past that the form is eating the answer, and the
+     grip is there for anybody who genuinely wants that. */
   const autoHeight =
     mode === 'build'
-      ? // A form has no "content height" to follow — every group is there
-        // whether or not it has anything in it. So it opens at a size the
-        // column list is usable in, and the same grip resizes it.
-        Math.max(Math.min(window.innerHeight * 0.34, 380), 224)
+      ? Math.min(
+          Math.max(formHeight ?? 214, 196),
+          Math.max(260, window.innerHeight * 0.44),
+        )
       : Math.min(Math.max(window.innerHeight * 0.32, 170), Math.max(96, lines * 21.5 + 22))
 
   return (
     <section className="editor">
+      {/* Three zones, and the order is the sentence: *where* you are asking,
+          *how* you are asking, *what happens now*. Before this the bar was nine
+          controls of equal weight in one row, so Run — the only one anybody
+          presses on purpose — was the same size and the same colour as
+          Settings. Now the spark is spent once, on the act, and the drawers sit
+          at the far end as one quiet group of one-at-a-time. */}
       <div className="editor__bar">
-        <DatabasePicker
-          value={database}
-          onChange={(next) => tabs.patch(active.id, { database: next })}
-        />
+        <div className="editor__where">
+          <DatabasePicker
+            value={database}
+            onChange={(next) => tabs.patch(active.id, { database: next })}
+          />
 
-        <ModeSwitch
-          tab={active}
-          onSwitch={(next, allowed) => {
-            tabs.setMode(active.id, next, allowed.ok ? allowed.spec : undefined)
-            setCarried(
-              next === 'build' && allowed.ok && allowed.dropped?.length
-                ? { tab: active.id, dropped: allowed.dropped }
-                : null,
-            )
-          }}
-        />
+          <ModeSwitch
+            tab={active}
+            onSwitch={(next, allowed) => {
+              tabs.setMode(active.id, next, allowed.ok ? allowed.spec : undefined)
+              setCarried(
+                next === 'build' && allowed.ok && allowed.dropped?.length
+                  ? { tab: active.id, dropped: allowed.dropped }
+                  : null,
+              )
+            }}
+          />
+        </div>
 
-        <div className="editor__actions">
+        {/* The act, and the two things you do *to a statement* before you run
+            it. Joined into one cluster rather than spaced out as peers: Format
+            and Explain are about the query in the band above, and Run is what
+            they are in aid of. */}
+        <div className="editor__act">
           {active.running ? (
-            <button className="btn" onClick={cancel}>
+            <button className="btn btn--stop" onClick={cancel}>
+              <span className="btn__dot" aria-hidden="true" />
               Stop
             </button>
           ) : (
             <button
-              className="btn btn--spark"
+              className="btn btn--spark btn--run"
               onClick={() => void run()}
               disabled={mode === 'build' && !dsl}
-              title={mode === 'build' && blocked ? blocked : undefined}
+              title={mode === 'build' && blocked ? blocked : 'Run the statement — ⌘↵'}
             >
+              <span className="btn__play" aria-hidden="true" />
               Run <span className="kbd">⌘↵</span>
             </button>
           )}
           {/* Nothing to format in a generated statement: the server writes it,
               and this button would tidy something the next keystroke rewrites. */}
           {mode === 'sql' ? (
-            <button className="btn" onClick={() => void format()} disabled={active.running}>
+            <button
+              className="btn btn--soft"
+              onClick={() => void format()}
+              disabled={active.running}
+            >
               Format
             </button>
           ) : null}
-          <label className="explain">
+          <label className="editor__pick">
             <select
-              className="picker__select explain__select"
+              className="btn btn--soft btn--select"
               value=""
               onChange={(e) => {
                 const kind = e.target.value as ExplainKind
@@ -782,73 +843,67 @@ export function Editor() {
               ))}
             </select>
           </label>
-          {/* Sending rather than retyping: a statement retyped on another page
-              is a statement that will differ from the one that was tested. */}
-          <label className="editor__pick">
-            <select
-              className="btn btn--select"
-              value=""
-              onChange={(e) => {
-                const to = e.target.value as Destination | ''
-                if (!to) return
-                navigate(
-                  handoffPath(to, {
-                    sql: currentStatement()?.sql ?? active.sql,
-                    database: database ?? '',
-                    name: active.title || '',
-                  }),
-                )
-              }}
-              disabled={!active.sql.trim()}
-              aria-label="Send this statement somewhere that keeps it"
-              title={
-                active.sql.trim()
-                  ? 'Turn this statement into an alert, a report or an API'
-                  : 'Write something first'
-              }
-            >
-              <option value="">Send to…</option>
-              {DESTINATIONS.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            className={`btn${dashOpen ? ' is-on' : ''}`}
-            onClick={() => setDashOpen((o) => !o)}
-            aria-pressed={dashOpen}
-            disabled={!active.result}
-            title={active.result ? 'Add this to a dashboard' : 'Run something first'}
-          >
-            Dashboards
-          </button>
-          <button
-            className={`btn${savedOpen ? ' is-on' : ''}`}
-            onClick={() => setSavedOpen((o) => !o)}
-            aria-pressed={savedOpen}
-          >
-            Saved
-          </button>
-          <button
-            className={`btn${settingsOpen ? ' is-on' : ''}`}
-            onClick={() => setSettingsOpen((o) => !o)}
-            aria-pressed={settingsOpen}
-            title="What Flint sends with every statement"
-          >
-            Settings
-          </button>
-          <button
-            className={`btn${historyOpen ? ' is-on' : ''}`}
-            onClick={() => setHistoryOpen((open) => !open)}
-            aria-pressed={historyOpen}
-          >
-            History
-          </button>
         </div>
 
         <div className="editor__spacer" />
+
+        {/* Sending rather than retyping: a statement retyped on another page
+            is a statement that will differ from the one that was tested. */}
+        <label className="editor__pick">
+          <select
+            className="btn btn--soft btn--select"
+            value=""
+            onChange={(e) => {
+              const to = e.target.value as Destination | ''
+              if (!to) return
+              navigate(
+                handoffPath(to, {
+                  sql: currentStatement()?.sql ?? active.sql,
+                  database: database ?? '',
+                  name: active.title || '',
+                }),
+              )
+            }}
+            disabled={!active.sql.trim()}
+            aria-label="Send this statement somewhere that keeps it"
+            title={
+              active.sql.trim()
+                ? 'Turn this statement into an alert, a report or an API'
+                : 'Write something first'
+            }
+          >
+            <option value="">Send to…</option>
+            {DESTINATIONS.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {/* The four drawers, as one group of one-at-a-time — which is what the
+            render has always done and what the four separate toggles denied.
+            Quieter than the act on purpose: opening a drawer is not asking a
+            question, and on the page where asking is the point these had been
+            shouting as loudly as Run. */}
+        <div className="segmented" role="group" aria-label="Panels under the result">
+          {DRAWERS.map((d) => {
+            const off = d.id === 'dashboards' && !active.result
+            return (
+              <button
+                key={d.id}
+                className={`segmented__item${panel === d.id ? ' is-on' : ''}`}
+                onClick={() => toggle(d.id)}
+                aria-pressed={panel === d.id}
+                disabled={off}
+                title={off ? 'Run something first' : d.hint}
+                type="button"
+              >
+                {d.label}
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       <TabStrip />
@@ -862,7 +917,12 @@ export function Editor() {
       >
         {mode === 'build' ? (
           active.spec ? (
-            <BuildPane spec={active.spec} onChange={setSpec} database={database} />
+            <BuildPane
+              spec={active.spec}
+              onChange={setSpec}
+              database={database}
+              onNaturalHeight={setFormHeight}
+            />
           ) : (
             <Loading label="Opening the form" />
           )
@@ -925,54 +985,6 @@ export function Editor() {
         }}
       />
 
-      <StatsStrip
-        running={active.running}
-        result={active.result}
-        error={active.error}
-        wallMs={active.wallMs}
-        maxRows={config.data?.max_result_rows}
-        awaiting={awaiting}
-        mode={mode}
-      />
-
-      {/* A gesture the form could not carry. Said where the figures are, and
-          for exactly as long as it is true — a click that quietly does nothing
-          is the one that stops people trusting the ones that work. */}
-      {refused ? <p className="editor__refused">{refused}</p> : null}
-
-      {/* Why a large read was large — offered on the figures, never on a guess
-          about what the query meant, and never at the cost of the rows. */}
-      {active.result && ran && worthExplaining(active.result.statistics.bytes_read) ? (
-        <div className="whystrip">
-          {why && why.sql === ran ? (
-            why.said.length > 0 ? (
-              <ul className="planread">
-                {why.said.map((verdict) => (
-                  <li className={`planread__v planread__v--${verdict.tone}`} key={verdict.text}>
-                    <span className="planread__text">{verdict.text}</span>
-                    {verdict.evidence ? (
-                      <span className="planread__ev num">{verdict.evidence}</span>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="bhint">
-                {why.failed
-                  ? 'The server would not explain this statement, so there is nothing to add to the figures above.'
-                  : 'The plan has nothing to add: this read had no parts or granules to skip, so the figures above are the whole story.'}
-              </p>
-            )
-          ) : (
-            <button className="whystrip__ask" onClick={() => void explainWhy()} type="button">
-              {whyRunning
-                ? 'Reading the plan…'
-                : `It read ${bytes(active.result.statistics.bytes_read)} — why?`}
-            </button>
-          )}
-        </div>
-      ) : null}
-
       {/* What is about to run, said in the slot where the statement's own
           clauses are said. In SQL that is a row of chips you can take back; in
           the form it is the sentence and the statement the form produced —
@@ -1000,87 +1012,161 @@ export function Editor() {
         />
       ) : null}
 
-      <div className="editor__results">
-        {dashOpen ? (
-          <DashPanel
-            sql={currentStatement()?.sql ?? active.sql}
-            database={database ?? ''}
-            chart={active.chart}
-            suggestedTitle={active.title || 'Untitled'}
-            workspace={config.data?.workspace ?? null}
-            onClose={() => setDashOpen(false)}
-          />
-        ) : savedOpen ? (
-          <SavedPanel
-            currentSql={active.sql}
-            currentDatabase={database ?? ''}
-            suggestedName={active.title || 'Untitled query'}
-            workspace={config.data?.workspace ?? null}
-            onClose={() => setSavedOpen(false)}
-            onLoad={(q) => {
-              tabs.openWith(q.sql, q.database)
-              setSavedOpen(false)
-            }}
-          />
-        ) : settingsOpen ? (
-          <SettingsPanel config={config.data} onClose={() => setSettingsOpen(false)} />
-        ) : historyOpen ? (
-          <HistoryPanel
-            onClose={() => setHistoryOpen(false)}
-            onPick={(sql) => {
-              // A statement out of the history is a statement, whatever this
-              // tab was showing: nothing reads it back into a form, so the tab
-              // turns over with it rather than holding a form its SQL no longer
-              // matches. The form stays on the tab — it is one Escape back.
-              tabs.patch(active.id, { sql, mode: 'sql' })
-              setHistoryOpen(false)
-            }}
-          />
-        ) : active.error ? (
-          <ErrorNote error={active.error} />
-        ) : active.result ? (
-          active.result.kind === 'command' ? (
-            <EmptyNote title="Statement executed">
-              This statement returned no rows.
-            </EmptyNote>
-          ) : active.result.rows.length === 0 ? (
-            <EmptyNote title="No rows matched">
-              The query ran and came back empty. Loosen the WHERE clause and run it again.
-            </EmptyNote>
-          ) : isPlan(active.result) ? (
-            <PlanView
-              text={active.result.rows.map((r) => String(r[0] ?? '')).join('\n')}
-              note={explainNote}
+      {/* A gesture the form could not carry. Said between the question and
+          the answer, because that is what it is about: the question did not
+          change, so the answer below has not either. For exactly as long as it
+          is true — a click that quietly does nothing is the one that stops
+          people trusting the ones that work. */}
+      {refused ? <p className="editor__refused">{refused}</p> : null}
+
+      {/* ── The answer ────────────────────────────────────────────────────
+          One block, with the figures as its head.
+
+          The figures used to be a strip of their own, above the clauses, above
+          the result — so the page read: question, *how the answer went*,
+          question again, answer. Four bands, two of them about the query and
+          two about its answer, interleaved. Now the composing band and the
+          clauses belong to the question, and everything that describes what
+          came back — how many rows, how long, why it read so much, and the rows
+          themselves — is one surface underneath. Two things on the page instead
+          of six, and the reader's eye has somewhere to land. */}
+      <div className={`answer${active.running ? ' is-running' : ''}`}>
+        <StatsStrip
+          running={active.running}
+          result={active.result}
+          error={active.error}
+          wallMs={active.wallMs}
+          maxRows={config.data?.max_result_rows}
+          awaiting={awaiting}
+          mode={mode}
+        />
+
+        {/* Why a large read was large — offered on the figures, never on a guess
+            about what the query meant, and never at the cost of the rows. */}
+        {active.result && ran && worthExplaining(active.result.statistics.bytes_read) ? (
+          <div className="whystrip">
+            {why && why.sql === ran ? (
+              why.said.length > 0 ? (
+                <ul className="planread">
+                  {why.said.map((verdict) => (
+                    <li className={`planread__v planread__v--${verdict.tone}`} key={verdict.text}>
+                      <span className="planread__text">{verdict.text}</span>
+                      {verdict.evidence ? (
+                        <span className="planread__ev num">{verdict.evidence}</span>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="bhint">
+                  {why.failed
+                    ? 'The server would not explain this statement, so there is nothing to add to the figures above.'
+                    : 'The plan has nothing to add: this read had no parts or granules to skip, so the figures above are the whole story.'}
+                </p>
+              )
+            ) : (
+              <button className="whystrip__ask" onClick={() => void explainWhy()} type="button">
+                {whyRunning
+                  ? 'Reading the plan…'
+                  : `It read ${bytes(active.result.statistics.bytes_read)} — why?`}
+              </button>
+            )}
+          </div>
+        ) : null}
+
+          <div className="answer__body">
+          {panel === 'dashboards' ? (
+            <DashPanel
+              sql={currentStatement()?.sql ?? active.sql}
+              database={database ?? ''}
+              chart={active.chart}
+              suggestedTitle={active.title || 'Untitled'}
+              workspace={config.data?.workspace ?? null}
+              onClose={() => setPanel(null)}
             />
+          ) : panel === 'saved' ? (
+            <SavedPanel
+              currentSql={active.sql}
+              currentDatabase={database ?? ''}
+              suggestedName={active.title || 'Untitled query'}
+              workspace={config.data?.workspace ?? null}
+              onClose={() => setPanel(null)}
+              onLoad={(q) => {
+                tabs.openWith(q.sql, q.database)
+                setPanel(null)
+              }}
+            />
+          ) : panel === 'settings' ? (
+            <SettingsPanel config={config.data} onClose={() => setPanel(null)} />
+          ) : panel === 'history' ? (
+            <HistoryPanel
+              onClose={() => setPanel(null)}
+              onPick={(sql) => {
+                // A statement out of the history is a statement, whatever this
+                // tab was showing: nothing reads it back into a form, so the tab
+                // turns over with it rather than holding a form its SQL no longer
+                // matches. The form stays on the tab — it is one Escape back.
+                tabs.patch(active.id, { sql, mode: 'sql' })
+                setPanel(null)
+              }}
+            />
+          ) : active.error ? (
+            <ErrorNote error={active.error} />
+          ) : active.result ? (
+            active.result.kind === 'command' ? (
+              <EmptyNote title="Statement executed">
+                This statement returned no rows.
+              </EmptyNote>
+            ) : active.result.rows.length === 0 ? (
+              <EmptyNote title="No rows matched">
+                The query ran and came back empty. Loosen the WHERE clause and run it again.
+              </EmptyNote>
+            ) : isPlan(active.result) ? (
+              <PlanView
+                text={active.result.rows.map((r) => String(r[0] ?? '')).join('\n')}
+                note={explainNote}
+              />
+            ) : (
+              <ResultView
+                /* Keyed by tab so the chart and the analyses panel belong to the
+                   question they were opened on. Without it React keeps one
+                   instance across a tab switch, and the form you picked for one
+                   result describes another result's columns. */
+                key={active.id}
+                result={active.result}
+                chosenKind={active.chart?.kind ?? null}
+                onChartChange={(chart) => tabs.patch(active.id, { chart })}
+                query={gridQuery}
+                /* `ranSql`, not what is in the editor now. The file has to be the
+                   result on screen — a reader who typed three more characters
+                   after running would otherwise download an answer to a question
+                   they never asked, and nothing would say so. */
+                download={ran ? downloadFor(mode, ran, active.spec, database, active.title) : undefined}
+              />
+            )
           ) : (
-            <ResultView
-              /* Keyed by tab so the chart and the analyses panel belong to the
-                 question they were opened on. Without it React keeps one
-                 instance across a tab switch, and the form you picked for one
-                 result describes another result's columns. */
-              key={active.id}
-              result={active.result}
-              chosenKind={active.chart?.kind ?? null}
-              onChartChange={(chart) => tabs.patch(active.id, { chart })}
-              query={gridQuery}
-              /* `ranSql`, not what is in the editor now. The file has to be the
-                 result on screen — a reader who typed three more characters
-                 after running would otherwise download an answer to a question
-                 they never asked, and nothing would say so. */
-              download={ran ? downloadFor(mode, ran, active.spec, database, active.title) : undefined}
+            /* Nothing has run in this tab. Offered rather than explained — see
+               `StartHere`. A statement picked here goes into the tab *and* runs,
+               because the card it was pressed on says it will; and the tab turns
+               over to SQL with it, because nothing reads a statement back into a
+               form and a form holding somebody else's SQL is the mode switch
+               that eats your work. */
+            <StartHere
+              database={database}
+              table={subject}
+              columns={built.data?.columns ?? []}
+              onRun={(sql) => {
+                tabs.patch(active.id, { sql, mode: 'sql' })
+                void runSql(sql)
+              }}
+              hint={
+                mode === 'build'
+                  ? 'pick a column or two in the form above and press ⌘↵ — the statement in between is exactly what gets sent.'
+                  : 'write a statement above and press ⌘↵. Only the statement under the caret runs, so one tab holds a scratchpad of them.'
+              }
             />
-          )
-        ) : mode === 'build' ? (
-          <EmptyNote title="Nothing has run in this tab yet">
-            Pick a column or two above and press ⌘↵. The statement in between is exactly what
-            will be sent — switch to SQL whenever you want to go further than the form allows.
-          </EmptyNote>
-        ) : (
-          <EmptyNote title="Nothing has run in this tab yet">
-            Write a statement above and press ⌘↵. Only the statement under the caret runs, so
-            you can keep a scratchpad of queries in one tab.
-          </EmptyNote>
-        )}
+          )}
+        </div>
       </div>
     </section>
   )
@@ -1139,6 +1225,17 @@ function carriedTitle(dropped: string[], hint: string): string {
     n === 1 ? 'has' : 'have'
   } no place in the form and will be dropped — the switch says which.`
 }
+
+/** The drawers that can be open under the result. One at a time — see
+ *  `panel`. */
+type Panel = 'dashboards' | 'saved' | 'settings' | 'history'
+
+const DRAWERS: { id: Panel; label: string; hint: string }[] = [
+  { id: 'saved', label: 'Saved', hint: 'Statements this workspace keeps' },
+  { id: 'history', label: 'History', hint: 'What this server has been asked lately' },
+  { id: 'dashboards', label: 'Dashboards', hint: 'Add this result to a dashboard' },
+  { id: 'settings', label: 'Settings', hint: 'What Flint sends with every statement' },
+]
 
 const MODES: { id: TabMode; label: string; hint: string }[] = [
   { id: 'build', label: 'Form', hint: 'Ask without writing SQL. The statement is generated and shown.' },
@@ -1837,37 +1934,92 @@ function SettingsPanel({
  *  system.query_log" are two different tabs with the same name. The mark is
  *  read out too — a glyph nobody can hear is a distinction only sighted readers
  *  get. */
+/** The tabs, as a tablist that behaves like one.
+ *
+ *  It has carried `role="tablist"` since it was written and honoured none of
+ *  what that announces: every tab was its own tab stop, so tabbing through the
+ *  page walked all of them, and the arrow keys did nothing. A role is a promise
+ *  about the keyboard — this repo says so in as many words — and one that is
+ *  announced and not kept is worse than none, because a screen reader tells
+ *  somebody to press an arrow that has no effect.
+ *
+ *  So: one tab stop, moved by the arrows, Home and End to the ends, and Delete
+ *  to close — which is the pattern for a closable tab, and the reason the × is
+ *  not a tab stop of its own. */
 function TabStrip() {
   const tabs = useTabs()
+  const strip = useRef<HTMLDivElement>(null)
+
+  /** Move the selection, and take the focus with it: an arrow key that selects a
+   *  tab and leaves the focus behind is an arrow key that cannot be pressed
+   *  twice. */
+  const go = (to: number) => {
+    const list = tabs.tabs
+    if (list.length === 0) return
+    const wrapped = (to + list.length) % list.length
+    const target = list[wrapped]
+    if (!target) return
+    tabs.select(target.id)
+    // After React has moved the tab stop onto the newly selected tab.
+    requestAnimationFrame(() => {
+      strip.current?.querySelector<HTMLElement>('[role="tab"][tabindex="0"]')?.focus()
+    })
+  }
+
+  const at = tabs.tabs.findIndex((t) => t.id === tabs.activeId)
+
   return (
-    <div className="tabstrip" role="tablist">
-      {tabs.tabs.map((t, i) => (
-        <div
-          key={t.id}
-          role="tab"
-          aria-selected={t.id === tabs.activeId}
-          className={`tabstrip__tab${t.id === tabs.activeId ? ' is-active' : ''}`}
-        >
-          <button className="tabstrip__pick" onClick={() => tabs.select(t.id)}>
-            {t.running ? <span className="tabstrip__running" aria-label="running" /> : null}
-            {t.mode === 'build' ? (
-              <span className="tabstrip__mode" title="A form">
-                <span className="sr-only">form: </span>⊞
-              </span>
-            ) : null}
-            {t.title || `query ${i + 1}`}
-          </button>
-          {tabs.tabs.length > 1 ? (
+    <div
+      className="tabstrip"
+      role="tablist"
+      ref={strip}
+      onKeyDown={(e) => {
+        if (e.key === 'ArrowRight') go(at + 1)
+        else if (e.key === 'ArrowLeft') go(at - 1)
+        else if (e.key === 'Home') go(0)
+        else if (e.key === 'End') go(tabs.tabs.length - 1)
+        else if ((e.key === 'Delete' || e.key === 'Backspace') && tabs.tabs.length > 1) {
+          const doomed = tabs.tabs[at]
+          if (doomed) tabs.close(doomed.id)
+        } else return
+        e.preventDefault()
+      }}
+    >
+      {tabs.tabs.map((t, i) => {
+        const on = t.id === tabs.activeId
+        return (
+          <div key={t.id} className={`tabstrip__tab${on ? ' is-active' : ''}`}>
             <button
-              className="tabstrip__close"
-              onClick={() => tabs.close(t.id)}
-              aria-label={`Close ${t.title || `query ${i + 1}`}`}
+              className="tabstrip__pick"
+              role="tab"
+              aria-selected={on}
+              /* One tab stop for the whole strip — the arrows walk the rest. */
+              tabIndex={on ? 0 : -1}
+              onClick={() => tabs.select(t.id)}
             >
-              ×
+              {t.running ? <span className="tabstrip__running" aria-label="running" /> : null}
+              {t.mode === 'build' ? (
+                <span className="tabstrip__mode" title="A form">
+                  <span className="sr-only">form: </span>⊞
+                </span>
+              ) : null}
+              {t.title || `query ${i + 1}`}
             </button>
-          ) : null}
-        </div>
-      ))}
+            {tabs.tabs.length > 1 ? (
+              /* Not a tab stop: it lives inside a tablist, which holds one, and
+                 the keyboard closes a tab with Delete on the tab itself. */
+              <button
+                className="tabstrip__close"
+                tabIndex={-1}
+                onClick={() => tabs.close(t.id)}
+                aria-label={`Close ${t.title || `query ${i + 1}`}`}
+              >
+                ×
+              </button>
+            ) : null}
+          </div>
+        )
+      })}
       <button className="tabstrip__add" onClick={() => tabs.open()} aria-label="New SQL tab">
         +
       </button>
