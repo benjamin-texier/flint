@@ -14825,3 +14825,34 @@ button.acol__val:hover {
   align-items: center;
   gap: var(--s3);
 }
+
+/* ── What nothing has read ─────────────────────────────────────────────────
+ *
+ * The note above a table's columns, and the mark beside one. Deliberately quiet:
+ * a cold column is a *question* — nothing named it in the window — and painting
+ * it as a fault would answer a question Flint has no business answering. A
+ * quarterly report reads columns that look cold for months.
+ */
+.coldnote {
+  margin: 0 0 var(--s2);
+  color: var(--text-secondary);
+}
+
+/* Held rather than answered: the log was too short, or the grant is missing.
+ * A different colour from the answer, because "I cannot tell" and "nothing is
+ * cold" are the two readings a reader must never confuse. */
+.coldnote--held {
+  color: var(--text-muted);
+}
+
+.tbl__cold {
+  margin-left: var(--s2);
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  font-size: var(--size-label);
+  font-weight: 400;
+  color: var(--text-muted);
+  vertical-align: middle;
+}

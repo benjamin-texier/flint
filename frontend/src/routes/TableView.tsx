@@ -4,6 +4,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { api, type ColumnDetail, type TableDetailResponse } from '../lib/api'
 import { allows } from '../lib/spaces'
+import { saysCost, saysTable, trustworthy } from '../lib/cold'
 import { bytes, count, exact, partsLabel, ratio, shortTime } from '../lib/format'
 import { MetricLine, type Metric } from '../components/MetricLine'
 import { ShareBar, StratumBar } from '../components/StratumBar'
@@ -289,6 +290,7 @@ export function TableView({ database, table }: { database: string; table: string
             columns={t.columns}
             definition={definition}
             database={database}
+            table={table}
             external={isExternalEngine(t.engine)}
           />
         ) : null}
@@ -508,15 +510,47 @@ function Columns({
   columns,
   definition,
   database,
+  table,
   external = false,
 }: {
   columns: ColumnDetail[]
   definition: Definition | null
   database: string
+  table: string
   /** True where the rows are not on this server, which makes the per-column
    *  sizes below not a measurement of anything here. */
   external?: boolean
 }) {
+  /* Which of these columns anything has actually read. Its own request, after
+     the page has drawn: the sizes above are metadata and answer instantly, this
+     is a scan of `system.query_log` and must not hold them up.
+     `floorBytes: 0` because this page is not choosing between tables — every
+     cold column on the one in front of you is worth naming, however small.
+     `retry: false` because the commonest failure is a missing grant, and
+     retrying a refusal three times is three refusals. */
+  const cold = useQuery({
+    queryKey: ['cold', database, table],
+    queryFn: () => api.cold({ database, floorBytes: 0, limit: 200 }),
+    enabled: !external,
+    retry: false,
+    staleTime: 120_000,
+  })
+  /* The set of names, and the report that says whether the set may be believed
+     at all. Both, because an empty set means two very different things: nothing
+     is cold, or the log cannot say. */
+  const coldHere = cold.data?.tables.find((t) => t.table === table)
+  const believable = cold.data ? trustworthy(cold.data) : null
+  const coldNames = new Set(
+    believable?.ok && coldHere ? coldHere.coldest.map((c) => c.name) : [],
+  )
+  /* `coldest` is capped by the backend, so a table with forty cold columns
+     names six. Where the cap bit, the column marks are dropped rather than
+     drawn for six of forty — a mark that is right about six rows and silently
+     absent on thirty-four is worse than no mark. The sentence above still
+     carries the count. */
+  const marksAreComplete = Boolean(
+    coldHere && coldHere.coldest.length >= coldHere.cold_columns,
+  )
   // Views, materialized views and dictionaries report no per-column storage.
   // A scale of 0 makes the bars render as nothing rather than as a row of ticks
   // that look like data.
@@ -563,6 +597,27 @@ function Columns({
   }
 
   return (
+    <div className="stack">
+      {/* What nothing has read, said before the list rather than left to be
+          noticed in it. The one thing this page could never tell you: the sizes
+          below have always been here, and "which of them is doing any work" is
+          a question no column of metadata answers.
+
+          It states its own window and its own limits — see `lib/cold`. A log
+          that does not go back a day cannot tell a column nobody needs from one
+          nobody needed today, and this says so instead of producing a confident
+          list. */}
+      {coldHere && believable?.ok ? (
+        <p className="says says--wide coldnote">
+          {saysTable(coldHere, cold.data!)} {saysCost(coldHere, bytes)} Nothing here says a
+          column is unused — only that nothing named it in the window.
+        </p>
+      ) : cold.data && !believable?.ok && !external ? (
+        <p className="says says--wide coldnote coldnote--held">
+          Flint cannot say what nothing reads here: {believable?.why}.
+        </p>
+      ) : null}
+
     <div className="panel">
       <div className="panel__bar">
         <span className="panel__count">
@@ -609,6 +664,19 @@ function Columns({
                 {c.nullable ? (
                   <span className="nullable" title="Nullable">
                     ?
+                  </span>
+                ) : null}
+                {/* Only where every cold column can be marked. The backend caps
+                    the names it sends, so a table with forty cold columns names
+                    six — and a mark that is right about six rows and silently
+                    absent on thirty-four is worse than no mark at all. The
+                    sentence above the table still carries the count. */}
+                {marksAreComplete && coldNames.has(c.name) ? (
+                  <span
+                    className="tbl__cold"
+                    title="No statement named this column in the window above"
+                  >
+                    unread
                   </span>
                 ) : null}
                 {c.comment ? <span className="tbl__note">{c.comment}</span> : null}
@@ -685,6 +753,7 @@ function Columns({
       </tbody>
     </table>
       </div>
+    </div>
     </div>
   )
 }

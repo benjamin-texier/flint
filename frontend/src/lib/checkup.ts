@@ -34,6 +34,8 @@
  *  trade-off. Hence `urgency`, which has two values and not five. */
 
 import type { Heavy } from './api'
+import { saysCost, saysTable, trustworthy, type ColdReport } from './cold'
+import { bytes } from './format'
 import type { BackupReport } from './backups'
 import type { QueryReport, StorageReport, TrafficReport } from './diagnose'
 import { partitionVerdict } from './diagnose'
@@ -355,6 +357,62 @@ export function fromBackups(report: BackupReport): Finding[] {
     ]
   }
   return []
+}
+
+/** The bytes nothing read.
+ *
+ *  The strongest finding on this page, and the only one that answers *which of
+ *  this disk is doing any work* — `fromHeavy` below says where the bytes are,
+ *  which is a different and weaker question: a 400 GiB column somebody queries
+ *  every hour is where the bytes are and is not a finding.
+ *
+ *  Two rules, both of them about what may be *claimed* rather than about the
+ *  arithmetic, and both enforced in `lib/cold`:
+ *
+ *  - **The window is the log's**, not the one that was asked for. A log holding
+ *    five hours cannot support a sentence about seven days.
+ *  - **It never says unused.** A quarterly report reads columns that look cold
+ *    for months. The gain is real and the decision is not Flint's, so the
+ *    finding is where to look and the link is the table.
+ *
+ *  A table nothing read at all is deliberately *not* reported here. Every column
+ *  of it is cold, so it would outrank every real finding by weight while saying
+ *  the least — and "nobody read this table" is a sentence about the table, which
+ *  the table's own page makes. This page is about columns you are paying for
+ *  inside tables you are using.
+ */
+export function fromCold(report: ColdReport, floorBytes = 1024 * 1024 * 1024): Finding[] {
+  if (!trustworthy(report).ok) return []
+  return report.tables
+    .filter((t) => t.reads > 0 && t.cold_bytes >= floorBytes)
+    .map((t) => {
+      return {
+        id: `schema:cold:${t.qualified}`,
+        area: 'schema' as const,
+        /* Never `now`. Nothing is failing: this is disk being spent on data
+           nothing asked for, which is a trade-off and not an incident. */
+        urgency: 'worth' as const,
+        title: `${t.qualified} — ${t.cold_columns} of ${t.columns} columns nothing read`,
+        why: saysTable(t, report),
+        /* The coldest few by name, then the cost in the same words the table's
+           own page uses — `saysCost`, so two pages cannot phrase one figure
+           two ways. `bytes` is passed in rather than imported there because
+           `lib/cold` judges and `lib/format` renders, and the split is the
+           one this codebase keeps everywhere. */
+        evidence: `${t.coldest
+          .slice(0, 3)
+          .map((c) => c.name)
+          .join(', ')}${
+          t.cold_columns > 3 ? ` and ${t.cold_columns - 3} more` : ''
+        }. ${saysCost(t, bytes) ?? ''}`.trim(),
+        gain: { kind: 'bytes' as const, n: t.cold_bytes },
+        object: t.qualified,
+        act: {
+          to: `/db/${encodeURIComponent(t.database)}/${encodeURIComponent(t.table)}?tab=columns`,
+          label: 'The columns',
+        },
+      }
+    })
 }
 
 /** Where the bytes are.

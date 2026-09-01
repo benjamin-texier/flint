@@ -898,6 +898,19 @@ export const api = {
       `/diagnostics/traffic?${seconds === undefined ? `days=${days}` : `seconds=${seconds}`}`,
     ),
   diagnoseStorage: () => request<import('./diagnose').StorageReport>('/diagnostics/storage'),
+  /** What this server pays for and nothing reads. `database` narrows it to one;
+   *  `floorBytes` is what a table has to hold in cold bytes to be listed at all,
+   *  and a page about one table passes 0 because it is not choosing between
+   *  tables. See `lib/cold` for what the answer may be read as. */
+  cold: (opts: { days?: number; database?: string; floorBytes?: number; limit?: number } = {}) =>
+    request<import('./cold').ColdReport>(
+      `/diagnostics/cold?${new URLSearchParams({
+        days: String(opts.days ?? 7),
+        ...(opts.database ? { database: opts.database } : {}),
+        ...(opts.floorBytes === undefined ? {} : { floor_bytes: String(opts.floorBytes) }),
+        ...(opts.limit === undefined ? {} : { limit: String(opts.limit) }),
+      })}`,
+    ),
   diagnoseActivity: () => request<import('./diagnose').ActivityReport>('/diagnostics/activity'),
 
   alerts: () => request<import('./alert').Alert[]>('/alerts'),

@@ -2,7 +2,7 @@ use axum::extract::{Query, State};
 use axum::Json;
 use serde::Deserialize;
 
-use crate::clickhouse::{backups, cluster, diagnostics, health, news, parts};
+use crate::clickhouse::{backups, cluster, cold, diagnostics, health, news, parts};
 use crate::error::Result;
 
 use super::{AppState, Caller};
@@ -437,6 +437,39 @@ pub async fn detached_parts(
     Query(w): Query<Window>,
 ) -> Result<Json<parts::DetachedReport>> {
     Ok(Json(parts::detached(&ch, w.limit).await?))
+}
+
+/// The bytes this server is paying for and nothing has read.
+///
+/// Server-wide by default; `?database=` narrows it to one, which is how the
+/// database page asks. See `clickhouse::cold` for what the answer may and may
+/// not be read as — in particular that the window it covers is the log's, not
+/// the one that was asked for.
+pub async fn cold_bytes(
+    Caller(ch): Caller,
+    Query(w): Query<Window>,
+    Query(scope): Query<Scope>,
+) -> Result<Json<cold::ColdReport>> {
+    Ok(Json(
+        cold::cold(
+            &ch,
+            scope.database.as_deref(),
+            w.days,
+            w.limit,
+            scope.floor_bytes.unwrap_or(cold::FLOOR_BYTES),
+        )
+        .await?,
+    ))
+}
+
+/// Which database a reading is about, where it may be about one or about all.
+#[derive(Deserialize)]
+pub struct Scope {
+    database: Option<String>,
+    /// Below this a table is not listed. Defaults to the module's own floor; a
+    /// page about one table asks for none, because it is not choosing between
+    /// tables and every cold column on the one in front of you is worth naming.
+    floor_bytes: Option<u64>,
 }
 
 pub async fn schema_objects(
