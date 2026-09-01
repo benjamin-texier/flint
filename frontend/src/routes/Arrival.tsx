@@ -13,6 +13,7 @@ import {
   fromSpend,
   fromStorage,
   fromTraffic,
+  fromTwins,
   type Finding,
 } from '../lib/checkup'
 import { bytes, count, exact, uptime } from '../lib/format'
@@ -119,6 +120,10 @@ export function ArrivalPage() {
      the statements, because the two answer different halves of one question and
      one of them being denied must not take the other with it. */
   const spend = useQuery({ queryKey: ['diag', 'spend', DAYS], queryFn: () => api.spend(DAYS) })
+  /* And the same data held twice. The one reading on this page that needs no
+     query log, which is why it is here rather than behind anything: on a server
+     whose log Flint may not read it is the only substantial finding left. */
+  const twins = useQuery({ queryKey: ['diag', 'twins'], queryFn: () => api.twins() })
 
   const findings: Finding[] = useMemo(
     () => [
@@ -130,6 +135,7 @@ export function ArrivalPage() {
       ...(traffic.data ? fromTraffic(traffic.data) : []),
       ...(cold.data ? fromCold(cold.data) : []),
       ...(spend.data ? fromSpend(spend.data) : []),
+      ...(twins.data ? fromTwins(twins.data) : []),
     ],
     [
       storage.data,
@@ -140,6 +146,7 @@ export function ArrivalPage() {
       traffic.data,
       cold.data,
       spend.data,
+      twins.data,
     ],
   )
 
@@ -157,6 +164,7 @@ export function ArrivalPage() {
     said('what each table is read for', traffic),
     said('what nothing has read', cold),
     said('who the server works for', spend),
+    said('the same data held twice', twins),
   ]
 
   const ordered = inOrder(findings, SHOWN)

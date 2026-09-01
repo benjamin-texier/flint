@@ -2,7 +2,7 @@ use axum::extract::{Query, State};
 use axum::Json;
 use serde::Deserialize;
 
-use crate::clickhouse::{backups, cluster, cold, diagnostics, health, news, parts, spend};
+use crate::clickhouse::{backups, cluster, cold, diagnostics, health, news, parts, spend, twins};
 use crate::error::Result;
 
 use super::{AppState, Caller};
@@ -472,6 +472,21 @@ pub async fn spend_by_user(
     Query(w): Query<Window>,
 ) -> Result<Json<spend::SpendReport>> {
     Ok(Json(spend::spend(&ch, w.days, w.limit).await?))
+}
+
+/// Tables that look like copies of each other.
+///
+/// Needs no query log, which is the point: `system.columns` and `system.tables`
+/// are enough, so this answers on a server where almost nothing else about the
+/// workload can be read.
+pub async fn twin_tables(
+    Caller(ch): Caller,
+    Query(w): Query<Window>,
+    Query(scope): Query<Scope>,
+) -> Result<Json<twins::TwinReport>> {
+    Ok(Json(
+        twins::twins(&ch, scope.database.as_deref(), w.limit).await?,
+    ))
 }
 
 /// Which database a reading is about, where it may be about one or about all.

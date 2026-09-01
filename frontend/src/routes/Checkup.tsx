@@ -14,6 +14,7 @@ import {
   fromSpend,
   fromStorage,
   fromTraffic,
+  fromTwins,
   SESSION_KEY,
   inArea,
   saysReport,
@@ -101,6 +102,10 @@ export function CheckupPage() {
   const detached = useQuery({ queryKey: ['parts', 'detached'], queryFn: api.detachedParts })
   const backups = useQuery({ queryKey: ['backups'], queryFn: api.backups })
   const databases = useQuery({ queryKey: ['databases'], queryFn: api.databases })
+  /* Not behind the workload button: it reads no log. Which is the whole reason
+     it is worth having — on a server whose query log this role may not touch, it
+     is the only substantial thing this page can still say. */
+  const twins = useQuery({ queryKey: ['diag', 'twins'], queryFn: () => api.twins() })
 
   /* The workload, behind its own button. `system.query_log` on a busy server
      is the most expensive thing this page can ask for, and on a server whose
@@ -151,7 +156,7 @@ export function CheckupPage() {
     enabled: names.length > 0,
   })
 
-  const readings = [storage, detached, backups, heavy]
+  const readings = [storage, detached, backups, heavy, twins]
   const stillReading = readings.filter((r) => r.isPending || r.isFetching).length
 
   const findings: Finding[] = useMemo(
@@ -164,6 +169,7 @@ export function CheckupPage() {
       ...(traffic.data ? fromTraffic(traffic.data) : []),
       ...(cold.data ? fromCold(cold.data) : []),
       ...(spend.data ? fromSpend(spend.data) : []),
+      ...(twins.data ? fromTwins(twins.data) : []),
     ],
     [
       storage.data,
@@ -174,6 +180,7 @@ export function CheckupPage() {
       traffic.data,
       cold.data,
       spend.data,
+      twins.data,
     ],
   )
 

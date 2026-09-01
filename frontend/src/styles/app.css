@@ -14856,3 +14856,50 @@ button.acol__val:hover {
   color: var(--text-muted);
   vertical-align: middle;
 }
+
+/* ── The same data, twice ──────────────────────────────────────────────────
+ *
+ * A list of *sets*, not of tables, which is the whole shape of the finding: three
+ * copies of one dataset is one thing to think about. Each set names its members
+ * as links, because the next question after "these two are the same" is always
+ * "which one is which".
+ */
+.twins {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  margin: var(--s3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.twins__row {
+  padding: var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--slab);
+}
+
+.twins__what {
+  margin: 0 0 4px;
+  font-size: var(--size-body);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* The members, side by side on a wide page: they are being compared, and a
+ * vertical list of two things somebody is comparing makes them scroll to do it. */
+.twins__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2) var(--s5);
+  margin: var(--s2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.twins__list > li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
