@@ -845,27 +845,38 @@ impl Client {
         let conceded = self.concessions().await;
 
         /* A server that will not be set. Everything Flint asked for above that
-        is a *setting* comes off here rather than never being assembled, so
-        there is one list of what Flint wants and one rule about what this
-        server will take — and the rule is legible next to what it removes.
+        is a *setting* comes off here rather than never being assembled, so there
+        is one list of what Flint wants and one rule about what this server will
+        take — and the rule is legible next to what it removes.
 
-        What survives is the transport: the format Flint parses, whether the
-        answer is buffered, the database, the bound parameters, the query id
-        it needs in order to cancel. None of those is a profile setting, and
-        dropping a *format* one would not restrain anything — it would change
-        how Flint reads the numbers that come back, which is how a cap turns
-        into a wrong figure. */
+        What survives is **only what cannot be a profile setting**: the format
+        the answer is written in, whether it is buffered, the database, the bound
+        parameters, and the query id Flint cancels with. Those are parameters of
+        ClickHouse's HTTP interface, and `readonly` has no opinion about them.
+
+        This list was longer, and the two format settings on it were the reason
+        `readonly=1` still failed. `readonly` does not refuse a setting outright
+        — it refuses a *change*, and permits a write whose value already matches
+        the profile's. So a format setting sails through on one server and fails
+        on the next, depending on a value Flint has no way to know: on
+        play.clickhouse.com `output_format_json_quote_64bit_integers=0` is
+        accepted and `=1` is refused, which is exactly the pair Flint sends — 0
+        for its own reads, 1 for somebody's query. Half the product worked there
+        and the other half returned code 164. `enable_http_compression` is the
+        same trap from the other side: `=1` passes on that server and `=0`
+        would not.
+
+        What it costs is one thing and it is real. A user's query asks for 64-bit
+        integers to be *quoted*, so a value above 2^53 survives JavaScript's
+        number type; here the server's own default decides and Flint cannot find
+        out what it is. On a server whose default is off, a very large integer in
+        a result is rounded by the browser. Said on the connection rather than
+        hidden — see `settings_refused`. */
         if conceded.settings == Settings::Refused {
             params.retain(|(name, _)| {
                 matches!(
                     name.as_str(),
-                    "default_format"
-                        | "wait_end_of_query"
-                        | "enable_http_compression"
-                        | "output_format_json_quote_64bit_integers"
-                        | "output_format_json_quote_denormals"
-                        | "database"
-                        | "query_id"
+                    "default_format" | "wait_end_of_query" | "database" | "query_id"
                 ) || name.starts_with("param_")
             });
         }
