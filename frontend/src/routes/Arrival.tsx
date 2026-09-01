@@ -8,6 +8,7 @@ import {
   fromBackups,
   fromDetached,
   fromHeavy,
+  fromCold,
   fromQueries,
   fromStorage,
   fromTraffic,
@@ -109,6 +110,10 @@ export function ArrivalPage() {
     queryKey: ['diag', 'traffic', DAYS],
     queryFn: () => api.diagnoseTraffic(DAYS),
   })
+  /* The one reading on this page nothing else in Flint could produce: which of
+     the disk is doing any work. Same cache key as the checkup's, so whichever
+     page is opened second pays nothing. */
+  const cold = useQuery({ queryKey: ['diag', 'cold', DAYS], queryFn: () => api.cold({ days: DAYS }) })
 
   const findings: Finding[] = useMemo(
     () => [
@@ -118,8 +123,9 @@ export function ArrivalPage() {
       ...(heavy.data ? fromHeavy(heavy.data) : []),
       ...(queries.data ? fromQueries(queries.data) : []),
       ...(traffic.data ? fromTraffic(traffic.data) : []),
+      ...(cold.data ? fromCold(cold.data) : []),
     ],
-    [storage.data, detached.data, backups.data, heavy.data, queries.data, traffic.data],
+    [storage.data, detached.data, backups.data, heavy.data, queries.data, traffic.data, cold.data],
   )
 
   /* What each reading is doing, in the words the caption uses. `available:
@@ -134,6 +140,7 @@ export function ArrivalPage() {
     said('the column types', heavy),
     said('the query log', queries),
     said('what each table is read for', traffic),
+    said('what nothing has read', cold),
   ]
 
   const ordered = inOrder(findings, SHOWN)

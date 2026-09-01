@@ -5,6 +5,7 @@ pub mod audit;
 pub mod backups;
 pub mod build;
 pub mod cluster;
+pub mod cold;
 pub mod compare;
 pub mod connect;
 pub mod ddl;

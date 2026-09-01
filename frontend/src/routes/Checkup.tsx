@@ -9,6 +9,7 @@ import {
   fromBackups,
   fromDetached,
   fromHeavy,
+  fromCold,
   fromQueries,
   fromStorage,
   fromTraffic,
@@ -118,6 +119,16 @@ export function CheckupPage() {
     queryFn: () => api.diagnoseTraffic(7, read?.seconds),
     enabled: read !== null,
   })
+  /* Behind the same button as the two above, and for the same reason: it reads
+     `system.query_log` too. Its window is always the seven days — a session of
+     ten minutes cannot tell anybody what nothing reads, which `lib/cold`
+     refuses to claim anyway, and asking for it would spend a scan to be told
+     so. */
+  const cold = useQuery({
+    queryKey: ['diag', 'cold', 7],
+    queryFn: () => api.cold({ days: 7 }),
+    enabled: read !== null,
+  })
 
   /* Where the bytes are, per database. Metadata only — no sampling — which is
      what lets it run on open. It proposes nothing; the review does that, and
@@ -142,12 +153,13 @@ export function CheckupPage() {
       ...(heavy.data ? fromHeavy(heavy.data) : []),
       ...(queries.data ? fromQueries(queries.data) : []),
       ...(traffic.data ? fromTraffic(traffic.data) : []),
+      ...(cold.data ? fromCold(cold.data) : []),
     ],
-    [storage.data, detached.data, backups.data, heavy.data, queries.data, traffic.data],
+    [storage.data, detached.data, backups.data, heavy.data, queries.data, traffic.data, cold.data],
   )
 
   const workloadAsked = read !== null
-  const workloadPending = queries.isFetching || traffic.isFetching
+  const workloadPending = queries.isFetching || traffic.isFetching || cold.isFetching
 
   return (
     <article className="page page--checkup">
