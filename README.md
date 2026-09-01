@@ -3,9 +3,15 @@
 **The workspace ClickHouse doesn't ship with.**
 
 Flint is a self-hosted web interface for exploring, querying and operating
-ClickHouse. It opens on your schema — drawn, not listed — and goes as far as
-publishing a statement as a JSON API. One Rust binary serves the API and embeds
-the built frontend, so a deployment is one process and no second database.
+ClickHouse. It opens by telling you what it found on your server — the disk
+nothing reads, the account spending the week, the data held twice — and goes as
+far as publishing a statement as a JSON API. Your schema is one click on, drawn
+rather than listed. One Rust binary serves the API and embeds the built frontend,
+so a deployment is one process and no second database.
+
+No ClickHouse to hand? The sign-in screen will open ClickHouse's public demo
+server for you in one press: 7 TiB and 246 billion rows, including every public
+GitHub event since 2011.
 
 Point it at a server and it changes nothing there: `FLINT_READONLY` is the
 default in the shipped compose file, and without a workspace database Flint
@@ -55,6 +61,11 @@ rows; **Infrastructure** works on structure and on the server. See
 
 **Data**
 
+- **Home** — a verdict on the server and the findings behind it, on arrival and
+  without being asked: which of the disk nothing has read, who has been spending
+  the week, the data held twice. It owns none of them — every one is also on the
+  page that acts on it — and it will not clear a server it was not allowed to
+  read, naming the grants that never voted.
 - **Explore** — the schema as a diagram, with lineage both ways, per-column
   profiles, storage broken down by column and codec, and the same database on
   its time axis.

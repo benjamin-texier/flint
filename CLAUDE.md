@@ -6,7 +6,8 @@ and where they differ from Dashfile's the difference is deliberate and marked.)
 
 ## What this is
 
-**Flint** — a ClickHouse explorer that opens on your schema, drawn. One Rust
+**Flint** — a ClickHouse explorer that opens on what it found: `/` is a verdict
+about the server, its findings, and the schema one click on, drawn. One Rust
 binary (`axum`) serves a JSON API and embeds the built React frontend
 (`rust-embed`), so a deployment is one process and no second database. There is
 no ORM and no query builder in the backend: every read is SQL against
