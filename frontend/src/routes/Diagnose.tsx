@@ -23,6 +23,7 @@ import {
   type TrafficReport,
 } from '../lib/diagnose'
 import { concerns, summarise, type Item } from '../lib/attention'
+import { nameOf, notable, saysCaveat, trustworthy, type SpendReport } from '../lib/spend'
 import { keeps } from '../lib/spaces'
 import { readPlan, verdicts } from '../lib/plan'
 import { Flag, Says, Section, SectionIndex, type Q } from '../components/Diag'
@@ -108,6 +109,15 @@ export function DiagnosePage() {
     staleTime: 60_000,
   })
 
+  /* Who the statements above belonged to. Its own request and its own window,
+     following the filter like the other two: the question "who spends this
+     server" is only answerable over a span, and a section quoting a different
+     one from the page it sits on is a section nobody can reconcile. */
+  const spend = useQuery({
+    queryKey: ['diag', 'spend', days],
+    queryFn: () => api.spend(days),
+  })
+
   const reports = [queries.data, traffic.data]
   const loaded = reports.filter((r) => r !== undefined)
   const shutOut = loaded.length === reports.length && loaded.every((r) => r && !r.available)
@@ -174,6 +184,7 @@ export function DiagnosePage() {
       ) : (
         <>
           <Load report={queries} days={days} />
+          <Spend report={spend} />
           <Patterns report={queries} />
           <Failures report={queries} />
           <Traffic report={traffic} storage={storage.data} />
@@ -181,6 +192,89 @@ export function DiagnosePage() {
         </>
       )}
     </div>
+  )
+}
+
+/** Who the server has been working for.
+ *
+ *  The other half of everything else on this page. `Load`, `Patterns` and
+ *  `Failures` all answer *what* the statements were; none of them can answer
+ *  whose they were, and on a shared server that is usually the question with
+ *  somewhere to go — a statement shape costing forty minutes a week is a query
+ *  to optimise, and the same forty minutes belonging to one service account is a
+ *  conversation with whoever owns it.
+ *
+ *  Every row, not only the notable ones. `lib/spend`'s threshold decides what is
+ *  worth a *finding* on a board; this is the page that owns the reading, and a
+ *  page that hid the accounts below a quarter would be a ranking somebody cannot
+ *  add up. The threshold still shows, as the mark on the rows that cross it. */
+function Spend({ report }: { report: Q<SpendReport> }) {
+  const data = report.data
+  const trust = data ? trustworthy(data) : null
+  const loud = new Set(data ? notable(data).map((s) => s.user) : [])
+  return (
+    <Section
+      title="Who this server works for"
+      sub="Every account that ran anything, by the time the server spent on it. Background work — a materialized view's push, a subquery from another node — has no account name and is listed as what it is."
+      q={report}
+    >
+      {data && !trust?.ok ? (
+        <p className="says says--wide">Ranked anyway, but not to be leaned on: {trust?.why}.</p>
+      ) : null}
+      {saysCaveat(data ?? ({} as SpendReport)) ? (
+        <p className="says says--wide">{saysCaveat(data!)}</p>
+      ) : null}
+      {data?.spenders.length ? (
+        <div className="panel__scroll">
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Account</th>
+                <th className="tbl--n">Statements</th>
+                <th className="tbl--n">Query time</th>
+                <th className="tbl--n">Share</th>
+                <th className="tbl--n">Read</th>
+                <th className="tbl--n">Failed</th>
+                <th>Most of its time on</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.spenders.map((s) => (
+                <tr key={s.user || '__background'}>
+                  <td className="tbl__key">
+                    {nameOf(s)}
+                    {loud.has(s.user) ? (
+                      <span className="tbl__note">most of this server’s query time</span>
+                    ) : null}
+                  </td>
+                  <td className="tbl--n">{count(s.statements)}</td>
+                  <td className="tbl--n">{duration(s.seconds)}</td>
+                  <td className="tbl--n">{Math.round(s.share * 100)}%</td>
+                  <td className="tbl--n">{bytes(s.read_bytes)}</td>
+                  {/* Zero failures is a fact and prints as one; a dash here
+                      would say Flint could not count them. */}
+                  <td className="tbl--n">{exact(s.failed)}</td>
+                  <td className="tbl__expr">
+                    {s.busiest_table ? (
+                      <>
+                        {s.busiest_table}
+                        <span className="tbl__note">
+                          {Math.round(s.busiest_share * 100)}% of this account’s time
+                        </span>
+                      </>
+                    ) : null}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : data ? (
+        <EmptyNote title="Nothing ran in this window">
+          The log covers the span above and holds no finished statement from it.
+        </EmptyNote>
+      ) : null}
+    </Section>
   )
 }
 

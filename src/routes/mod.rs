@@ -387,6 +387,7 @@ pub fn router(state: AppState) -> Router {
         .route("/health/merges", get(diagnostics::merges))
         .route("/parts/detached", get(diagnostics::detached_parts))
         .route("/diagnostics/cold", get(diagnostics::cold_bytes))
+        .route("/diagnostics/spend", get(diagnostics::spend_by_user))
         .route("/parts/detached/act", post(jobs::detached_part))
         .route("/parts/partition", post(jobs::partition))
         .route("/schema/objects", get(diagnostics::schema_objects))

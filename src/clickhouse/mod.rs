@@ -38,6 +38,7 @@ pub mod relations;
 pub mod review;
 pub mod rows;
 pub mod settings;
+pub mod spend;
 pub mod storage;
 pub mod streams;
 pub mod sysops;
