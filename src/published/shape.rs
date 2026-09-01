@@ -1349,6 +1349,92 @@ fn inner_statement(sql: &str) -> &str {
     sql.trim_end().trim_end_matches(';').trim_end()
 }
 
+/// The `FROM` a wrapper needs for the statement it is wrapping.
+///
+/// A dataset that is a plain table arrives here as `SELECT * FROM db.tbl`, and
+/// wrapping that in parentheses produced
+///
+/// ```text
+/// SELECT `login`, count() AS `rows`
+/// FROM (
+/// SELECT * FROM `default`.`actors`
+/// )
+/// GROUP BY `login`
+/// ```
+///
+/// which is what the query page's form showed as the statement it was about to
+/// send. It is correct and it costs nothing to run — ClickHouse flattens it —
+/// and it is three lines of noise in the one place the product asks somebody to
+/// read generated SQL and decide whether to trust it. A form that cannot write
+/// `FROM actors` does not read like a form that knows SQL, and the whole
+/// argument for showing the statement is that reading it should be reassuring.
+///
+/// So a wrapper over nothing but a table reference reads `FROM db.tbl`.
+/// Everything else keeps the subquery — a view's body, a published dataset's own
+/// SELECT, a statement with a comment or a WHERE in it — because for those the
+/// parentheses are load-bearing.
+fn from_clause(inner: &str) -> String {
+    match table_reference(inner) {
+        Some(reference) => format!("\nFROM {reference}"),
+        None => format!("\nFROM (\n{}\n)", inner_statement(inner)),
+    }
+}
+
+/// The table, when the statement is exactly a whole read of one and nothing
+/// else.
+fn table_reference(sql: &str) -> Option<&str> {
+    let rest = inner_statement(sql).strip_prefix("SELECT * FROM ")?;
+    is_reference(rest).then_some(rest)
+}
+
+/// Whether the text is one identifier, or two joined by a dot, and nothing more.
+///
+/// Scanned rather than pattern-matched on whitespace, because `quote_ident` will
+/// happily emit `` `my db`.`t` `` and a name with a space in it is still just a
+/// name. Anything this cannot account for — a function call, an alias, a second
+/// clause, a `FINAL`, a comment — falls through to `false`, which keeps the
+/// subquery. Being wrong in that direction costs a pair of parentheses; being
+/// wrong the other way would splice something unparsed into a FROM.
+fn is_reference(rest: &str) -> bool {
+    let mut chars = rest.chars().peekable();
+    for part in 0..2 {
+        match chars.peek() {
+            // A quoted name runs to its closing backquote, and `quote_ident`
+            // escapes both the backquote and the backslash it escapes with.
+            Some('`') => {
+                chars.next();
+                loop {
+                    match chars.next() {
+                        None => return false,
+                        Some('\\') => {
+                            if chars.next().is_none() {
+                                return false;
+                            }
+                        }
+                        Some('`') => break,
+                        Some(_) => {}
+                    }
+                }
+            }
+            Some(c) if c.is_ascii_alphabetic() || *c == '_' => {
+                while chars
+                    .peek()
+                    .is_some_and(|c| c.is_ascii_alphanumeric() || *c == '_')
+                {
+                    chars.next();
+                }
+            }
+            _ => return false,
+        }
+        match chars.next() {
+            None => return true,
+            Some('.') if part == 0 => {}
+            Some(_) => return false,
+        }
+    }
+    false
+}
+
 #[derive(Debug, Clone)]
 pub struct Wrapped {
     pub sql: String,
@@ -1412,7 +1498,7 @@ pub fn wrap(
             .join(", ")
     };
 
-    let mut sql = format!("SELECT {projection}\nFROM (\n{}\n)", inner_statement(inner));
+    let mut sql = format!("SELECT {projection}{}", from_clause(inner));
 
     let mut predicates = shape
         .filters
@@ -1808,7 +1894,7 @@ pub fn count_around(
 
     let inner = inner_statement(inner);
     let sql = match &shape.aggregate {
-        None => format!("SELECT count() AS total\nFROM (\n{inner}\n){filtered}"),
+        None => format!("SELECT count() AS total{}{filtered}", from_clause(inner)),
         Some(aggregate) => {
             // A total beside an aggregated page counts *groups*, not rows: the
             // page holds one row per city, so "how many are there" means how
@@ -1845,7 +1931,8 @@ pub fn count_around(
                 None => String::new(),
             };
             format!(
-                "SELECT count() AS total\nFROM (\nSELECT {dimensions}\nFROM (\n{inner}\n)                 {filtered}\nGROUP BY {dimensions}{having}\n)"
+                "SELECT count() AS total\nFROM (\nSELECT {dimensions}{}{filtered}\nGROUP BY {dimensions}{having}\n)",
+                from_clause(inner)
             )
         }
     };
@@ -2148,13 +2235,54 @@ mod tests {
     fn a_projection_names_columns_the_statement_returns() {
         let shape = parse(&q(&[("select", "city,n")]), &[], 1000).unwrap();
         let wrapped = wrap("SELECT * FROM t", &shape, &columns(), 10, "p").unwrap();
+        // `FROM t`, not `FROM (SELECT * FROM t)` — see `from_clause`.
         assert!(
-            wrapped.sql.starts_with("SELECT `city`, `n`\nFROM ("),
+            wrapped.sql.starts_with("SELECT `city`, `n`\nFROM t\n"),
             "{}",
             wrapped.sql
         );
         let shape = parse(&q(&[("select", "nope")]), &[], 1000).unwrap();
         assert!(wrap("SELECT 1", &shape, &columns(), 10, "p").is_err());
+    }
+
+    /// A wrapper over nothing but a table says so, and a wrapper over anything
+    /// else keeps its parentheses. The direction of the doubt matters: a false
+    /// negative costs a pair of brackets in a statement somebody reads, and a
+    /// false positive would splice unparsed text into a FROM.
+    #[test]
+    fn a_wrapper_over_a_plain_table_reads_as_one() {
+        for (plain, expected) in [
+            ("SELECT * FROM t", "\nFROM t"),
+            ("SELECT * FROM db.t", "\nFROM db.t"),
+            ("SELECT * FROM `db`.`t`", "\nFROM `db`.`t`"),
+            ("SELECT * FROM `my db`.`t 2`", "\nFROM `my db`.`t 2`"),
+            // Trailing whitespace and a semicolon are already handled for the
+            // subquery form and have to be handled for this one.
+            ("SELECT * FROM t;  ", "\nFROM t"),
+            ("SELECT * FROM `we\\`ird`", "\nFROM `we\\`ird`"),
+        ] {
+            assert_eq!(from_clause(plain), expected, "{plain}");
+        }
+
+        for wrapped in [
+            "SELECT 1",
+            "SELECT * FROM t WHERE x = 1",
+            "SELECT * FROM t FINAL",
+            "SELECT * FROM t -- why",
+            "SELECT * FROM numbers(10)",
+            "SELECT * FROM a.b.c",
+            "SELECT * FROM t AS u",
+            "SELECT * FROM `unclosed",
+            "SELECT * FROM ",
+            "SELECT a FROM t",
+            "select * from t",
+        ] {
+            assert!(
+                from_clause(wrapped).starts_with("\nFROM (\n"),
+                "{wrapped} should have kept its subquery, got {}",
+                from_clause(wrapped)
+            );
+        }
     }
 
     #[test]
