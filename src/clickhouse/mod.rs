@@ -100,6 +100,74 @@ pub struct Client {
     /// answers about the same table — and a per-clone cache would be empty on
     /// every request, since a clone is made per request.
     system_columns: Arc<RwLock<ColumnProbe>>,
+    /// What Flint has had to give up on each endpoint it has spoken to.
+    ///
+    /// Empty until an endpoint proves it needs something, so a server that
+    /// behaves costs nothing. Shared across clones and keyed by URL for the same
+    /// reason `system_columns` is: a clone is made per request, and a per-clone
+    /// memory of this would be no memory at all — every request would pay the
+    /// failed attempt again.
+    concessions: Arc<RwLock<HashMap<String, Concessions>>>,
+}
+
+/// What one endpoint turned out to require.
+///
+/// Both fields are **learned rather than configured**, and both start at what a
+/// ClickHouse Flint owns would want. The alternative — an environment variable
+/// per quirk — puts the burden on whoever is trying to connect, at the exact
+/// moment they have the least idea what is wrong.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+struct Concessions {
+    credentials: Credentials,
+    /// Whether this server let Flint set anything.
+    ///
+    /// A `readonly=1` profile forbids *changing settings*, which is a different
+    /// thing from forbidding writes and catches people out constantly: it is
+    /// what a lot of organisations hand out as "a read-only account", and Flint
+    /// attaches a timeout, a row cap and its own `log_comment` to every
+    /// statement. Refusing to work there was a defensible reading of a
+    /// half-usable server and the wrong one — the readings Flint is built on are
+    /// bounded by their own SQL, so almost all of it works with the settings
+    /// dropped. See [`Client::relent`] for what that costs, said out loud.
+    settings: Settings,
+}
+
+/// Where the credentials ride.
+///
+/// ClickHouse takes them either way — `X-ClickHouse-User`/`-Key` headers, or
+/// `user`/`password` in the query string — and Flint sends headers, deliberately:
+/// a password in a query string is a password in every access log between here
+/// and the server, and in ClickHouse's own `system.query_log` if it gets that
+/// far.
+///
+/// Some deployments do not offer the choice. A gateway in front of ClickHouse
+/// may authenticate on its own terms and only pass the query-string form
+/// through; `play.clickhouse.com`, the public demo server, is one — a
+/// header-authenticated request is redirected to its web UI, and one carrying
+/// both is refused outright. Flint has to be able to reach a server like that,
+/// so this is the second place it will look.
+///
+/// **Never preferred.** See [`Client::reride`]: the query string is tried only
+/// after the headers have already failed in the one way that means nothing on
+/// the other end read the statement.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+enum Credentials {
+    /// ClickHouse's own, and Flint's default.
+    #[default]
+    Headers,
+    /// The fallback, for an endpoint that refused the headers.
+    Query,
+}
+
+/// Whether Flint may attach its own settings to a statement.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+enum Settings {
+    /// The timeout, the caps and the tag go with every statement.
+    #[default]
+    Sent,
+    /// This server refuses them, so they are dropped and the server's own
+    /// defaults stand in their place.
+    Refused,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -367,6 +435,7 @@ impl Client {
             timeout_secs: config.query_timeout_secs,
             timezone: String::new(),
             system_columns: Arc::new(RwLock::new(HashMap::new())),
+            concessions: Arc::new(RwLock::new(HashMap::new())),
         })
     }
 
@@ -409,6 +478,7 @@ impl Client {
             timeout_secs: config.query_timeout_secs,
             timezone: String::new(),
             system_columns: Arc::new(RwLock::new(HashMap::new())),
+            concessions: Arc::new(RwLock::new(HashMap::new())),
         }))
     }
 
@@ -474,6 +544,24 @@ impl Client {
         format: &str,
         opts: &QueryOptions,
     ) -> Result<(String, Summary)> {
+        match self.attempt(sql, format, opts).await {
+            Err(Error::NotClickHouse { .. }) if self.reride().await => {
+                self.attempt(sql, format, opts).await
+            }
+            Err(Error::ClickHouse { code: 164, .. }) if self.relent().await => {
+                self.attempt(sql, format, opts).await
+            }
+            answer => answer,
+        }
+    }
+
+    /// One try, with the credentials wherever they currently ride.
+    async fn attempt(
+        &self,
+        sql: &str,
+        format: &str,
+        opts: &QueryOptions,
+    ) -> Result<(String, Summary)> {
         let response = self.dispatch(sql, format, opts).await?;
         let summary = summary_of(&response);
         let status = response.status();
@@ -522,6 +610,23 @@ impl Client {
         format: &str,
         opts: &QueryOptions,
     ) -> Result<reqwest::Response> {
+        match self.open_once(sql, format, opts).await {
+            Err(Error::NotClickHouse { .. }) if self.reride().await => {
+                self.open_once(sql, format, opts).await
+            }
+            Err(Error::ClickHouse { code: 164, .. }) if self.relent().await => {
+                self.open_once(sql, format, opts).await
+            }
+            answer => answer,
+        }
+    }
+
+    async fn open_once(
+        &self,
+        sql: &str,
+        format: &str,
+        opts: &QueryOptions,
+    ) -> Result<reqwest::Response> {
         let response = self.dispatch(sql, format, opts).await?;
         if response.status().is_success() {
             return Ok(response);
@@ -536,6 +641,97 @@ impl Client {
             return Err(not_clickhouse(&self.url, status, &body));
         }
         Err(parse_exception(&body))
+    }
+
+    /// What Flint has learned it must give up on this endpoint.
+    async fn concessions(&self) -> Concessions {
+        self.concessions
+            .read()
+            .await
+            .get(&self.url)
+            .copied()
+            .unwrap_or_default()
+    }
+
+    /// Whether this connection is running with its settings dropped, which is
+    /// the one concession a *reader* has to be told about — see [`Settings`].
+    pub async fn settings_refused(&self) -> bool {
+        self.concessions().await.settings == Settings::Refused
+    }
+
+    /// Record a concession, and say whether it was a change — which is to say,
+    /// whether retrying is worth a request. Once per endpoint, per concession:
+    /// the second caller finds it already recorded, gets `false`, and the
+    /// failure it already has is the real one.
+    async fn concede(&self, giving: impl FnOnce(&mut Concessions) -> bool) -> bool {
+        if self.url.is_empty() {
+            return false;
+        }
+        let mut seen = self.concessions.write().await;
+        let entry = seen.entry(self.url.clone()).or_default();
+        giving(entry)
+    }
+
+    /// Move this endpoint's credentials into the query string.
+    ///
+    /// **Only ever called on `NotClickHouse`,** and that is what makes retrying
+    /// safe for a statement that writes. That error means the peer sent no
+    /// `X-ClickHouse-*` header at all *and* did not answer in the format Flint
+    /// asked for: nothing on the other end read the statement, so nothing on the
+    /// other end ran it. A gateway that turned the request away cannot have
+    /// inserted a row, and one that let it through would have vouched.
+    async fn reride(&self) -> bool {
+        let url = self.url.clone();
+        self.concede(|c| {
+            if c.credentials == Credentials::Query {
+                return false;
+            }
+            c.credentials = Credentials::Query;
+            tracing::info!(
+                %url,
+                "the headers were not taken — trying the credentials in the query string, \
+                 which is what a gateway in front of ClickHouse usually wants"
+            );
+            true
+        })
+        .await
+    }
+
+    /// Drop Flint's own settings on this endpoint and try again.
+    ///
+    /// **Only ever called on ClickHouse's code 164**, which is the server saying
+    /// it will not let this profile change a setting. Safe to retry for the same
+    /// reason `reride` is: the statement was refused before it ran, so nothing
+    /// happened that a second attempt would repeat.
+    ///
+    /// What it costs, in one place so it can be said on a screen:
+    ///
+    /// - **The row cap is the server's, not Flint's.** Every reading Flint does
+    ///   of `system.*` carries its own `LIMIT`, and so does the table browser, so
+    ///   what is actually uncapped is a statement somebody typed themselves.
+    /// - **The timeout is the server's.** `max_execution_time` is how Flint
+    ///   stops a runaway; without it, a statement runs until the server's own
+    ///   profile stops it, and Flint's socket timeout is the only backstop.
+    /// - **Flint's own traffic stops being labelled.** `log_comment` is what
+    ///   every page that reads `system.query_log` uses to leave Flint out of its
+    ///   own figures, so on such a server the workload readings include Flint
+    ///   looking at them. They say so rather than quietly counting it.
+    async fn relent(&self) -> bool {
+        let url = self.url.clone();
+        self.concede(|c| {
+            if c.settings == Settings::Refused {
+                return false;
+            }
+            c.settings = Settings::Refused;
+            tracing::info!(
+                %url,
+                "this profile forbids changing settings (readonly=1) — dropping Flint's own and \
+                 running with the server's. The row cap, the timeout and the tag that keeps \
+                 Flint out of its own query-log figures all go with them."
+            );
+            true
+        })
+        .await
     }
 
     /// Everything both of those share: the settings, and the request itself.
@@ -643,22 +839,61 @@ impl Client {
             params.push((name.clone(), value.clone()));
         }
 
-        let response = self
+        let conceded = self.concessions().await;
+
+        /* A server that will not be set. Everything Flint asked for above that
+        is a *setting* comes off here rather than never being assembled, so
+        there is one list of what Flint wants and one rule about what this
+        server will take — and the rule is legible next to what it removes.
+
+        What survives is the transport: the format Flint parses, whether the
+        answer is buffered, the database, the bound parameters, the query id
+        it needs in order to cancel. None of those is a profile setting, and
+        dropping a *format* one would not restrain anything — it would change
+        how Flint reads the numbers that come back, which is how a cap turns
+        into a wrong figure. */
+        if conceded.settings == Settings::Refused {
+            params.retain(|(name, _)| {
+                matches!(
+                    name.as_str(),
+                    "default_format"
+                        | "wait_end_of_query"
+                        | "enable_http_compression"
+                        | "output_format_json_quote_64bit_integers"
+                        | "output_format_json_quote_denormals"
+                        | "database"
+                        | "query_id"
+                ) || name.starts_with("param_")
+            });
+        }
+
+        /* Last of all, after the settings and after anything the caller added,
+        so a `settings` entry cannot shadow the credentials — and so the two
+        forms differ in exactly one place rather than in two. */
+        let riding = conceded.credentials;
+        if riding == Credentials::Query {
+            params.push(("user".into(), self.user.clone()));
+            params.push(("password".into(), self.password.clone()));
+        }
+
+        let mut request = self
             .http
             .post(&self.url)
             .query(&params)
-            .header("X-ClickHouse-User", &self.user)
-            .header("X-ClickHouse-Key", &self.password)
             .header("Content-Type", "text/plain; charset=utf-8")
-            .body(sql.to_string())
-            .send()
-            .await
-            .map_err(|source| Error::Transport {
-                url: self.url.clone(),
-                // Our message already names the endpoint, and reqwest's would
-                // repeat it with the whole settings query string attached.
-                source: source.without_url(),
-            })?;
+            .body(sql.to_string());
+        if riding == Credentials::Headers {
+            request = request
+                .header("X-ClickHouse-User", &self.user)
+                .header("X-ClickHouse-Key", &self.password);
+        }
+
+        let response = request.send().await.map_err(|source| Error::Transport {
+            url: self.url.clone(),
+            // Our message already names the endpoint, and reqwest's would
+            // repeat it with the whole settings query string attached.
+            source: source.without_url(),
+        })?;
 
         Ok(response)
     }
@@ -1457,6 +1692,65 @@ mod tests {
             }
             other => panic!("expected a ClickHouse error, got {other:?}"),
         }
+    }
+
+    /// A client pointed at an address nothing is listening on. Every test below
+    /// is about what Flint decides *before* it sends, so none of them sends.
+    fn client_at(url: &str) -> Client {
+        use clap::Parser;
+        let mut config = Config::parse_from(["flint"]);
+        config.clickhouse_url = Some(url.to_string());
+        config.normalise();
+        Client::new(&config).expect("a client should build")
+    }
+
+    #[tokio::test]
+    async fn a_concession_is_made_once_and_then_stands() {
+        let ch = client_at("http://nowhere.invalid:8123");
+        // Nothing is given up until something asks for it.
+        assert_eq!(ch.concessions().await, Concessions::default());
+        assert!(!ch.settings_refused().await);
+
+        // The first refusal is worth a retry; the second is the real answer.
+        // Without this an endpoint that is genuinely not ClickHouse would be
+        // dialled twice for every statement, for ever.
+        assert!(ch.reride().await);
+        assert!(!ch.reride().await);
+        assert_eq!(ch.concessions().await.credentials, Credentials::Query);
+
+        // And the two are independent: giving up the headers must not be read
+        // as having given up the settings.
+        assert!(!ch.settings_refused().await);
+        assert!(ch.relent().await);
+        assert!(!ch.relent().await);
+        assert!(ch.settings_refused().await);
+        assert_eq!(ch.concessions().await.credentials, Credentials::Query);
+    }
+
+    #[tokio::test]
+    async fn concessions_belong_to_the_endpoint_not_to_the_process() {
+        // Unpinned, one Flint holds sessions on several ClickHouses at once.
+        // A gateway in front of one of them must not teach Flint to put a
+        // password in the query string of a request to another.
+        let one = client_at("http://one.invalid:8123");
+        let other = client_at("http://other.invalid:8123");
+        assert!(one.reride().await);
+        assert_eq!(one.concessions().await.credentials, Credentials::Query);
+        assert_eq!(other.concessions().await.credentials, Credentials::Headers);
+    }
+
+    #[tokio::test]
+    async fn a_client_with_nowhere_to_send_concedes_nothing() {
+        // The service client of an unpinned Flint. Its URL is empty and every
+        // request through it is refused before it is built, so a concession
+        // recorded here would be filed under "" and inherited by nothing.
+        use clap::Parser;
+        let mut config = Config::parse_from(["flint"]);
+        config.clickhouse_url = None;
+        config.normalise();
+        let ch = Client::new(&config).expect("a client should build");
+        assert!(!ch.reride().await);
+        assert!(!ch.relent().await);
     }
 
     #[test]

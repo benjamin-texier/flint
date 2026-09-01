@@ -86,6 +86,19 @@ pub async fn whoami(State(state): State<AppState>, headers: HeaderMap) -> Json<s
             .config
             .pinned()
             .then(|| state.config.clickhouse_user.clone()),
+        // Whether this connection had to give up Flint's own settings, which
+        // happens on a `readonly=1` profile. A fact about the *connection*, like
+        // the endpoint above it and for the same reason — two sessions on one
+        // unpinned Flint can be on two servers, only one of which restrains it.
+        //
+        // On the wire because it changes what a figure means, not merely how it
+        // was fetched: without `log_comment` Flint cannot leave itself out of
+        // the query log, so the workload readings include Flint reading them,
+        // and the pages that quote those figures say so.
+        "settings_refused": match &session {
+            Some(identity) => state.ch.as_user(identity).settings_refused().await,
+            None => state.ch.settings_refused().await,
+        },
     }))
 }
 
@@ -148,18 +161,25 @@ pub async fn login(
                 ..
             },
         ) => return Err(refusal(e)),
-        // Accepted, and then refused for something else. `readonly=1` is the one
-        // that happens in practice: it forbids *changing settings*, and Flint
-        // attaches a timeout and a row cap to every statement it sends. Worth
-        // its own sentence, because the raw message names a setting and leaves
-        // somebody staring at a password field that was never the problem.
+        // Accepted, and then refused for something else. Code 164 is a profile
+        // that forbids *changing settings* — `readonly=1`, which is a different
+        // thing from forbidding writes and is what a lot of places hand out as
+        // "a read-only account".
+        //
+        // Reaching here now means it survived the client's own concession: see
+        // `Client::relent`, which drops Flint's settings and tries again the
+        // first time a server refuses them, so an ordinary `readonly=1` account
+        // signs in and works. What is left is a server that will not take even
+        // the format Flint parses its answers in, and there is nothing to
+        // degrade to. Worth its own sentence still, because the raw message
+        // names a setting and leaves somebody staring at a password field that
+        // was never the problem.
         Err(Error::ClickHouse { code: 164, .. }) => {
             return Err(Error::BadRequest(format!(
-                "`{}` signed in, but is on a `readonly=1` profile, which forbids changing \
-                 settings — and Flint sends a timeout and a row cap with every \
-                 statement. Restrict a user with grants (`GRANT SELECT ON db.*`) \
-                 rather than that profile, or give them `readonly=2`, which permits \
-                 settings and still refuses writes.",
+                "`{}` signed in, but is on a profile so restricted that Flint cannot even ask \
+                 for the response format it reads. Flint already drops its own timeout and row \
+                 cap for a `readonly=1` account; this one refuses more than that. Restrict a \
+                 user with grants (`GRANT SELECT ON db.*`) rather than with a readonly profile.",
                 offered.user()
             )));
         }
