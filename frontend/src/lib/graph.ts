@@ -554,9 +554,43 @@ export function layoutSchema(graph: SchemaGraph, direction: Direction = 'lr'): L
 
 /** Above this many objects, drawing the whole schema stops being a diagram and
  *  becomes a texture: a real 170-object database lays out over 7000px tall and
- *  fits at 35% zoom, where no label is readable. Past it, Flint draws a
- *  neighbourhood instead. */
+ *  fits at 35% zoom, where no label is readable. Past it, Flint *offers* a
+ *  neighbourhood — it no longer decides for you. See `legible`. */
 export const FULL_GRAPH_LIMIT = 40
+
+/** The scale below which a diagram has stopped being one.
+ *
+ *  Labels are set at 11px and 13px; below about half size they are grey texture,
+ *  and a reader looking at texture cannot tell a chain from a fan. */
+const LEGIBLE = 0.5
+
+/** The frame the schema section actually gives a diagram, near enough.
+ *
+ *  A nominal frame rather than the measured one, and the difference is worth
+ *  stating: the canvas observes its own box and this decision has to be made one
+ *  level up, before the canvas exists. It is not a guess — the height is
+ *  `TALLEST` in `SchemaCanvas`, the cap the section puts on itself, and the width
+ *  is the content column on an ordinary laptop. A reader on a 4K display gets a diagram that could have been
+ *  a little denser; nobody gets a smudge. */
+const FRAME = { width: 1100, height: 1200 }
+
+/** Whether this graph can be drawn whole and still be read.
+ *
+ *  **Measured, not counted.** A node count cannot answer it: forty objects in one
+ *  long chain draw beautifully and forty in a single fan do not, because what
+ *  decides the shape is the widest stage rather than the total. This lays the
+ *  graph out both ways, takes the better of the two, and asks what scale it
+ *  would have to be shown at.
+ *
+ *  It exists because the alternative was tried in both directions and both were
+ *  wrong. Opening a 77-object schema on eight of its boxes hides the shape
+ *  somebody came for; opening a 155-object one whole produces a 68-pixel ribbon,
+ *  which hides it differently and looks broken as well. */
+export function legible(graph: SchemaGraph): boolean {
+  const scale = (l: Layout) =>
+    Math.min((FRAME.width - 48) / Math.max(1, l.width), (FRAME.height - 48) / Math.max(1, l.height))
+  return Math.max(scale(layoutSchema(graph, 'lr')), scale(layoutSchema(graph, 'tb'))) >= LEGIBLE
+}
 
 export interface FocusResult {
   graph: SchemaGraph

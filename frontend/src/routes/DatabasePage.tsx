@@ -7,6 +7,7 @@ import { trafficIndex, trafficMax, type TableTraffic } from '../lib/diagnose'
 import {
   FULL_GRAPH_LIMIT,
   defaultFocus,
+  legible,
   focusSubgraph,
   lineageSubgraph,
   nodeId,
@@ -474,9 +475,20 @@ export function DatabasePage({ database }: { database: string }) {
   )
 }
 
-/** Small schemas are drawn whole. Large ones are drawn around one object,
- *  because 170 objects laid out in full is 7000px tall and fits on screen at
- *  35% zoom, where nothing is readable. */
+/** Every schema is drawn whole, and a neighbourhood is a thing you ask for.
+ *
+ *  It was the other way round: past `FULL_GRAPH_LIMIT` objects Flint opened on
+ *  one table and its neighbours, with `Show all 77` beside it. The reasoning was
+ *  sound as far as it went — 170 objects laid out in full is 7000px tall and fits
+ *  on screen at 35% zoom, where no label can be read — and it answered the wrong
+ *  question. Somebody opening the schema of their own database is not looking for
+ *  a label; they are looking for the *shape*, and a shape you cannot see at all
+ *  is worse than one you have to zoom into. The unreadable 35% view still says
+ *  how many islands there are, where the long chains run, and which corner is
+ *  dense — none of which survives being shown eight boxes out of seventy-seven.
+ *
+ *  So the limit still decides whether a neighbourhood is *offered*, and whether
+ *  the caption warns about the zoom. It no longer decides what you get first. */
 function SchemaView({
   graph,
   database,
@@ -518,7 +530,13 @@ function SchemaView({
   )
   const large = graph.nodes.length > FULL_GRAPH_LIMIT
   const [depth, setDepth] = useState(2)
-  const [showAll, setShowAll] = useState(false)
+  /** Whether the whole schema is drawn.
+   *
+   *  True whenever the whole thing can be *read* — see `legible`, which lays the
+   *  graph out and measures it rather than counting its objects. So a 77-object
+   *  schema of long chains opens whole and a 155-object fan opens on a
+   *  neighbourhood, and the bar says which one you are looking at either way. */
+  const [whole, setWhole] = useState(() => legible(graph))
   /** The object whose whole path is being drawn, if any, and the choice of
    *  centres it was asked for over.
    *
@@ -544,7 +562,7 @@ function SchemaView({
      question people have about a twenty-object schema as much as a
      hundred-and-seventy-object one. It also outranks `Show all`, because a tick
      made while looking at everything can only mean "not everything". */
-  const narrowed = chosen.length > 0 || (large && !showAll)
+  const narrowed = chosen.length > 0 || (large && !whole)
 
   const focused = useMemo(() => {
     if (path) return lineageSubgraph(graph, path)
@@ -627,7 +645,7 @@ function SchemaView({
         className="btn"
         onClick={() => {
           onChosen([])
-          setShowAll(true)
+          setWhole(true)
         }}
       >
         Show all {graph.nodes.length}
@@ -635,13 +653,14 @@ function SchemaView({
     </div>
   ) : large ? (
     <div className="focusbar">
-      {showAll ? (
+      {whole ? (
         <>
           <span className="focusbar__text">
-            All {graph.nodes.length} objects. Dense enough that you will want to zoom.
+            All {graph.nodes.length} objects — dense enough that you will want to zoom. Tick
+            anything below, or pick a centre, to see just its corner.
           </span>
-          <button className="btn" onClick={() => setShowAll(false)}>
-            Back to a neighbourhood
+          <button className="btn" onClick={() => setWhole(false)}>
+            Draw one neighbourhood
           </button>
         </>
       ) : (
@@ -693,7 +712,7 @@ function SchemaView({
           </div>
           <span className="focusbar__unit label">hops out</span>
           <span className="panel__spacer" />
-          <button className="btn" onClick={() => setShowAll(true)}>
+          <button className="btn" onClick={() => setWhole(true)}>
             Show all {graph.nodes.length}
           </button>
         </>
@@ -721,7 +740,7 @@ function SchemaView({
       trafficReason={trafficReason}
       report={report}
       flowReason={flowReason}
-      key={`${database}:${showAll}:${path ?? ''}`}
+      key={`${database}:${whole}:${path ?? ''}`}
     />
   )
 }

@@ -25,11 +25,33 @@ import {
 } from '../lib/explain'
 import { isExternalEngine } from '../lib/external'
 
+/** How far out a *person* may zoom. Not a floor on fitting — see `fit`. */
 const MIN_ZOOM = 0.35
+/** And how far out fitting may go to get a whole diagram into the frame.
+ *
+ *  A fit is a measurement, not a gesture: asked to show 155 objects in a 620px
+ *  frame the honest answer is 0.23, and clamping that to `MIN_ZOOM` produced a
+ *  diagram scaled for a frame four times taller than the one it was in — drawn
+ *  off the top and the bottom, which is the one failure this canvas has shipped
+ *  before. It stayed hidden because the full graph was only ever drawn for
+ *  schemas under forty objects; it appeared the moment every schema was drawn
+ *  whole.
+ *
+ *  Not unbounded, because a fit that reaches zero is a blank frame that looks
+ *  broken rather than dense. Past this the diagram overflows and scrolls, which
+ *  is at least a diagram somebody can drag. */
+const MIN_FIT = 0.08
 const MAX_ZOOM = 2.2
 /** Fitting never blows a small diagram up past this — two tables filling the
  *  viewport would look like a mistake. */
 const MAX_FIT = 1.4
+/** The most vertical room the schema section will take for one diagram.
+ *
+ *  Generous on purpose — see `bodyH`. Past this the diagram is fitted smaller
+ *  rather than the page growing without end, and `Full screen` is the way out.
+ *  Kept in step with `FRAME.height` in `lib/graph`, which decides whether a
+ *  schema opens whole. */
+const TALLEST = 1200
 
 interface View {
   x: number
@@ -174,10 +196,18 @@ export function SchemaCanvas({
 
   const selectedNode = graph.nodes.find((n) => nodeId(n) === selected)
 
-  // The diagram sets the height of the row — a two-table schema in a 620px box
-  // reads as emptiness rather than as room to breathe — but never less than the
-  // details panel needs, or the row opens a hole beside it.
-  const bodyH = Math.max(selectedNode ? 460 : 260, Math.min(620, layout.height + 96))
+  /* The diagram sets the height of the row — a two-table schema in a 620px box
+     reads as emptiness rather than as room to breathe — but never less than the
+     details panel needs, or the row opens a hole beside it.
+
+     The ceiling was 620 for every diagram, and that was the real reason a whole
+     schema could not be drawn. `layoutSchema` gives a node room to be read: a
+     grid of sixty standalone tables is about 2000px tall, which in a 620px frame
+     is 29% scale — grey texture where the labels should be. In 1200 it is 58%,
+     which is a diagram. So a large layout is allowed the taller frame and the
+     page scrolls, which is what a page somebody is studying should do; a small
+     one still takes only the room it needs, because `min` has not changed. */
+  const bodyH = Math.max(selectedNode ? 460 : 260, Math.min(TALLEST, layout.height + 96))
 
   /* Told, rather than asked: the page underneath cannot poll for a selection,
      and lifting the state out of here would make every hover in the diagram a
@@ -200,7 +230,7 @@ export function SchemaCanvas({
       (rect.height - margin * 2) / layout.height,
       MAX_FIT,
     )
-    const scale = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, k))
+    const scale = Math.max(MIN_FIT, Math.min(MAX_ZOOM, k))
     setView({
       x: (rect.width - layout.width * scale) / 2,
       y: (rect.height - layout.height * scale) / 2,
