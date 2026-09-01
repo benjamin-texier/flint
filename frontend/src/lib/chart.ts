@@ -488,3 +488,47 @@ export function cellFill(value: number | null, scale: number): number {
   if (scale <= 0) return CELL_FLOOR
   return Math.max(CELL_FLOOR, Math.min(1, value / scale))
 }
+
+/* ── How tall a plot is ──────────────────────────────────────────────────
+ * The chart used to be 300px tall and 720px wide whatever it was given. The
+ * width was a sizing loop — `.chart` is a flex item, so its width came from its
+ * content, and its content was an SVG asking for 100% of it — and the height was
+ * simply a constant. On the query page that put a 720×300 drawing inside a
+ * 1366×671 box: a quarter of the space, with the rest white. A chart that does
+ * not fill its frame reads as a chart that failed to load, which is the worst
+ * thing it can do on the one screen somebody might show to a colleague.
+ *
+ * So both are measured, and the height is bounded rather than free. Two bounds,
+ * for two different ways of being wrong:
+ *
+ * - **A floor**, because a plot squeezed under about 200px stops being readable
+ *   — the gridlines and the x-axis band eat it — and it is better to overflow a
+ *   short container than to draw something nobody can read in it.
+ * - **An aspect cap**, because a time series 1300px wide and 650px tall is a
+ *   wall. Data drawn taller than about half its width exaggerates every wiggle
+ *   into a mountain; the convention across every chart library worth copying is
+ *   somewhere between 16:9 and 21:9, and half is inside that.
+ *
+ * Small multiples are the exception and take the room: each series gets its own
+ * panel, so the ceiling is per panel rather than for the stack. */
+
+/** The floor. Below this the axis band and the gridlines are most of the ink. */
+const PLOT_MIN_H = 200
+/** Never taller than this, however tall the container. */
+const PLOT_MAX_H = 560
+/** Nor taller than this share of its own width. */
+const PLOT_ASPECT = 0.5
+
+export function plotHeight(
+  width: number,
+  available: number,
+  /** How many panels the height is shared between — one for a single plot, one
+   *  per series for small multiples. */
+  panels = 1,
+): number {
+  // A figure is a stat, or a container that has not been measured yet. Fall
+  // back to the aspect rule over the width, which is always known first.
+  const room = available > 0 ? available : Math.round(width * PLOT_ASPECT)
+  const cap = Math.min(PLOT_MAX_H, Math.round(width * PLOT_ASPECT)) * Math.max(1, panels)
+  return Math.max(PLOT_MIN_H, Math.min(room, cap))
+}
