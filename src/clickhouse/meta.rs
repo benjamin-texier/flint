@@ -217,6 +217,18 @@ pub struct TableSummary {
     pub total_rows: Option<u64>,
     #[serde(default)]
     pub total_bytes: Option<u64>,
+    /// What those bytes would be if nothing were compressed.
+    ///
+    /// The other half of a compression ratio, and it has to come from here:
+    /// `system.tables.total_bytes` is the *compressed* size, identical to
+    /// `sum(system.parts.bytes_on_disk)` to the byte, so a ratio built from
+    /// those two reads 1.0× on every MergeTree table on every server — which
+    /// is what Flint printed until this column arrived.
+    ///
+    /// `None` on a build without the column, and then no ratio is drawn rather
+    /// than one invented from the wrong figure.
+    #[serde(default)]
+    pub uncompressed_bytes: Option<u64>,
     #[serde(default)]
     pub parts_rows: u64,
     #[serde(default)]
@@ -272,6 +284,12 @@ async fn or_without_parts<T: serde::de::DeserializeOwned>(
 
 async fn all_tables(ch: &Client, database: &str) -> Result<Vec<TableSummary>> {
     let comment = ch.col_or("tables", "comment", "''").await?;
+    /* NULL rather than 0 where the build has no such column: zero would be a
+    claim that nothing compresses, and the page draws no ratio at all from a
+    figure it does not have. */
+    let uncompressed = ch
+        .col_or("tables", "total_bytes_uncompressed", "NULL")
+        .await?;
 
     let build = |sizes: bool| {
         let (rows_expr, bytes_expr, join) = if sizes {
@@ -293,6 +311,7 @@ async fn all_tables(ch: &Client, database: &str) -> Result<Vec<TableSummary>> {
                     {comment}                    AS comment, \
                     t.total_rows                 AS total_rows, \
                     t.total_bytes                AS total_bytes, \
+                    {uncompressed}               AS uncompressed_bytes, \
                     {rows_expr}                  AS parts_rows, \
                     {bytes_expr}                 AS parts_bytes, \
                     t.sorting_key                AS sorting_key, \
@@ -1211,6 +1230,7 @@ mod tests {
             comment: String::new(),
             total_rows: None,
             total_bytes: None,
+            uncompressed_bytes: None,
             parts_rows: 0,
             parts_bytes: 0,
             sorting_key: String::new(),

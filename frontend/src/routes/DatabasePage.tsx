@@ -17,7 +17,8 @@ import { type PipelineReport } from '../lib/pipeline'
 import { GRAINS, type Grain } from '../lib/timeline'
 import { isWindow, type Window as AffinityWindow } from '../lib/affinity'
 import { internalName } from '../lib/explain'
-import { bytes, count, exact, ratio } from '../lib/format'
+import { bytes, count, exact, times } from '../lib/format'
+import { compression, onDisk, weigh } from '../lib/weight'
 import { MetricLine } from '../components/MetricLine'
 import { AffinityMatrix } from '../components/AffinityMatrix'
 import { MassMap } from '../components/MassMap'
@@ -272,7 +273,16 @@ export function DatabasePage({ database }: { database: string }) {
   // object count does not, because those are not objects anybody made — and a
   // headline that counts nine more than the list below it can show is a
   // headline that cannot be checked.
-  const totalBytes = list.reduce((sum, t) => sum + t.parts_bytes, 0)
+  /* Two figures, not one: what the disk is, and how much of the list that
+     covers. On a server whose `system.parts` is refused and whose build has no
+     `total_bytes` there is no answer at all, and the tile goes rather than
+     printing `0 B` for a database nobody has measured — the rule is that an
+     absent figure is dropped, and a total is the one place where dropping it
+     matters most, because a headline zero reads as a fact. */
+  /* Only the objects that *have* a size. A view's rows and bytes belong to
+     whatever it reads, so counting it as one Flint could not measure would put
+     four permanent absentees in a caption about a missing grant. */
+  const disk = weigh(list.filter((t) => stores(t.kind)))
   const totalRows = list.reduce((sum, t) => sum + (t.total_rows ?? t.parts_rows), 0)
   const objects = list.filter((t) => !internalName(t.name)).length
   const pipelines = graph.data?.edges.length ?? 0
@@ -302,7 +312,19 @@ export function DatabasePage({ database }: { database: string }) {
         metrics={[
           { value: exact(objects), label: 'objects' },
           { value: count(totalRows), label: 'rows' },
-          { value: bytes(totalBytes), label: 'on disk' },
+          /* Kept out of the line entirely when nothing could be weighed. A
+             `Dash` here would say Flint asked the right question and the server
+             had no answer; it asked a question this account may not ask. */
+          ...(disk.known
+            ? [
+                {
+                  value: bytes(disk.bytes),
+                  label: disk.silent
+                    ? `on disk, of ${disk.known} of ${disk.known + disk.silent}`
+                    : 'on disk',
+                },
+              ]
+            : []),
           { value: pipelines ? exact(pipelines) : <Dash />, label: 'dependencies' },
         ]}
         lead
@@ -720,9 +742,9 @@ function sortValue(t: TableSummary, key: SortKey): string | number {
     case 'rows':
       return t.total_rows ?? t.parts_rows
     case 'bytes':
-      return t.parts_bytes
+      return onDisk(t) ?? -1
     case 'ratio':
-      return t.parts_bytes ? (t.total_bytes ?? 0) / t.parts_bytes : 0
+      return compression(t) ?? 0
   }
 }
 
@@ -755,7 +777,7 @@ function ObjectTable({
   const [plumbing, setPlumbing] = useState(false)
   const [sort, setSort] = useState<Sort>({ key: 'bytes', dir: 'desc' })
 
-  const maxBytes = Math.max(...list.map((t) => t.parts_bytes), 1)
+  const maxBytes = Math.max(...list.map((t) => onDisk(t) ?? 0), 1)
   const hidden = plumbing ? 0 : list.filter((t) => internalName(t.name)).length
 
   const ordered = useMemo(() => {
@@ -933,13 +955,15 @@ function ObjectTable({
                 )}
               </td>
               <td className="tbl--n">
-                {!stores(t.kind) ? null : t.parts_bytes ? bytes(t.parts_bytes) : <Dash />}
+                {/* Null is not zero: an empty table prints `0 B`, and one on a
+                    server that would not be asked prints nothing. */}
+                {!stores(t.kind) ? null : onDisk(t) === null ? null : bytes(onDisk(t)!)}
               </td>
               <td className="tbl--n mono-dim">
-                {!stores(t.kind) ? null : (ratio(t.total_bytes ?? 0, t.parts_bytes) ?? <Dash />)}
+                {stores(t.kind) ? times(compression(t)) : null}
               </td>
               <td className="tbl__bar">
-                {stores(t.kind) ? <ShareBar value={t.parts_bytes} max={maxBytes} /> : null}
+                {stores(t.kind) ? <ShareBar value={onDisk(t) ?? 0} max={maxBytes} /> : null}
               </td>
             </tr>
           ))}

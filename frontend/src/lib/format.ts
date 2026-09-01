@@ -77,9 +77,20 @@ export function uptime(seconds: number): string {
 /** `4.1×`, or null when there is nothing to compare. */
 export function ratio(uncompressed: number, compressed: number): string | null {
   if (!compressed || !uncompressed) return null
-  const r = uncompressed / compressed
-  if (!Number.isFinite(r) || r <= 0) return null
-  return `${r.toFixed(r < 10 ? 1 : 0)}×`
+  return times(uncompressed / compressed)
+}
+
+/** A multiple, written the way every ratio in Flint is written.
+ *
+ *  Split out of `ratio` so that a caller which has already *judged* the multiple
+ *  — `lib/weight`, which knows which of a table's three byte figures may be
+ *  divided by which — renders it identically rather than growing a second
+ *  `toFixed` beside it. One decimal below ten, none above: `3.8×` is a fact
+ *  about a column type, `142×` is a fact about a table, and `142.0×` is neither.
+ */
+export function times(multiple: number | null): string | null {
+  if (multiple === null || !Number.isFinite(multiple) || multiple <= 0) return null
+  return `${multiple.toFixed(multiple < 10 ? 1 : 0)}×`
 }
 
 /** ClickHouse hands us `2024-06-01 12:03:44`. Trim to what fits. */

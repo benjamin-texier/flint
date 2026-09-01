@@ -283,15 +283,24 @@ async fn refreshes(ch: &Client) -> Result<Option<Vec<RefreshRow>>> {
     if ch.reach("view_refreshes").await? != Reach::Readable {
         return Ok(None);
     }
-    let sql = "SELECT database                    AS database, \
-                      view                        AS view, \
-                      toString(status)            AS status, \
-                      toString(last_refresh_time) AS last_refresh, \
-                      toString(last_success_time) AS last_success, \
-                      toString(next_refresh_time) AS next_refresh, \
-                      exception                   AS exception, \
-                      retry                       AS retry, \
-                      round(progress, 3)          AS progress \
+    /* `ifNull` around every time, and it is not belt and braces.
+     *
+     * These columns are Nullable and `toString` of a NULL is a NULL, not the
+     * string "NULL" — so a refreshable view that has never *succeeded* sent
+     * `"last_success": null` down a wire whose struct says `String`, and the
+     * whole Pipelines page came back a 502. One view in that state on a server
+     * with forty-four of them is enough; found on a real one, where two views
+     * had failed every refresh since they were created, which is precisely the
+     * situation this page exists to show. */
+    let sql = "SELECT database                             AS database, \
+                      view                                 AS view, \
+                      toString(status)                     AS status, \
+                      ifNull(toString(last_refresh_time), '') AS last_refresh, \
+                      ifNull(toString(last_success_time), '') AS last_success, \
+                      ifNull(toString(next_refresh_time), '') AS next_refresh, \
+                      ifNull(exception, '')                AS exception, \
+                      retry                                AS retry, \
+                      round(progress, 3)                   AS progress \
                FROM system.view_refreshes \
                LIMIT 2000";
     Ok(Some(ch.rows(sql).await?))

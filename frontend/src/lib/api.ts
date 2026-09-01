@@ -119,6 +119,9 @@ export interface TableSummary {
   comment: string
   total_rows: number | null
   total_bytes: number | null
+  /** The same bytes, uncompressed. Null on a build without the column — see
+   *  `lib/weight`, which is the only thing that should read any of these three. */
+  uncompressed_bytes: number | null
   parts_rows: number
   parts_bytes: number
   sorting_key: string
