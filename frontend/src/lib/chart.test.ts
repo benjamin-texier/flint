@@ -13,6 +13,7 @@ import {
   niceTicks,
   parseNumber,
   parseTime,
+  plotHeight,
   ringPath,
   suggestCharts,
   timeLabel,
@@ -368,5 +369,51 @@ describe('buildGrid', () => {
     expect(g.scale).toBe(10)
     expect(g.past).toBe(1)
     expect(cellFill(1000, g.scale)).toBe(1)
+  })
+})
+
+describe('plotHeight', () => {
+  it('uses the room it is given', () => {
+    // 1366 wide caps at 683 → 560; 420 of room is under both, so it is taken.
+    expect(plotHeight(1366, 420)).toBe(420)
+  })
+
+  it('never draws under the readable floor, even in a short box', () => {
+    expect(plotHeight(1366, 90)).toBe(200)
+    expect(plotHeight(300, 0)).toBe(200)
+  })
+
+  it('caps a wide plot at half its width, so data is not stretched into a wall', () => {
+    // 900 × 0.5 = 450, which is under the absolute ceiling.
+    expect(plotHeight(900, 900)).toBe(450)
+  })
+
+  it('caps at the absolute ceiling however wide the window', () => {
+    expect(plotHeight(3000, 2000)).toBe(560)
+  })
+
+  /* The bug this exists to stop: 720 × 300 inside a 1366 × 671 box. Given the
+     real measurements the plot now takes the room. */
+  it('fills the query page, which is what it did not do', () => {
+    expect(plotHeight(1366, 640)).toBeGreaterThan(560 - 1)
+  })
+
+  it('falls back to the aspect rule before the container has been measured', () => {
+    expect(plotHeight(1000, 0)).toBe(500)
+  })
+
+  it('gives small multiples a ceiling per panel, not for the stack', () => {
+    const one = plotHeight(800, 1200, 1)
+    const three = plotHeight(800, 1200, 3)
+    expect(one).toBe(400)
+    expect(three).toBe(1200)
+  })
+
+  it('is never negative or fractional', () => {
+    for (const [w, a] of [[0, 0], [7, 3], [1919, 1079], [1366, 671]] as const) {
+      const h = plotHeight(w, a)
+      expect(Number.isInteger(h)).toBe(true)
+      expect(h).toBeGreaterThan(0)
+    }
   })
 })

@@ -11,6 +11,7 @@ import {
   niceTicks,
   parseNumber,
   parseTime,
+  plotHeight,
   ringPath,
   timeLabel,
   type ChartSpec,
@@ -35,6 +36,17 @@ import { cellText } from './../lib/grid'
 const PAD = { top: 14, right: 18, bottom: 30, left: 58 }
 const MAX_BARS = 40
 
+/* What the figure spends on things that are not the plot. Measured off the
+ * rendered page rather than guessed, and only ever subtracted — a few pixels out
+ * costs a few pixels of plot, where getting it wrong the other way clips the
+ * bottom panel of a small-multiple stack, which is what it used to do. */
+/** The series legend above the plot, with its gap. */
+const LEGEND_H = 34
+/** The one sentence a faceted figure says before its panels. */
+const FACET_NOTE_H = 24
+/** The x axis the panels share, printed once under the last of them. */
+const FACET_AXIS_H = 22
+
 interface Hover {
   /** Row index under the pointer. */
   row: number
@@ -42,22 +54,56 @@ interface Hover {
   y: number
 }
 
-export function Chart({ result, spec }: { result: QueryResult; spec: ChartSpec }) {
+export function Chart({
+  result,
+  spec,
+  room,
+}: {
+  result: QueryResult
+  spec: ChartSpec
+  /** How tall the caller can afford, when it knows. A dashboard tile does; the
+   *  query page does not and would rather the chart took the aspect rule's
+   *  answer. Left out means unbounded, which `plotHeight` reads as "decide from
+   *  the width". */
+  room?: number
+}) {
   const wrap = useRef<HTMLDivElement>(null)
-  const [width, setWidth] = useState(720)
+  const [box, setBox] = useState({ w: 720, h: 0 })
   const [hover, setHover] = useState<Hover | null>(null)
-  const height = spec.kind === 'stat' ? 160 : 300
 
+  /* The observer was here before and did nothing, because `.chart` was a flex
+     item with no width of its own: its width came from its content, and its
+     content was an SVG asking for 100% of its width. A sizing loop that
+     settled at the 720px this state opens on — so every chart in the product
+     was drawn at 720×300 whatever it was given, a quarter of the room on the
+     query page. `.chart` now fills its parent, which makes this measurement
+     mean something. */
   useEffect(() => {
     const el = wrap.current
     if (!el) return
     const observer = new ResizeObserver(([entry]) => {
-      const w = entry?.contentRect.width
-      if (w && w > 0) setWidth(w)
+      const r = entry?.contentRect
+      if (r && r.width > 0) setBox({ w: r.width, h: r.height })
     })
     observer.observe(el)
     return () => observer.disconnect()
   }, [])
+
+  const width = box.w
+  /* The height the plot may have.
+     
+     `room` when the caller knows — a tile does. Otherwise the figure's own
+     measured height, which is real wherever `.chart` is a stretched flex item
+     and is *not* circular there: the figure takes its height from the row it
+     sits in, so drawing a taller SVG inside it does not make it taller. Where
+     that is not true the caller passes `room` instead, which is why the tile
+     does. The legend comes off first: it is above the plot, in the same box. */
+  const legend = spec.series.length > 1 ? LEGEND_H : 0
+  const available = room ?? Math.max(0, box.h - legend)
+
+  /* A stat is type, not a plot, and has no aspect to keep. Everything else is
+     bounded by `plotHeight` — see it for the floor and the two ceilings. */
+  const height = spec.kind === 'stat' ? 160 : plotHeight(width, available)
 
   const names = spec.series.map((i) => result.columns[i]?.name ?? '')
   const hidden = spec.omitted ?? 0
@@ -163,6 +209,7 @@ function Plot({
         spec={spec}
         model={model}
         width={width}
+        height={height}
         hover={hover}
         onHover={onHover}
       />
@@ -423,6 +470,7 @@ function Facets({
   spec,
   model,
   width,
+  height,
   hover,
   onHover,
 }: {
@@ -430,10 +478,23 @@ function Facets({
   spec: ChartSpec
   model: Model
   width: number
+  /** What the whole stack has to fit in, which the panels divide. */
+  height: number
   hover: Hover | null
   onHover: (h: Hover | null) => void
 }) {
-  const panelH = Math.max(96, Math.round(300 / Math.min(3, model.series.length)))
+  /* One panel per series, each bounded on its own. Dividing a fixed 300 by the
+     count — which is what this did — gave two measures 150px each and three
+     100px, so the more a query had to say the less room each part of it got.
+     
+     The note and the shared axis come off before the division, and the gaps
+     between panels with them: a stack sized as though it were all plot is a
+     stack whose last panel and whose x axis are below the fold, clipped by the
+     card with nothing saying so. */
+  const panels = Math.min(3, model.series.length)
+  const chrome = FACET_NOTE_H + FACET_AXIS_H + panels * 12
+  const stack = plotHeight(width, Math.max(0, height - chrome), panels)
+  const panelH = Math.max(96, Math.round(stack / panels))
   const plotW = Math.max(80, width - PAD.left - PAD.right)
 
   return (

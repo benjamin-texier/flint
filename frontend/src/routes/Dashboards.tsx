@@ -34,6 +34,11 @@ import { ResultsGrid } from '../components/ResultsGrid'
 import { EmptyNote, ErrorNote, Loading, Sentence } from '../components/Note'
 import { keeps } from '../lib/spaces'
 
+/** How tall a tile's plot may be. Matches `.tile__body`'s own floor: a board is
+ *  read as a set of tiles at a glance, and one tile four times the height of its
+ *  neighbours is a board nobody can scan. */
+const TILE_PLOT_H = 240
+
 /** The list of dashboards, and the way to make one. */
 export function DashboardList() {
   const client = useQueryClient()
@@ -727,7 +732,11 @@ function TileCard({
         ) : result.data.rows.length === 0 ? (
           <EmptyNote title="No rows" />
         ) : tile.chart ? (
-          <Chart result={result.data} spec={tile.chart} />
+          /* A tile knows how tall it is and the chart does not, so it says.
+             Without it the chart takes the aspect rule's answer — half its own
+             width, up to 560px — which is right on the query page and four
+             times a tile on a board of them. */
+          <Chart result={result.data} spec={tile.chart} room={TILE_PLOT_H} />
         ) : (
           <ResultsGrid result={result.data} />
         )}

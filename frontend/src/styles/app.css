@@ -5507,10 +5507,19 @@ tr:hover .stratum__fill {
  * hairline solid gridlines one step off the surface, area fills at a 10% wash.
  * Text wears text tokens — a categorical hue is illegible as type. */
 
+/* Fills its parent, which is the whole reason the chart has a size at all.
+ * `.chart` is a flex item of `.rview__main`, and a flex item with no width takes
+ * its content's — the SVG's, which asks for 100% of its parent. That loop
+ * settled at the 720px the width state opens on, so every chart in the product
+ * was drawn at 720×300 whatever room it had: a quarter of the query page's
+ * result card, with the rest white. See `plotHeight` for the height. */
 .chart {
   display: flex;
   flex-direction: column;
   gap: var(--s3);
+  flex: 1;
+  width: 100%;
+  min-width: 0;
   margin: 0;
   /* Sized to include the x-axis band, so the card never grows a nested
    * scrollbar just to show its labels. */
