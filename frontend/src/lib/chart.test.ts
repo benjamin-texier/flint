@@ -12,11 +12,14 @@ import {
   needsFacets,
   niceTicks,
   parseNumber,
+  indexTicks,
   parseTime,
   plotHeight,
   ringPath,
   suggestCharts,
+  tickCount,
   timeLabel,
+  timeTicks,
   type Column,
 } from './chart'
 
@@ -415,5 +418,94 @@ describe('plotHeight', () => {
       expect(Number.isInteger(h)).toBe(true)
       expect(h).toBeGreaterThan(0)
     }
+  })
+})
+
+describe('tickCount', () => {
+  it('scales with the width and stays inside what a label can share', () => {
+    expect(tickCount(200)).toBe(2)
+    expect(tickCount(650)).toBe(5)
+    expect(tickCount(1300)).toBe(8)
+    // Never more, however wide — eight dates is already a full axis.
+    expect(tickCount(4000)).toBe(8)
+  })
+})
+
+describe('timeTicks', () => {
+  const at = (s: string) => Date.parse(`${s}Z`)
+
+  it('lands on aligned hours rather than between them', () => {
+    const t = timeTicks(at('2026-03-01T00:10:00'), at('2026-03-01T23:50:00'), 900)
+    expect(t.length).toBeGreaterThan(2)
+    // Whole hours, and evenly spaced — which is what makes them readable.
+    for (const tick of t) expect(new Date(tick.value).getUTCMinutes()).toBe(0)
+    const gaps = t.slice(1).map((x, i) => x.value - t[i]!.value)
+    expect(new Set(gaps).size).toBe(1)
+  })
+
+  it('keeps every tick inside the data', () => {
+    const min = at('2026-03-01T04:37:00')
+    const max = at('2026-03-03T11:12:00')
+    for (const tick of timeTicks(min, max, 1000)) {
+      expect(tick.value).toBeGreaterThanOrEqual(min)
+      expect(tick.value).toBeLessThanOrEqual(max)
+    }
+  })
+
+  it('steps in months over a span of years, on quarter boundaries', () => {
+    const t = timeTicks(at('2021-02-05T00:00:00'), at('2026-08-01T00:00:00'), 900)
+    expect(t.length).toBeGreaterThan(2)
+    // The first of a month, every time, an even number of months apart, and on
+    // a step that divides the year — which is what counting from January rather
+    // than from the data's own start month buys: the same months every year.
+    const months = t.map((tick) => {
+      const d = new Date(tick.value)
+      return d.getUTCFullYear() * 12 + d.getUTCMonth()
+    })
+    for (const tick of t) expect(new Date(tick.value).getUTCDate()).toBe(1)
+    const stride = months.slice(1).map((m, i) => m - months[i]!)
+    expect(new Set(stride).size).toBe(1)
+    expect(stride[0]! % 12 === 0 || 12 % stride[0]! === 0).toBe(true)
+    expect(months.every((m) => m % stride[0]! === 0)).toBe(true)
+  })
+
+  /* The case that motivated this: eighteen days spread over eight years drew an
+     axis reading `01/2001` and `01/2009` and nothing between. */
+  it('fills an eight-year span with more than its two ends', () => {
+    const t = timeTicks(at('2001-01-01T00:00:00'), at('2009-01-01T00:00:00'), 1300)
+    expect(t.length).toBeGreaterThanOrEqual(4)
+  })
+
+  it('refuses a span it cannot read', () => {
+    expect(timeTicks(NaN, 1, 900)).toEqual([])
+    expect(timeTicks(5, 5, 900)).toEqual([])
+    expect(timeTicks(9, 5, 900)).toEqual([])
+  })
+
+  it('never returns more ticks than the width asked for, plus the end', () => {
+    const t = timeTicks(at('2026-01-01T00:00:00'), at('2026-12-31T00:00:00'), 400)
+    expect(t.length).toBeLessThanOrEqual(tickCount(400) + 2)
+  })
+})
+
+describe('indexTicks', () => {
+  it('walks whole positions, so no tick says row 4.5', () => {
+    for (const tick of indexTicks(0, 17, 900)) {
+      expect(Number.isInteger(tick.value)).toBe(true)
+    }
+  })
+
+  it('always ends on the last point', () => {
+    const t = indexTicks(0, 17, 900)
+    expect(t[t.length - 1]!.value).toBe(17)
+  })
+
+  it('is one tick for one point', () => {
+    expect(indexTicks(4, 4, 900)).toEqual([{ value: 4, label: '4' }])
+  })
+
+  it('refuses a range it cannot read', () => {
+    expect(indexTicks(9, 5, 900)).toEqual([])
+    expect(indexTicks(NaN, 5, 900)).toEqual([])
   })
 })

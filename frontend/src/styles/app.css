@@ -5573,6 +5573,13 @@ tr:hover .stratum__fill {
 .chart__axis {
   stroke: var(--border-strong);
 }
+/* The vertical ones are a reading aid, not a grid to measure against — the
+ * horizontals carry the scale. Quieter than them on purpose: a full lattice
+ * behind a two-pixel line is a lattice you read instead of the line. */
+.chart__grid--x {
+  stroke: color-mix(in srgb, var(--divider) 62%, transparent);
+  stroke-dasharray: 2 4;
+}
 
 .chart__tick {
   fill: var(--text-muted);

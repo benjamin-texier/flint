@@ -532,3 +532,93 @@ export function plotHeight(
   const cap = Math.min(PLOT_MAX_H, Math.round(width * PLOT_ASPECT)) * Math.max(1, panels)
   return Math.max(PLOT_MIN_H, Math.min(room, cap))
 }
+
+/* ── The x axis ──────────────────────────────────────────────────────────
+ * A line chart used to print two labels, one at each end. That is not an axis —
+ * it is a caption on a sketch. Nobody can read a value off it, and the one
+ * question a time series is always asked ("when was that spike?") has no answer
+ * on the page.
+ *
+ * So: ticks at human positions, as many as the width can hold without labels
+ * colliding. Positions are *aligned to the step* rather than spread evenly
+ * between the ends, which is the whole difference between an axis and a ruler
+ * somebody laid on the data: `06:00 12:00 18:00` is a reading, `04:37 11:12
+ * 17:47` is arithmetic. Same reason `niceTicks` exists for the y axis; this is
+ * its opposite number, and the ladder is calendar steps instead of powers of ten.
+ */
+
+/** Steps up to a fortnight, in milliseconds. Above that the ladder has to count
+ *  months, which are not a fixed number of these. */
+const TIME_STEPS = [
+  1e3, 5e3, 15e3, 30e3,
+  60e3, 5 * 60e3, 15 * 60e3, 30 * 60e3,
+  3600e3, 3 * 3600e3, 6 * 3600e3, 12 * 3600e3,
+  86400e3, 2 * 86400e3, 7 * 86400e3, 14 * 86400e3,
+]
+/** And above it, in months — where a step is a calendar operation. */
+const MONTH_STEPS = [1, 3, 6, 12, 24, 60, 120, 300]
+
+/** How many labels a plot this wide can hold. A date label is about 44px in the
+ *  data font and wants at least as much air again either side; 130px is that
+ *  with room for `01/2026 12h`. */
+export function tickCount(plotWidth: number): number {
+  return Math.max(2, Math.min(8, Math.round(plotWidth / 130)))
+}
+
+export interface Tick {
+  /** In the axis's own units — milliseconds for a time axis. */
+  value: number
+  label: string
+}
+
+/** Ticks for a time axis, at aligned calendar positions. */
+export function timeTicks(min: number, max: number, plotWidth: number): Tick[] {
+  if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) return []
+  const want = tickCount(plotWidth)
+  const span = max - min
+  const label = (ms: number) => timeLabel(ms, span)
+
+  const step = TIME_STEPS.find((s) => span / s <= want)
+  if (step !== undefined) {
+    const out: Tick[] = []
+    // Aligned to the step in UTC, which is the zone every label in this file is
+    // formatted in — a tick at 06:00 that renders as 07:00 is worse than none.
+    for (let v = Math.ceil(min / step) * step; v <= max && out.length <= want + 1; v += step) {
+      out.push({ value: v, label: label(v) })
+    }
+    return out
+  }
+
+  const months = MONTH_STEPS.find((m) => span / (m * 30 * 86400e3) <= want) ?? 600
+  const from = new Date(min)
+  // The first month boundary that is a multiple of the step, counting from
+  // January: a three-month step should land on Jan/Apr/Jul/Oct, not on whichever
+  // month the data happens to start in.
+  let y = from.getUTCFullYear()
+  let m = Math.ceil(from.getUTCMonth() / months) * months
+  const out: Tick[] = []
+  while (out.length <= want + 1) {
+    const at = Date.UTC(y + Math.floor(m / 12), m % 12, 1)
+    if (at > max) break
+    if (at >= min) out.push({ value: at, label: label(at) })
+    m += months
+  }
+  return out
+}
+
+/** Ticks for an axis that is not time: a row index, or a number. Evenly spaced,
+ *  because there is no calendar to align to — but still at whole positions, so
+ *  "row 4.5" cannot appear. */
+export function indexTicks(min: number, max: number, plotWidth: number): Tick[] {
+  if (!Number.isFinite(min) || !Number.isFinite(max) || max < min) return []
+  const want = tickCount(plotWidth)
+  if (max === min) return [{ value: min, label: compact(min) }]
+  const every = Math.max(1, Math.ceil((max - min) / (want - 1)))
+  const out: Tick[] = []
+  for (let v = min; v <= max; v += every) out.push({ value: v, label: compact(v) })
+  // The last point matters more than an even gap: an axis that stops three
+  // rows short of the data reads as a chart that lost its tail.
+  const last = out[out.length - 1]
+  if (!last || last.value !== max) out.push({ value: max, label: compact(max) })
+  return out
+}

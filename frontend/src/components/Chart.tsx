@@ -10,9 +10,11 @@ import {
   needsFacets,
   niceTicks,
   parseNumber,
+  indexTicks,
   parseTime,
   plotHeight,
   ringPath,
+  timeTicks,
   timeLabel,
   type ChartSpec,
   type Grid,
@@ -228,6 +230,16 @@ function Plot({
   const sx = (v: number) => (xMax === xMin ? plotW / 2 : ((v - xMin) / (xMax - xMin)) * plotW)
   const sy = (v: number) => (yTop === yMin ? plotH / 2 : plotH - ((v - yMin) / (yTop - yMin)) * plotH)
 
+  /* The x axis. Not for bars: a bar's identity is its category, printed under
+     it, and a positional tick over a band scale would point between two bars.
+     `model.isTime` decides which ladder — calendar steps, or whole positions. */
+  const xTicks =
+    spec.kind === 'bar'
+      ? []
+      : model.isTime
+        ? timeTicks(xMin, xMax, plotW)
+        : indexTicks(xMin, xMax, plotW)
+
   const band = plotW / Math.max(1, xs.length)
   // Widen with the band, so six categories read as bars and forty still leave
   // the 2px surface gap between them.
@@ -426,6 +438,39 @@ function Plot({
               </g>
             ) : null,
           )
+        ) : xTicks.length > 0 ? (
+          /* An axis, rather than the two end captions this used to print. A
+             label under each tick, and a hairline up the plot at it: "when was
+             that spike" is the one question a time series is always asked, and
+             two labels at the extremes is not an answer.
+             
+             The ends are pinned rather than centred. A label centred on the
+             first tick hangs off the left of the plot, which is how an axis ends
+             up wider than the figure that holds it. */
+          xTicks.map((t, i) => {
+            const px = PAD.left + sx(t.value)
+            const first = px - PAD.left < 12
+            const last = plotW - (px - PAD.left) < 12
+            return (
+              <g key={`${t.value}-${i}`}>
+                <line
+                  className="chart__grid chart__grid--x"
+                  x1={px}
+                  x2={px}
+                  y1={PAD.top}
+                  y2={PAD.top + plotH}
+                />
+                <text
+                  className="chart__tick chart__tick--x"
+                  x={first ? PAD.left : last ? width - PAD.right : px}
+                  y={height - 10}
+                  textAnchor={first ? 'start' : last ? 'end' : 'middle'}
+                >
+                  {t.label}
+                </text>
+              </g>
+            )
+          })
         ) : (
           <>
             <text className="chart__tick chart__tick--x" x={PAD.left} y={height - 10}>
@@ -796,6 +841,10 @@ interface Model {
   yMin: number
   yMax: number
   labels: [string, string]
+  /** Whether the x axis is time. Decides which tick ladder the axis walks —
+   *  calendar steps, or whole positions — and the model is the only thing that
+   *  knows, since it is what parsed the column. */
+  isTime: boolean
   truncated: number
   rowLabel: (row: number) => string
   /** Just the category, for a label under a bar. */
@@ -856,6 +905,7 @@ export function buildModel(result: QueryResult, spec: ChartSpec): Model | null {
       yMin: 0,
       yMax: 0,
       labels: ['', ''],
+      isTime: false,
       truncated,
       rowLabel: () => '',
       rowLabelShort: () => '',
@@ -917,6 +967,7 @@ export function buildModel(result: QueryResult, spec: ChartSpec): Model | null {
     yMin,
     yMax,
     labels: [labelOf(0), labelOf(rows.length - 1)],
+    isTime,
     truncated,
     rowLabelShort: (row) => (spec.x < 0 ? String(row + 1) : cellText(rows[row]?.[spec.x]).text),
     rowLabel: (row) => {
