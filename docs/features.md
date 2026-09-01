@@ -9,6 +9,9 @@ The first part is a walkthrough of the Data space, in the order somebody
 meets it — schema, query, results, what Flint keeps. The sections below have
 their own headings:
 
+- [Which of the disk is doing any work](#which-of-the-disk-is-doing-any-work)
+- [Who this server has been working for](#who-this-server-has-been-working-for)
+- [The same data, held twice](#the-same-data-held-twice)
 - [Long operations](#long-operations)
 - [What the server has been doing](#what-the-server-has-been-doing)
 - [Changing a table's shape](#changing-a-tables-shape)
@@ -200,13 +203,27 @@ also runs", and says `nowhere else` rather than anything stronger. A statement
 published and then edited stops matching, which is the honest reading: those are
 now two statements.
 
-Home needs a workspace, like Dashboards, Alerts, Reports and APIs. Without one
-it is absent from the bar, `Data` opens the schema the way it always did, and
-the page itself — still reachable by its address — explains the one line of
-configuration that brings it back.
+Home needs nothing. It used to need a workspace — it *was* the workspace board,
+and that made Data's own name, on a stateless Flint, open the page explaining why
+the page was not there. What the workspace keeps is a section of the arrival now,
+which says its own absence there; `/home` still resolves, to `/`.
 
-**It opens on your schema, drawn.** Not an inventory screen — `/` is unchanged:
-Flint resolves a database (the one you were last in, else the fullest one that
+**And `/` opens on what Flint found.** Not an inventory screen and no longer the
+schema either: connecting used to land on a database, which answers what *exists*,
+and nobody's first question about their own server is what exists — they built it.
+So `/` is a verdict, the findings behind it, and the schema one click on. It owns
+nothing: every finding is one `/checkup` produces, drawn by `/checkup`'s own
+component, and every figure comes from an endpoint that already existed. What is
+its own is the *order* — failures first, then one finding from each of the four
+areas in turn, because ranked by weight alone the list opens with eight storage
+rows saying one thing.
+
+It will not clear a server it was not allowed to read. Past half the readings
+refused the headline stops claiming and the caption names which ones never voted:
+on ClickHouse's demo account, where six of seven are refused, "nothing is wrong"
+would have been a verdict on questions nobody was allowed to ask.
+
+**The schema, drawn.** `/explore` — where `/` used to go — resolves a database (the one you were last in, else the fullest one that
 is yours rather than ClickHouse's; `default` counts as yours, because that is
 where a great many people keep everything) and draws it as the pipeline it is:
 sources on the left, the materialized views that consume them next, the tables
@@ -2310,6 +2327,106 @@ error, and the stats strip says the result was truncated.
 toggle that sticks. Both themes clear WCAG AA contrast on every text/background
 pair in the app.
 
+
+## Which of the disk is doing any work
+
+Every other storage reading here answers *where the disk is* — the treemap draws
+it, the review says what the column types cost, the advisor says what the
+workload would prefer. None of them answers the question somebody actually has
+when a disk fills.
+
+Two system tables between them can, and neither can alone. `system.parts_columns`
+weighs every column of every active part. `system.query_log.columns` names every
+column each statement touched, fully qualified. A column in the first and not in
+the second is one this server stored, merged, backed up and paid for, and did not
+serve — and nothing in ClickHouse will ever mention it. On a real schema that is
+routinely most of the disk: a `raw_payload` kept "just in case" beside twelve
+columns anybody queries.
+
+**It never says a column is unused.** It says nothing has read it *in the
+window*, which is a different sentence and the only one the evidence supports. A
+quarterly report, an incident investigation, a regulator's export and a year-end
+reconciliation all read columns that look cold for months. The finding is where
+to look; the decision needs somebody who knows what the column is for.
+
+**And the window it quotes is the log's, not the one that was asked for.**
+`system.query_log` has a TTL. Asked about seven days, a real server answered for
+five hours — and "nothing has read this in 7 days" over five hours of evidence is
+a false statement built entirely from true numbers. So the covered span comes
+back with the reading, and below a day of it nothing is claimed at all: a log
+covering twenty minutes cannot tell a cold column from a column nobody happened
+to need during lunch. The page says which reading it is holding, and why.
+
+Two distinctions the numbers do not make on their own. A table nothing read has
+every column cold, and reporting that as "1,906 unread columns" dresses one fact
+as nineteen hundred — it is a fact about the table and is said that way. And a
+column occupying no bytes is not a saving: an ALIAS, or a MATERIALIZED column
+never backfilled, and counting those would make every table look half cold.
+
+A table's own Columns tab carries the sentence and marks the columns — but only
+when *every* cold column can be marked, because a mark that is right about six
+rows and silently absent on thirty-four is worse than none.
+
+## Who this server has been working for
+
+Diagnostics ranks statement *shapes* by cost, which answers what is expensive. The
+other half is whose it was, and on a shared server that is usually the half with
+somewhere to go: a shape costing forty minutes a week is a query to optimise, and
+the same forty minutes belonging to one service account is a conversation with
+whoever owns that service.
+
+**An empty account is not a person.** ClickHouse logs work nobody asked for
+interactively — a materialized view's push, a subquery arriving from another node,
+a background flush — under an empty user. On the first server this was pointed at,
+that empty name was the second largest spender on the machine: 34% of the window,
+with 82% of its own time on one table. Named as a user it sends somebody hunting
+for an account that does not exist. Named as what it is, it is the most useful row
+on the page — a view quietly costing a third of a server is not something anybody
+goes looking for.
+
+The busiest table is named only when it is most of what the account does. "41% of
+the server, and 12% of that on `events`" is two figures that together say nothing;
+"41% of the server, and 82% of that on one table" is a finding. And the window is
+the log's own, like the reading above: below a day of coverage the ranking is
+shown and marked as not to be leaned on, because ranking who spent the week from
+five hours of log ranks who was awake this morning.
+
+## The same data, held twice
+
+The copy nobody deleted. A migration that made `events_v2`, filled it, switched
+the reads over and left `events` on the disk; a table cloned to try a different
+sorting key; a restore into a second name never dropped. They merge and back up
+like anything else, ClickHouse mentions none of them, and the only reason anybody
+notices is a disk filling.
+
+**Shape alone is not evidence, and measuring proved it.** Grouping tables by their
+column list produced eight-table groups of nothing on a real schema: `raw_x`,
+`raw_x_estimated`, `raw_x_last_state` and `raw_x_last_state_mv` share a shape *by
+design*, and two databases on one server share every shape in them because they
+are two environments.
+
+So two more conditions, and the second is the sharp one. The same database —
+`default.events` and `staging.events` are a deployment, not a duplicate. And the
+same row count to within 2%. On ClickHouse's own demo server that separates the
+real ones cleanly: `hits`, `hits_full_projection` and `hits_index_projection` hold
+99,997,497 rows each, spread exactly zero; `query_log_sharded` and
+`query_log_plain` differ by 0.06%. Meanwhile `forex`, `forex_2020s` and
+`forex_usd` share a shape and spread 99.8%, and `hackernews_changes_items` and
+`hackernews_history` spread 42% — both correctly excluded, and no amount of shape
+comparison would have told them apart.
+
+**It never says drop one.** Both sets it finds on that server are deliberate
+second *layouts* of one dataset — a projection kept as its own table, a shard
+beside its plain twin — and from the outside that is indistinguishable from the
+copy a migration left. Which it is, is a fact about somebody's intentions: the
+reader has it and Flint does not. The figure quoted is the conservative one,
+everything beyond the *heaviest* member, which is the least you get back whichever
+copy survives.
+
+And it needs no query log — `system.columns` and `system.tables` are enough. That
+is what makes it worth having beyond its own merit: on a locked-down account where
+six of Flint's seven readings are refused outright, this is the one substantial
+finding the home can still produce.
 
 ## Long operations
 
