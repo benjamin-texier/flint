@@ -24,9 +24,9 @@ function read(sql: string, options?: Parameters<typeof readSpec>[1]) {
 
 describe('what the form can hold whole', () => {
   it('reads the statement the explorer opens a table with', () => {
-    const spec = read('SELECT\n  *\nFROM default.raw_parking_spot_data\nLIMIT 100')
+    const spec = read('SELECT\n  *\nFROM default.raw_event_stream_data\nLIMIT 100')
     expect(spec.database).toBe('default')
-    expect(spec.table).toBe('raw_parking_spot_data')
+    expect(spec.table).toBe('raw_event_stream_data')
     expect(spec.projections).toEqual([])
     expect(spec.limit).toBe(100)
     expect(spec.dropped).toEqual([])
@@ -128,9 +128,9 @@ describe('what the form can hold whole', () => {
 
   it('sees through the wrapper the server generates', () => {
     const spec = read(
-      'SELECT *\nFROM (\nSELECT * FROM `default`.`raw_parking_spot_data`\n)\nLIMIT 501',
+      'SELECT *\nFROM (\nSELECT * FROM `default`.`raw_event_stream_data`\n)\nLIMIT 501',
     )
-    expect(spec.table).toBe('raw_parking_spot_data')
+    expect(spec.table).toBe('raw_event_stream_data')
     expect(spec.database).toBe('default')
     // The probe row is not part of the question, so it is not in the box.
     expect(spec.limit).toBe(500)

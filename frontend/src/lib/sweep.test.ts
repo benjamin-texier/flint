@@ -89,15 +89,15 @@ const percentage = (name: string, bytes: number | null = 100_000) =>
     uncompressed_bytes: bytes ? bytes * 4 : null,
   })
 
-/** The three sibling tables of the occupancy family, each with the same six
+/** The three sibling tables of the uptime family, each with the same six
  *  columns and the same two problems. */
-const occupancy = (table: string, over?: Partial<SchemaReview>) =>
+const uptime = (table: string, over?: Partial<SchemaReview>) =>
   review(
     table,
     [
-      seconds('total_occupied_seconds'),
+      seconds('total_busy_seconds'),
       seconds('total_available_seconds'),
-      percentage('occupancy_percentage'),
+      percentage('busy_percentage'),
     ],
     over,
   )
@@ -148,9 +148,9 @@ describe('a LIKE pattern is the selection', () => {
 describe('one column, one proposal, every table that has it', () => {
   it('collapses the same finding across sibling tables into one group', () => {
     const groups = group([
-      occupancy('raw_parking_spot_occupancy'),
-      occupancy('raw_parking_spot_occupancy_estimated'),
-      occupancy('raw_parking_spot_occupancy_last_state'),
+      uptime('raw_device_uptime'),
+      uptime('raw_device_uptime_estimated'),
+      uptime('raw_device_uptime_last_state'),
     ])
 
     // Three tables times three columns is nine ALTERs by hand; three decisions
@@ -496,7 +496,7 @@ describe('a tick is an intention, not a frozen proposal', () => {
     group([
       review('a', [
         column({
-          name: 'total_occupied_seconds',
+          name: 'total_busy_seconds',
           type: 'Int64',
           min: '0',
           max,
@@ -507,7 +507,7 @@ describe('a tick is an intention, not a frozen proposal', () => {
 
   it('keeps a tick that still matches', () => {
     const out = reconcile(
-      [{ table: 'a', column: 'total_occupied_seconds', proposal: 'UInt16' }],
+      [{ table: 'a', column: 'total_busy_seconds', proposal: 'UInt16' }],
       groups('900'),
     )
 
@@ -522,13 +522,13 @@ describe('a tick is an intention, not a frozen proposal', () => {
   // ALTER built from the stale tick would have truncated the column.
   it('follows the proposal to where a fuller measurement moved it', () => {
     const out = reconcile(
-      [{ table: 'a', column: 'total_occupied_seconds', proposal: 'UInt16' }],
+      [{ table: 'a', column: 'total_busy_seconds', proposal: 'UInt16' }],
       groups('86400'),
     )
 
     expect(out.chosen[0]!.proposal).toBe('UInt32')
     expect(out.changed).toEqual([
-      { table: 'a', column: 'total_occupied_seconds', was: 'UInt16', now: 'UInt32' },
+      { table: 'a', column: 'total_busy_seconds', was: 'UInt16', now: 'UInt32' },
     ])
   })
 
@@ -570,16 +570,16 @@ describe('the statements come out one per table', () => {
 
   it('gathers every column of one table into a single ALTER', () => {
     const { sql } = statements('default', [
-      member({ table: 'raw_parking_spot_occupancy', column: 'total_occupied_seconds' }),
-      member({ table: 'raw_parking_spot_occupancy', column: 'occupancy_percentage', proposal: 'UInt8' }),
-      member({ table: 'raw_parking_spot_occupancy_estimated', column: 'total_occupied_seconds' }),
+      member({ table: 'raw_device_uptime', column: 'total_busy_seconds' }),
+      member({ table: 'raw_device_uptime', column: 'busy_percentage', proposal: 'UInt8' }),
+      member({ table: 'raw_device_uptime_estimated', column: 'total_busy_seconds' }),
     ])
 
     expect(sql).toHaveLength(2)
     expect(sql[0]!).toBe(
-      'ALTER TABLE default.raw_parking_spot_occupancy\n' +
-        '    MODIFY COLUMN total_occupied_seconds UInt16,\n' +
-        '    MODIFY COLUMN occupancy_percentage   UInt8',
+      'ALTER TABLE default.raw_device_uptime\n' +
+        '    MODIFY COLUMN total_busy_seconds UInt16,\n' +
+        '    MODIFY COLUMN busy_percentage    UInt8',
     )
   })
 

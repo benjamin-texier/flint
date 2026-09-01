@@ -38,7 +38,7 @@ handful of rows, each a subject, a sentence and the measurement behind it:
 ```text
 UNKNOWN_QUERY_PARAMETER  started failing statements that were not failing before   25 failed
 UNKNOWN_IDENTIFIER       failed far more statements than it usually does   1,143 against 2 usually
-parking.raw_traffic_v2   took its first rows in this window                300 K rows, 2.3 MiB
+analytics.raw_hits_v2    took its first rows in this window                300 K rows, 2.3 MiB
 ```
 
 Four things are read: what statements cost, what failed, what was reshaped, and
