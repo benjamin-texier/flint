@@ -62,7 +62,13 @@ const PublishEndpointPage = lazy(() =>
 /* Data's own board. Lazy for the same reason as the rest, and absent for the
    same reason as the four sections it summarises: a Flint with no workspace
    keeps nothing for it to list. */
-const HomePage = lazy(() => import('./routes/Home').then((m) => ({ default: m.HomePage })))
+
+/* The landing. Lazy like the rest, and it pulls `/checkup` in with it — they
+   share the component that draws a finding, deliberately, so that two pages
+   cannot drift apart on what a finding looks like. */
+const ArrivalPage = lazy(() =>
+  import('./routes/Arrival').then((m) => ({ default: m.ArrivalPage })),
+)
 
 type Theme = 'dark' | 'light'
 
@@ -174,7 +180,12 @@ export function App() {
           {/* And the home owns none at all: it is a board about what Flint
               keeps, not a way of browsing objects, and it carries its own two
               ways into the schema in its header. */}
-          {spaceOf(pathname) === 'data' && pathname !== '/home' ? (
+          {/* And the arrival owns none either, for the reason the home owns
+              none: it is a board about the *server*, not a way of browsing the
+              objects on it, and a list of 162 tables beside a verdict is a rail
+              on which nothing answers the question the reader has. It ends with
+              its own way into the schema. */}
+          {spaceOf(pathname) === 'data' && pathname !== '/home' && pathname !== '/' ? (
             pathname.startsWith('/alerts') ? (
               <AlertsRail />
             ) : (
@@ -183,19 +194,26 @@ export function App() {
           ) : null}
           <main className="shell__main" id="main" tabIndex={-1}>
             <Routes>
-              <Route path="/" element={<LandingRoute />} />
-              {/* Data's board. The route exists whatever the deployment keeps —
-                  the page explains the absence rather than the router hiding it,
-                  which is what the four kept sections already do for a bookmark
-                  that outlived its workspace. */}
+              {/* What Flint found, before anybody asked. `/` used to redirect
+                  to a database, which answers what *exists* — and nobody's
+                  first question about their own server is what exists. The
+                  database is one click away and the page ends with it. */}
               <Route
-                path="/home"
+                path="/"
                 element={
-                  <Suspense fallback={<Loading label="Reading the workspace" />}>
-                    <HomePage />
+                  <Suspense fallback={<Loading label="Reading this server" />}>
+                    <ArrivalPage />
                   </Suspense>
                 }
               />
+              {/* Where the landing used to go. Kept as its own address because
+                  it is in bookmarks, and because "take me straight to the
+                  schema" is a reasonable thing to want a link for. */}
+              <Route path="/explore" element={<LandingRoute />} />
+              {/* Data's board was here. It is a section of the arrival now —
+                  one home rather than two — and the address stays because it is
+                  in bookmarks. */}
+              <Route path="/home" element={<Navigate to="/" replace />} />
               {/* Neither space's, deliberately — see `outsideSpaces` in
                   `lib/spaces`. It reports on both and holds no controls. */}
               <Route path="/checkup" element={<CheckupPage />} />

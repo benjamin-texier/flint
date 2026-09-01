@@ -38,10 +38,16 @@ describe('spacesFor', () => {
     expect(spacesFor(undefined).map((s) => s.id)).toEqual(['data'])
   })
 
-  it('drops the five sections that need somewhere to write', () => {
+  it('drops the four sections that need somewhere to write', () => {
     // Stateless is a supported way to run Flint, not a broken one: the pages
     // that could only ever refuse are absent rather than present and failing.
+    //
+    // Home is not one of them any more. It used to be — it *was* the workspace
+    // board — and that made Data's own name, on a stateless Flint, open the page
+    // explaining why the page was not there. The arrival that replaced it is a
+    // read of `system.*` and answers on every Flint there is.
     expect(spacesFor({ workspace: null }).flatMap((s) => s.sections.map((x) => x.id))).toEqual([
+      'home',
       'explore',
       'query',
       'diagnose',
@@ -68,10 +74,9 @@ describe('spacesFor', () => {
     ).toEqual(['home', 'explore', 'query', 'dash', 'apis', 'diagnose'])
   })
 
-  it('keeps the Data link on the home when only the schedule is missing', () => {
-    // The home page is about the workspace, and the workspace is there. Only a
-    // deployment that keeps nothing sends `Data` back to the schema.
-    expect(dataFor({ workspace: 'flint', scheduled: false }).home).toBe('/home')
+  it('keeps the Data link on the home whatever this deployment can run', () => {
+    // It no longer moves at all — see below.
+    expect(dataFor({ workspace: 'flint', scheduled: false }).home).toBe('/')
   })
 
   it('reads a missing schedule flag as no schedule', () => {
@@ -89,10 +94,13 @@ describe('spacesFor', () => {
     expect(spacesFor(undefined).flatMap((s) => s.sections.map((x) => x.id))).not.toContain('dash')
   })
 
-  it('sends the Data link to the home, and to the schema without one', () => {
-    // The space's name must never open the page that exists to explain why the
-    // page is missing. Stateless, `Data` means what it has always meant.
-    expect(dataFor({ workspace: 'flint' }).home).toBe('/home')
+  it('sends the Data link to the home on every deployment there is', () => {
+    // The rule that made this move is intact and the exception to it is gone:
+    // the space's name must never open a page that exists to explain why the
+    // page is missing, and `/` is no longer such a page. It reads the server,
+    // and a Flint with no workspace says so in one section of it rather than
+    // losing the whole board.
+    expect(dataFor({ workspace: 'flint' }).home).toBe('/')
     expect(dataFor({ workspace: null }).home).toBe('/')
     expect(dataFor(undefined).home).toBe('/')
   })
@@ -126,16 +134,18 @@ describe('activeSection', () => {
     expect(activeSection('/infra/cluster')).toBe('cluster')
   })
 
-  it('lights Home only on the home', () => {
-    // `/` is Explore's, and it stays Explore's: Flint still opens on a database
-    // and the home is a place you go to, not the place you land.
-    expect(activeSection('/home')).toBe('home')
-    expect(activeSection('/')).toBe('explore')
+  it('lights Home on the landing, and Explore on the schema', () => {
+    // The reverse of what this asserted, and the reversal is the feature: the
+    // home is where you land now, and Explore is the place you go to browse
+    // objects. `exact` on the Home section is what keeps it from claiming every
+    // Data page, since every one of them starts with `/`.
+    expect(activeSection('/')).toBe('home')
+    expect(activeSection('/explore')).toBe('explore')
   })
 
   it('gives every unclaimed Data page to Explore', () => {
-    // A NavLink to "/" would only ever light up on the landing redirect itself.
-    expect(activeSection('/')).toBe('explore')
+    // Everything that is about an object on the server, whether or not Explore
+    // owns its address.
     expect(activeSection('/db/analytics')).toBe('explore')
     expect(activeSection('/server')).toBe('explore')
   })

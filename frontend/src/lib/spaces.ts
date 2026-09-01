@@ -89,10 +89,15 @@ export interface Space {
 const DATA: Space = {
   id: 'data',
   label: 'Data',
-  home: '/home',
+  home: '/',
   sections: [
-    { id: 'home', to: '/home', label: 'Home', needs: 'workspace' },
-    { id: 'explore', to: '/', label: 'Explore' },
+    /* Home needs nothing. It used to need a workspace, because it *was* the
+       workspace board — which made Data's own name, on a stateless Flint, open
+       a page explaining why the page was not there. The arrival is a read of
+       `system.*` and answers on every Flint there is; what the workspace keeps
+       is a section of it, and says its own absence there. */
+    { id: 'home', to: '/', label: 'Home', exact: true },
+    { id: 'explore', to: '/explore', label: 'Explore' },
     { id: 'query', to: '/query', label: 'Query' },
     { id: 'dash', to: '/dash', label: 'Dashboards', needs: 'workspace' },
     { id: 'alerts', to: '/alerts', label: 'Alerts', badge: '/alerts', needs: 'schedule' },
@@ -216,7 +221,10 @@ export function dataFor(
   const sections = DATA.sections.filter(
     (s) => (s.needs !== 'workspace' || keeps(config)) && (s.needs !== 'schedule' || runs(config)),
   )
-  return keeps(config) ? { ...DATA, sections } : { ...DATA, home: '/', sections }
+  /* The home no longer moves with them: `/` answers on a Flint that keeps
+     nothing, which is the whole reason the arrival replaced the workspace
+     board behind this name. */
+  return { ...DATA, sections }
 }
 
 /** Whether this deployment keeps anything at all.

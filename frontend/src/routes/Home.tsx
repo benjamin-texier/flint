@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 
 import { api } from '../lib/api'
-import { concerns, summarise } from '../lib/attention'
+import { concerns } from '../lib/attention'
 import { count, exact, figure, relativeTime } from '../lib/format'
 import { endpointPath } from '../lib/publish'
 import { keeps, spaceOf } from '../lib/spaces'
@@ -15,7 +15,6 @@ import {
   recentlyTouched,
   trafficOf,
 } from '../lib/workspace'
-import { Headlines } from '../components/Headlines'
 import { MetricLine, type Metric } from '../components/MetricLine'
 import { EmptyNote, ErrorNote, Loading } from '../components/Note'
 
@@ -32,7 +31,20 @@ interface Fetching {
   refetch: () => void
 }
 
-/** Data — the first page: what this workspace has been made to answer.
+/** What Flint keeps here, and what it is being asked for.
+ *
+ *  This was `/home`, a board of its own behind Data's name, and it was the right
+ *  content on the wrong footing: it answered "what has this workspace been made
+ *  to answer", which is a fine second question and never anybody's first. Worse,
+ *  it was the one Data page a stateless Flint could not fill, so the space's own
+ *  name opened a page explaining why the page was not there.
+ *
+ *  So it is a section of the arrival board now rather than a page — under the
+ *  verdict about the server, where what has been built on top of that server
+ *  belongs. `/home` still resolves, to `/`, because it is in bookmarks. The
+ *  paragraphs below are what it was, and still are:
+ *
+ *  Data — the first page: what this workspace has been made to answer.
  *
  *  The mirror of `/infra`, and the answer to the same complaint: clicking the
  *  space's own name used to land on a database, which tells you what is on the
@@ -61,7 +73,7 @@ const USAGE_DAYS = 7
 const TOUCHED = 5
 const SERVING = 4
 
-export function HomePage() {
+export function WhatIsKept() {
   const config = useQuery({ queryKey: ['config'], queryFn: api.config })
   /* Everything on this page lives in the workspace, so a Flint without one has
      nothing here rather than a page full of refusals — the rule the other four
@@ -131,7 +143,6 @@ export function HomePage() {
       figureFor(alerts.data.filter((a) => a.enabled).length, 'alert watching', 'alerts watching'),
     )
 
-  const said = summarise(items)
   const nothingKept = Boolean(
     stateful &&
       saved.data &&
@@ -143,59 +154,16 @@ export function HomePage() {
   )
 
   return (
-    <article className="page page--wide">
-      <header className="page__head">
-        <p className="eyebrow">
-          Workspace
-          {config.data?.workspace ? (
-            <>
-              <span className="eyebrow__sep" aria-hidden="true">
-                ·
-              </span>
-              {config.data.workspace}
-            </>
-          ) : null}
-        </p>
-        <div className="page__titlerow">
-          <h1 className="page__title page__title--hero">What this workspace answers</h1>
-          {/* This page owns no rail — the list of tables is furniture for
-              browsing objects and this page is about what Flint keeps — so the
-              two ways into the data are here instead, where they would
-              otherwise be one click further away than on every other Data
-              page. */}
-          <div className="page__actions">
-            <Link className="btn" to="/">
-              Open a table
-            </Link>
-            <Link className="btn btn--spark" to="/query">
-              Write SQL
-            </Link>
-          </div>
-        </div>
-        {/* Nothing where there is nothing to lead into: on a stateless Flint,
-            and on a workspace with nothing in it yet, the note below is the
-            whole message — and a lead promising "everything Flint keeps for
-            you" above "nothing kept here yet" promises what the next line
-            withdraws. */}
-        {stateful && !nothingKept ? (
-          <p className="page__sub">
-            {said ? said : 'Everything Flint keeps for you, and what it is being asked for.'}
-          </p>
-        ) : null}
-      </header>
-
-      {/* First, and above the workspace gate on purpose. Everything below this
-          band is what Flint *keeps*, which a stateless deployment has none of;
-          the band is a read of `system.*` and answers the same on every Flint
-          there is. It is also the only thing on this page that answers a
-          question the reader had before they arrived. */}
-      <Headlines space="data" lead />
-
+    <>
+      {/* The gate, and what it costs, in the one place the reader meets it.
+          Everything above this section on the arrival board is a read of
+          `system.*` and answers the same on every Flint there is; this section
+          alone needs somewhere to write. */}
       {!stateful && config.data ? (
-        <EmptyNote title="A home needs a workspace">
-          Flint is running without one, so it keeps no statements, endpoints, dashboards or
-          alerts — and the rest of this page is the list of them. What changed, above, needs
-          no workspace: it is a read of the server's own log. Set{' '}
+        <EmptyNote title="Nothing is kept here">
+          Flint is running without a workspace, so it holds no statements, endpoints, dashboards
+          or alerts of its own — and this section is the list of them. Everything above needs
+          none: it is a read of the server's own tables. Set{' '}
           <code>FLINT_WORKSPACE_DATABASE</code> to a database it may write to, and restart.
         </EmptyNote>
       ) : null}
@@ -207,8 +175,8 @@ export function HomePage() {
 
       {nothingKept ? (
         <EmptyNote title="Nothing kept here yet">
-          Run something on the Query page and save it, and this page starts keeping track of
-          where it ends up — the endpoints serving it, the dashboards drawing it.
+          Run something on the Query page and save it, and Flint starts keeping track of where it
+          ends up — the endpoints serving it, the dashboards drawing it.
         </EmptyNote>
       ) : null}
 
@@ -251,7 +219,7 @@ export function HomePage() {
           </ul>
         </section>
       ) : null}
-    </article>
+    </>
   )
 }
 

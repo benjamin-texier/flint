@@ -321,22 +321,20 @@ export function fromDetached(report: DetachedReport): Finding[] {
  *  The strongest finding this page can make, and the quietest: a server with
  *  no backup is fine every day until the one day it is not. */
 export function fromBackups(report: BackupReport): Finding[] {
-  if (!report.available) {
-    return [
-      {
-        id: 'risk:backups:nowhere',
-        area: 'risk',
-        urgency: 'worth',
-        title: 'This Flint cannot take a backup',
-        why:
-          report.reason ??
-          'No destination is configured, so there is nothing for a backup to be written to.',
-        evidence: 'ClickHouse refuses a BACKUP unless the disk is named in its own configuration.',
-        gain: { kind: 'none' },
-        act: { to: '/infra/backups', label: 'Backups' },
-      },
-    ]
-  }
+  /* Nothing, and that is the fix rather than an omission.
+   *
+   * `available: false` on this report means one thing only — Flint could not
+   * *read* `system.backups`, because the account is not granted it or the build
+   * has no such table. It used to be turned into "This Flint cannot take a
+   * backup", with the missing grant printed underneath as the reason, which is
+   * a claim about the server made out of a fact about the reader. It is also
+   * one the reader can do nothing with: the answer to "you may not look" is a
+   * GRANT, not a backup policy.
+   *
+   * The case that finding was written for is still reported, by the branch
+   * below: a Flint with no destination configured reads the log fine, finds it
+   * empty, and says so with `Destination: none named`. */
+  if (!report.available) return []
   if (report.runs.length === 0) {
     return [
       {
