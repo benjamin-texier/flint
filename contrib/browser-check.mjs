@@ -81,7 +81,11 @@ const AUDIT = `(() => {
 /** `wait` is a selector that has to appear before the page counts as ready —
  *  auditing a spinner measures nothing. */
 const PAGES = [
-  { path: '/', wait: '.gnode' },
+  /* `/` is the arrival board — a verdict about the server and the findings
+     behind it. It used to redirect to a database, which is why this line waited
+     for a graph node; the schema has its own address now and is checked below. */
+  { path: '/', wait: '.arrival__verdict' },
+  { path: '/explore', wait: '.gnode' },
   // Data's board. Waits for a row rather than for `main`, because every figure
   // on this page is dropped when its request has not landed — so `main` is
   // there a beat before there is anything on it to measure, and a contrast
@@ -498,7 +502,7 @@ async function diagram(browser, colorScheme) {
   page.on('console', (m) => consoleNoise(m) && noise.push(`console: ${m.text().slice(0, 120)}`))
   const before = failures
   try {
-    await page.goto(`${BASE}/`, { waitUntil: 'networkidle' })
+    await page.goto(`${BASE}/explore`, { waitUntil: 'networkidle' })
     await page.waitForSelector('.gnode', { timeout: 20_000 })
     await page.locator('.gnode').first().click()
     await page.waitForSelector('.npanel', { timeout: 8000 })
@@ -1661,7 +1665,10 @@ async function consoleDrawer(browser, colorScheme) {
   }
 
   try {
-    await page.goto(BASE + '/', { waitUntil: 'networkidle' })
+    /* Any page with the shell on it would do — the console is mounted outside
+       the router. The schema is used because it is the page somebody would
+       actually have open when they reach for the console. */
+    await page.goto(BASE + '/explore', { waitUntil: 'networkidle' })
     await page.waitForSelector('.gnode', { timeout: 15_000 })
     await page.keyboard.press('Control+`')
     await page.waitForSelector('.cons.is-open', { timeout: 6000 })
@@ -1755,7 +1762,7 @@ async function palette(browser, colorScheme) {
   page.on('pageerror', (e) => noise.push(`threw: ${String(e).slice(0, 120)}`))
   page.on('console', (m) => consoleNoise(m) && noise.push(`console: ${m.text().slice(0, 120)}`))
   try {
-    await page.goto(BASE + '/', { waitUntil: 'networkidle' })
+    await page.goto(BASE + '/explore', { waitUntil: 'networkidle' })
     await page.waitForSelector('.gnode', { timeout: 15_000 })
     await page.keyboard.press('Control+k')
     await page.waitForSelector('.pal__box', { timeout: 6000 })

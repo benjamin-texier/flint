@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { inOrder, saysRead, verdict, type Reading } from './arrival'
+import { inOrder, plain, saysRead, strata, verdict, type Reading } from './arrival'
 import type { Area, Finding, Urgency } from './checkup'
 
 function finding(id: string, area: Area, urgency: Urgency, gain = 0): Finding {
@@ -69,30 +69,30 @@ describe('the verdict', () => {
   const done: Reading[] = [{ label: 'the disks', state: 'read' }]
 
   it('leads with failure over opportunity', () => {
-    const said = verdict([finding('a', 'queries', 'now'), finding('b', 'schema', 'worth', 9)], done)
+    const said = plain(verdict([finding('a', 'queries', 'now'), finding('b', 'schema', 'worth', 9)], done))
     expect(said).toBe('One thing on this server is going wrong now.')
   })
 
   it('counts what is worth changing when nothing is wrong', () => {
-    expect(verdict([finding('a', 'schema', 'worth', 9)], done)).toBe(
-      'One thing is worth changing here.',
+    expect(plain(verdict([finding('a', 'schema', 'worth', 9)], done))).toBe(
+      'One thing here is worth changing.',
     )
     expect(
-      verdict([finding('a', 'schema', 'worth', 9), finding('b', 'server', 'worth', 2)], done),
-    ).toBe('2 things are worth changing here.')
+      plain(verdict([finding('a', 'schema', 'worth', 9), finding('b', 'server', 'worth', 2)], done)),
+    ).toBe('2 things here are worth changing.')
   })
 
   it('says it is still reading rather than clearing the server too early', () => {
     /* A verdict that reads "nothing is wrong" and becomes "three things are
        failing" four seconds later is worse than one that waited. */
-    expect(verdict([], [{ label: 'the query log', state: 'reading' }])).toBe(
+    expect(plain(verdict([], [{ label: 'the query log', state: 'reading' }]))).toBe(
       'Reading this server.',
     )
   })
 
   it('speaks when the answer is good', () => {
     // A heading that vanishes leaves the reader wondering whether anything ran.
-    expect(verdict([], done)).toBe('Nothing on this server is asking to be changed.')
+    expect(plain(verdict([], done))).toBe('Nothing on this server is asking to be changed.')
   })
 
   it('refuses to clear a server it was not allowed to read', () => {
@@ -104,7 +104,9 @@ describe('the verdict', () => {
       { label: 'the query log', state: 'refused' },
       { label: 'the backup log', state: 'read' },
     ]
-    expect(verdict([], mostlyRefused)).toBe('Flint could not read enough of this server to say.')
+    expect(plain(verdict([], mostlyRefused))).toBe(
+      'Flint could not read enough of this server to say.',
+    )
   })
 
   it('still clears a server where only one reading was refused', () => {
@@ -114,7 +116,71 @@ describe('the verdict', () => {
       { label: 'the query log', state: 'read' },
       { label: 'the backup log', state: 'refused' },
     ]
-    expect(verdict([], mostlyRead)).toBe('Nothing on this server is asking to be changed.')
+    expect(plain(verdict([], mostlyRead))).toBe('Nothing on this server is asking to be changed.')
+  })
+})
+
+describe('the verdict’s setting', () => {
+  it('hands the count over as a figure and the rest as prose', () => {
+    /* They are set in different faces — see `Said`. The token file's own rule:
+       the data face is for "everywhere the characters themselves are the content
+       rather than a label for it", and a count in a verdict is content. */
+    const said = verdict(
+      [finding('a', 'queries', 'now'), finding('b', 'queries', 'now')],
+      [{ label: 'the disks', state: 'read' }],
+    )
+    expect(said[0]).toEqual({ text: '2', figure: true })
+    expect(said[1]?.figure).toBeUndefined()
+  })
+
+  it('leaves "one" as a word', () => {
+    // Nobody reads `1 thing` as a figure they might act on, and setting it in
+    // the data face would make the calmest verdict the loudest-looking one.
+    const said = verdict([finding('a', 'queries', 'now')], [{ label: 'x', state: 'read' }])
+    expect(said).toHaveLength(1)
+    expect(said[0]?.figure).toBeUndefined()
+  })
+
+  it('has no figure in a verdict that counts nothing', () => {
+    for (const readings of [
+      [{ label: 'x', state: 'read' as const }],
+      [{ label: 'x', state: 'reading' as const }],
+      [{ label: 'x', state: 'refused' as const }],
+    ]) {
+      expect(verdict([], readings).some((s) => s.figure)).toBe(false)
+    }
+  })
+})
+
+describe('the server’s disk as one line', () => {
+  it('orders the bands by weight and shares them out', () => {
+    const { bands, total } = strata([
+      { name: 'small', bytes: 100 },
+      { name: 'big', bytes: 900 },
+    ])
+    expect(bands.map((b) => b.name)).toEqual(['big', 'small'])
+    expect(bands[0]?.share).toBeCloseTo(0.9, 5)
+    expect(total).toBe(1000)
+  })
+
+  it('folds the tail into a band that counts itself', () => {
+    /* A strip of forty two-pixel slivers is a texture, not a measurement. The
+       fold is always the right-hand end, because order is by weight. */
+    const items = Array.from({ length: 9 }, (_, i) => ({ name: `d${i}`, bytes: 100 - i }))
+    const { bands } = strata(items, 3)
+    expect(bands).toHaveLength(4)
+    expect(bands[3]).toMatchObject({ name: '6 more', folded: true })
+  })
+
+  it('leaves out what weighs nothing rather than drawing a zero band', () => {
+    const { bands } = strata([{ name: 'a', bytes: 10 }, { name: 'empty', bytes: 0 }])
+    expect(bands.map((b) => b.name)).toEqual(['a'])
+  })
+
+  it('has no bands at all where nothing could be weighed', () => {
+    // A server whose sizes were all refused. The caller drops the strip.
+    expect(strata([{ name: 'a', bytes: 0 }])).toEqual({ bands: [], total: 0 })
+    expect(strata([])).toEqual({ bands: [], total: 0 })
   })
 })
 

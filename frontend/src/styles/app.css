@@ -12344,9 +12344,18 @@ button.acol__val:hover {
   font-size: var(--size-label);
 }
 
+/* Ink at rest, accent on hover — the rule `.link` sets for every other link in
+ * the product. These two were painted the accent standing still, which was
+ * invisible on the workspace board where they were the only accented things and
+ * became a problem the moment that board folded into the arrival: a page whose
+ * primary action is the accent cannot also have two links wearing it. */
 .home__link {
-  color: var(--interactive);
+  color: var(--chalk);
   font-weight: 500;
+  transition: color var(--motion-fast) var(--ease);
+}
+.home__link:hover {
+  color: var(--spark);
 }
 
 /* What the list above it does not show. Quieter than the link it follows: it is
@@ -14783,49 +14792,6 @@ button.acol__val:hover {
   color: var(--text-muted);
 }
 
-/* ── What Flint found, on arrival ──────────────────────────────────────────
- *
- * The verdict is the largest thing on the page and the only one set at the hero
- * size: it is a *sentence*, not a label, and it is the one thing somebody who
- * connected ten seconds ago should be able to read from across a desk.
- */
-.arrival__verdict {
-  max-width: 34ch;
-  text-wrap: balance;
-}
-
-/* Two columns of findings past the width where one would leave half the page
- * empty. Not a grid of equal cells — the rows are different heights, and a grid
- * would pad every one of them to the tallest in its band. Columns let each row
- * take the space it needs.
- *
- * The cost is that the order reads down and then across, which is the order
- * `lib/arrival` deals them in anyway: failures first, then one from each area in
- * turn, so the top of *both* columns is the strongest thing in it.
- */
-@media (min-width: 1100px) {
-  .page--arrival .checkup__list {
-    display: block;
-    columns: 2;
-    column-gap: var(--s3);
-  }
-  .page--arrival .checkup__row {
-    /* A card that breaks across the column boundary is a card with its evidence
-     * in a different column from its title. */
-    break-inside: avoid;
-    margin-bottom: var(--s2);
-  }
-}
-
-/* The ways on. A row, and the caption sits with them rather than under: it is
- * about the button beside it. */
-.arrival__ways {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--s3);
-}
-
 /* ── What nothing has read ─────────────────────────────────────────────────
  *
  * The note above a table's columns, and the mark beside one. Deliberately quiet:
@@ -14839,7 +14805,7 @@ button.acol__val:hover {
 }
 
 /* Held rather than answered: the log was too short, or the grant is missing.
- * A different colour from the answer, because "I cannot tell" and "nothing is
+ * A different tier from the answer, because "I cannot tell" and "nothing is
  * cold" are the two readings a reader must never confuse. */
 .coldnote--held {
   color: var(--text-muted);
@@ -14903,3 +14869,436 @@ button.acol__val:hover {
   flex-direction: column;
   gap: 2px;
 }
+
+/* ── The arrival ───────────────────────────────────────────────────────────
+ *
+ * The page somebody meets Flint on. Every other page in the product is a working
+ * surface — a table you scroll, a diagram you drag, a form you fill — and this
+ * one is *read*. So it is set like something written rather than assembled: one
+ * measure, one sentence at the top, everything under it hanging off the same left
+ * edge.
+ *
+ * The direction is the subject's own. Flint is a stone that forms in layers and
+ * strikes sparks, and ClickHouse has never drawn anything but a column laid out
+ * by weight. So the findings are bands rather than cards — hairline-divided,
+ * heaviest at the top, each carrying its own weight as a mark in the gutter — and
+ * reading down the page is reading down a core sample. The product's one accent
+ * falls on exactly one thing here, and it is a measured figure.
+ */
+
+.page--arrival {
+  /* A measure, not a container. The findings need a line length somebody can read
+     a paragraph at, and the strip, the strata and the ways-on all hang off one
+     left edge — which is what makes the page read as a column of thought rather
+     than four panels that happen to be stacked. */
+  max-width: 92ch;
+}
+
+.arrival__head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  padding-bottom: var(--s5);
+}
+
+/* Where you are, in the smallest type on the page: the answer to a question
+ * nobody has asked yet, so it whispers. */
+.arrival__where {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+  margin: 0;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+/* A tick between the facts rather than a middle dot. Every eyebrow in the product
+ * uses the dot, and this is not an eyebrow — it is a strip of instrument
+ * readings, and instruments are divided by ticks. */
+.arrival__sep {
+  width: 1px;
+  height: 0.85em;
+  background: var(--line-strong);
+}
+
+/* The thesis. Large, tight, balanced, and set as a sentence — it ends in a full
+ * stop and it is allowed to.
+ *
+ * `clamp` rather than a breakpoint: the sentence runs from four words to nine
+ * depending on what was found, and one fixed size makes the short one look lost
+ * and the long one wrap four times. */
+.arrival__verdict {
+  max-width: 30ch;
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: clamp(2rem, 4.6vw, 3.5rem);
+  font-weight: 700;
+  line-height: 1.04;
+  letter-spacing: -0.035em;
+  text-wrap: balance;
+  color: var(--chalk);
+}
+
+/* The one figure in the sentence, in the face the token file reserves for data.
+ * A mono digit's optical size at display scale is smaller than the sans around
+ * it, so it is stepped up and pulled back into the line by its tracking — set
+ * naively it reads as a footnote that wandered into the headline. */
+.arrival__figure {
+  font-family: var(--font-data);
+  font-weight: 700;
+  font-size: 1.06em;
+  letter-spacing: -0.05em;
+  /* Ink, not the accent — and that was a real mistake worth recording. The
+     accent in this product means one thing: you can touch this. A figure in a
+     heading cannot be touched, so painting it green told the reader to click a
+     number, and it put a third accented thing on a page whose rule is one.
+     The browser check caught it by counting.
+     The emphasis was never the colour anyway: it is the face and the size. */
+  color: var(--chalk);
+}
+
+/* What the verdict stands on, and what it does not. Directly under the sentence
+ * and at a readable measure, because it qualifies it — a caption pushed to the
+ * far side of the page qualifies nothing. */
+.arrival__covered {
+  max-width: 74ch;
+  margin: 0;
+  font-size: var(--size-body);
+  line-height: 1.55;
+  color: var(--chalk-dim);
+}
+
+/* ── The measured line ──────────────────────────────────────────────────────
+ *
+ * Where a row of four large figures used to be. The figures were true and they
+ * were the template answer: four counts at one weight, none of them saying which
+ * part of the server is the *mass* of it. One strip says that without a word.
+ */
+.strip {
+  margin: 0 0 var(--s7);
+  padding: 0;
+}
+
+/* Segments divided by a gap of the page ground rather than by a border: a
+ * hairline between two fills of the same hue reads as a third thing. */
+.strip__bar {
+  display: flex;
+  gap: 2px;
+  height: 10px;
+  border-radius: var(--radius-pill);
+}
+
+.strip__band {
+  /* Basis zero so `flex-grow` alone carries the proportion. With a default basis
+     the smallest band is wider than its share and the largest narrower, and a
+     measurement that is wrong about its own smallest value is decoration. */
+  flex: 1 0 0;
+  min-width: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--bar);
+  /* A step quieter per band, so weight reads as ink as well as width. `--i`
+     comes from the markup because only the page knows the order. */
+  opacity: calc(1 - var(--i) * 0.13);
+  transform-origin: left center;
+  animation: strip-in var(--motion-slow) var(--ease) backwards;
+  animation-delay: calc(var(--beat) * var(--i));
+}
+
+/* The folded tail. Not a colour of its own — it is the same quantity — but
+ * hollow, because it is the one band that is several things. */
+.strip__band--folded {
+  background: var(--bar-ghost);
+}
+
+@keyframes strip-in {
+  from {
+    transform: scaleX(0);
+    opacity: 0;
+  }
+}
+
+.strip__legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s2) var(--s4);
+  margin: var(--s3) 0 0;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+/* The total, in the data face and at the size of a fact: the only figure on the
+ * line that is not a share. */
+.strip__total {
+  font-family: var(--font-data);
+  font-size: var(--size-head);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--chalk);
+}
+
+.strip__on {
+  margin-right: calc(var(--s2) * -1);
+}
+
+.strip__key {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--s1);
+}
+
+/* The dot carries the band's ink so the legend and the bar are one reading. The
+ * opacity ramp is deliberately *not* applied here: a legend nobody can read by
+ * its fifth entry is a legend that stopped working. */
+.strip__dot {
+  align-self: center;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--bar);
+}
+.strip__dot--folded {
+  background: var(--bar-ghost);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+
+.strip__name {
+  font-family: var(--font-data);
+  color: var(--chalk-dim);
+  text-decoration: none;
+  transition: color var(--motion-fast) var(--ease);
+}
+.strip__name:hover {
+  color: var(--spark);
+}
+
+/* `--chalk-faint`, not `--chalk-ghost`. The ghost tier is 3.3:1 and its own
+ * comment says never to set it on a sentence; a share is a sentence's worth of
+ * meaning in three characters, and the contrast audit measured it at 3.13:1. */
+.strip__share {
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  color: var(--chalk-faint);
+}
+
+/* ── The findings, as strata ───────────────────────────────────────────────── */
+
+.arrival__found {
+  border-top: 1px solid var(--line-strong);
+}
+
+.arrival__bar {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  padding: var(--s3) 0;
+}
+
+.arrival__title {
+  margin: 0;
+  font-size: var(--size-head);
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--chalk);
+}
+
+/* A count of what is on the page, in the data face, beside the heading rather
+ * than inside it: the heading names the section and this measures it. */
+.arrival__count {
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.strata {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* One band. No card, no shadow, no radius: a hairline above and a mark in the
+ * gutter, which is what a stratum is. The hairline is `border-top` on every band
+ * rather than `border-bottom`, so the last band does not close the list — the
+ * section that follows does, and a rule under the final finding made the page
+ * look like it had ended twice. */
+.strata__row {
+  display: grid;
+  grid-template-columns: 3px 1fr auto;
+  gap: 0 var(--s4);
+  padding: var(--s4) 0;
+  border-top: 1px solid var(--line);
+  transition: background var(--motion-fast) var(--ease);
+  animation: rise var(--motion-slow) var(--ease) backwards;
+  animation-delay: calc(var(--beat) * var(--i, 0));
+}
+
+/* The whole band lifts, not a control inside it. There is nothing to press here
+ * — every finding links out — and a hover that touched only the link would make
+ * the other four fifths of the row look inert.
+ *
+ * To the surface colour, not the hover fill. On a page made of cards the hover
+ * fill is a step *off* a white card and reads clearly; on this one the band's
+ * ground is the page itself, and `--fill` against `--bg-page` is four points of
+ * lightness apart — a hover nobody can see. Lifting to the surface is the real
+ * gesture, and it is the same one every card in the product already makes. */
+.strata__row:hover {
+  background: var(--slab);
+}
+
+/* The gutter: this finding's weight against the heaviest on the page, in its own
+ * unit. It is why the list reads as a core sample rather than as a ranking
+ * somebody has to take on trust, and it is drawn from the same figure the row
+ * prints, so the two cannot disagree. */
+.strata__weight {
+  grid-row: 1 / -1;
+  align-self: stretch;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(
+    to top,
+    var(--bar) 0,
+    var(--bar) var(--weight),
+    var(--bar-ghost) var(--weight),
+    var(--bar-ghost) 100%
+  );
+}
+
+/* Something already going wrong takes the alarm edge instead of a share. It has
+ * no weight to draw — a failure is not a quantity — and the rule the checkup
+ * keeps is that urgency is an edge and never a wash. */
+.strata__row--now .strata__weight {
+  background: var(--alarm);
+}
+
+.strata__what {
+  min-width: 0;
+}
+
+.strata__claim {
+  margin: 0;
+  font-size: var(--size-body);
+  font-weight: 650;
+  line-height: 1.4;
+  color: var(--chalk);
+}
+
+.strata__why {
+  max-width: 74ch;
+  margin: var(--s1) 0 0;
+  font-size: var(--size-body);
+  line-height: 1.55;
+  color: var(--chalk-dim);
+}
+
+.strata__evidence {
+  max-width: 74ch;
+  margin: var(--s2) 0 0;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--chalk-faint);
+}
+
+.strata__act {
+  display: inline-block;
+  margin-top: var(--s2);
+  font-size: var(--size-label);
+}
+
+/* The gain, right-aligned in its own column, stacked over its unit. The unit is
+ * never dropped: "4.2 GB" and "4.2 s" are the two figures this page must not let
+ * a reader confuse. */
+.strata__worth {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.strata__figure {
+  display: block;
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--size-head);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--chalk);
+}
+
+/* Same correction as `.strip__share`, and here it mattered more: the unit is the
+ * half of the figure a reader must not miss — "4.2 GB" and "4.2 s" are the two
+ * this page exists to keep apart. */
+.strata__unit {
+  display: block;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+/* ── What this Flint keeps, and the ways on ───────────────────────────────── */
+
+.arrival__kept {
+  margin-top: var(--s7);
+  padding-top: var(--s5);
+  border-top: 1px solid var(--line-strong);
+}
+
+.arrival__ways {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s3);
+  margin-top: var(--s7);
+  padding-top: var(--s5);
+  border-top: 1px solid var(--line-strong);
+}
+
+@media (max-width: 720px) {
+  .strata__row {
+    grid-template-columns: 3px 1fr;
+  }
+  /* Under the claim rather than beside it: at this width the figure's own column
+     squeezes the sentence to four words a line. */
+  .strata__worth {
+    grid-column: 2;
+    margin-top: var(--s2);
+    text-align: left;
+  }
+  .strata__figure,
+  .strata__unit {
+    display: inline;
+  }
+  .strata__unit {
+    margin-left: var(--s1);
+  }
+}
+
+/* Three sections, one rhythm. The band, the findings and what is kept each open
+ * with a rule at the same weight and a heading at the same size — scoped here
+ * rather than by giving `Headlines` a variant, because the difference is only
+ * ever about this page's own spacing and a shared component should not learn
+ * about it. */
+.page--arrival .news {
+  margin-top: var(--s7);
+  padding-top: 0;
+  border-top: 1px solid var(--line-strong);
+}
+.page--arrival .news .section__bar {
+  padding: var(--s3) 0;
+}
+.page--arrival .news .section__title {
+  font-size: var(--size-head);
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+/* What is kept, quietly. Those five figures are the workspace board's own
+ * headline and they are right at that size on a page about the workspace; here
+ * they sit under a verdict and a core sample, and at hero weight a row reading
+ * `1 · 1 · 0 · 1 · 0` becomes the loudest thing in the lower half of the page
+ * while saying the least. So the line keeps its figures and gives up its
+ * loudness. */
+.arrival__kept .metrics__value {
+  font-size: var(--size-head);
+}
+

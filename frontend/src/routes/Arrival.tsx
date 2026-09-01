@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 
 import { api } from '../lib/api'
-import { inOrder, saysRead, verdict, type Reading } from '../lib/arrival'
+import { inOrder, saysRead, strata, verdict, type Reading, type Said } from '../lib/arrival'
 import {
   fromBackups,
   fromDetached,
@@ -19,9 +19,7 @@ import {
 import { bytes, count, exact, uptime } from '../lib/format'
 import { onDisk, weigh } from '../lib/weight'
 import { Headlines } from '../components/Headlines'
-import { MetricLine } from '../components/MetricLine'
 import { Dash } from '../components/Dash'
-import { FindingRow } from './Checkup'
 import { WhatIsKept } from './Home'
 
 /** The first screen: what Flint found on the server you just connected to.
@@ -156,18 +154,27 @@ export function ArrivalPage() {
      a page that folds it into "answered" quietly claims a verdict it never
      earned. */
   const readings: Reading[] = [
-    said('the disks', storage),
-    said('the detached parts', detached),
-    said('the backup log', backups),
-    said('the column types', heavy),
-    said('the query log', queries),
-    said('what each table is read for', traffic),
-    said('what nothing has read', cold),
-    said('who the server works for', spend),
-    said('the same data held twice', twins),
+    stateOf('the disks', storage),
+    stateOf('the detached parts', detached),
+    stateOf('the backup log', backups),
+    stateOf('the column types', heavy),
+    stateOf('the query log', queries),
+    stateOf('what each table is read for', traffic),
+    stateOf('what nothing has read', cold),
+    stateOf('who the server works for', spend),
+    stateOf('the same data held twice', twins),
   ]
 
   const ordered = inOrder(findings, SHOWN)
+  /* The scale the gutter marks are drawn against: the largest gain *in each
+     unit*, because a gigabyte and a second are not two points on one scale — the
+     rule `lib/checkup` exists to enforce. A mark is therefore "the heaviest
+     saving of its kind on this page", which is a claim a reader can check
+     against the figure printed beside it. */
+  const heaviest = ordered.reduce<Record<string, number>>((max, f) => {
+    if (f.gain.kind === 'none') return max
+    return { ...max, [f.gain.kind]: Math.max(max[f.gain.kind] ?? 0, f.gain.n) }
+  }, {})
   const hidden = findings.length - ordered.length
   const covered = saysRead(readings)
 
@@ -182,50 +189,123 @@ export function ArrivalPage() {
      database with the most in it, which is the one they almost certainly came
      for. Falls back to the first, and to nothing at all on a server whose
      databases are all ClickHouse's own. */
+  const { bands } = strata(mine.map((d) => ({ name: d.name, bytes: d.bytes })))
   const biggest = [...mine].sort(
     (a, b) => (onDisk({ total_bytes: b.bytes || null }) ?? 0) - (onDisk({ total_bytes: a.bytes || null }) ?? 0),
   )[0]
 
   return (
     <article className="page page--arrival">
-      <header className="page__head">
-        <p className="eyebrow">
+      <header className="arrival__head">
+        <p className="arrival__where">
           {server.data ? (
             <>
-              ClickHouse {server.data.version} · up {uptime(server.data.uptime_seconds)} · as{' '}
-              {server.data.current_user}
+              {/* Not the address: the chrome above already carries it, and a
+                  page that repeats its own chrome is a page with nothing of its
+                  own to say in that line. */}
+              ClickHouse {server.data.version}
+              <span className="arrival__sep" aria-hidden="true" />
+              up {uptime(server.data.uptime_seconds)}
+              <span className="arrival__sep" aria-hidden="true" />
+              as {server.data.current_user}
+              {/* The scale of the schema belongs here, with the other readings
+                  about this server, and not on the line under the strip: that
+                  line measures *disk*, and an object count riding on it is a
+                  second quantity borrowing a first one's scale. */}
+              {objects > 0 ? (
+                <>
+                  <span className="arrival__sep" aria-hidden="true" />
+                  {exact(objects)} objects
+                  <span className="arrival__sep" aria-hidden="true" />
+                  {count(rows)} rows
+                </>
+              ) : null}
             </>
           ) : (
-            'Connected'
+            'Connecting'
           )}
         </p>
-        <h1 className="page__title page__title--hero arrival__verdict">
-          {verdict(findings, readings)}
+        {/* A sentence, set as one. It is the most confident thing in the product
+            and it used to be typeset exactly like the name of a table — same
+            face, same weight, one page title among eighteen. The figure inside
+            it is set in the data face, which is the rule the token file states
+            and this is the first place it is kept inside prose. */}
+        <h1 className="arrival__verdict">
+          {verdict(findings, readings).map((said, i) => (
+            <Run key={i} said={said} />
+          ))}
         </h1>
-        {covered ? <p className="page__sub">{covered}</p> : null}
+        {covered ? <p className="arrival__covered">{covered}</p> : null}
       </header>
 
-      <MetricLine
-        metrics={[
-          { value: exact(mine.length), label: mine.length === 1 ? 'database' : 'databases' },
-          { value: exact(objects), label: 'objects' },
-          { value: count(rows), label: 'rows' },
-          /* Dropped rather than dashed where no reading could weigh anything —
-             the rule the object lists keep, and it matters most in a headline,
-             where a zero reads as a measurement. */
-          ...(disk.known ? [{ value: bytes(disk.bytes), label: 'on disk' }] : []),
-        ]}
-        lead
-      />
+      {/* The server's disk as one measured line, where a row of four large
+          figures used to be. The figures were true and they were the template
+          answer: four counts at one weight, none of them saying which part of
+          the server is the mass of it. One strip says that without a word, and
+          it is the only shape ClickHouse has ever drawn — a column, laid out by
+          weight.
+
+          Dropped entirely where nothing could be weighed, rather than drawn
+          empty: a strip of nothing reads as a server holding nothing. */}
+      {bands.length > 0 ? (
+        <figure className="strip">
+          <div
+            className="strip__bar"
+            role="img"
+            aria-label={`${bytes(disk.bytes)} on disk, ${bands
+              .map((b) => `${b.name} ${Math.round(b.share * 100)}%`)
+              .join(', ')}`}
+          >
+            {bands.map((band, i) => (
+              <span
+                key={band.name}
+                className={`strip__band${band.folded ? ' strip__band--folded' : ''}`}
+                style={
+                  {
+                    flexGrow: band.share,
+                    '--i': i,
+                  } as React.CSSProperties
+                }
+                title={`${band.name} — ${bytes(band.bytes)}`}
+              />
+            ))}
+          </div>
+          <figcaption className="strip__legend">
+            <span className="strip__total">{bytes(disk.bytes)}</span>
+            <span className="strip__on">on disk across</span>
+            {bands.map((band) => (
+              <span className="strip__key" key={band.name}>
+                <span
+                  className={`strip__dot${band.folded ? ' strip__dot--folded' : ''}`}
+                  aria-hidden="true"
+                />
+                {band.folded ? (
+                  band.name
+                ) : (
+                  <Link className="strip__name" to={`/db/${encodeURIComponent(band.name)}`}>
+                    {band.name}
+                  </Link>
+                )}
+                <span className="strip__share">{Math.round(band.share * 100)}%</span>
+              </span>
+            ))}
+          </figcaption>
+        </figure>
+      ) : null}
 
       {/* What is different today, which is a question nobody types and everybody
           has. Its own request, its own refusals, and it speaks even when the
           answer is "nothing moved". */}
       <Headlines space="data" lead />
 
-      <section className="section">
-        <div className="section__bar">
-          <h2 className="section__title section__title--bare">What Flint found</h2>
+      <section className="section arrival__found">
+        <div className="arrival__bar">
+          <h2 className="arrival__title">What Flint found</h2>
+          <span className="arrival__count">
+            {ordered.length > 0
+              ? `${ordered.length}${hidden > 0 ? ` of ${findings.length}` : ''}`
+              : null}
+          </span>
           <span className="panel__spacer" />
           <Link className="link" to="/checkup">
             The full checkup →
@@ -246,16 +326,16 @@ export function ArrivalPage() {
           </p>
         ) : (
           <>
-            <ul className="checkup__list">
-              {ordered.map((f) => (
-                <FindingRow key={f.id} finding={f} />
+            <ul className="strata">
+              {ordered.map((f, i) => (
+                <Stratum key={f.id} finding={f} heaviest={heaviest} index={i} />
               ))}
             </ul>
             {/* The count follows the list, and names where the rest are. A
                 header that counted them would be a header nobody can
                 reconcile against what is under it. */}
             {hidden > 0 ? (
-              <p className="says">
+              <p className="says says--wide">
                 {exact(hidden)} more on <Link className="link" to="/checkup">the checkup</Link>.
               </p>
             ) : null}
@@ -268,9 +348,9 @@ export function ArrivalPage() {
           Flint there is, and this section is the only one that needs somewhere
           to write. A stateless deployment says so here rather than losing a
           page it never had. */}
-      <section className="section">
-        <div className="section__bar">
-          <h2 className="section__title section__title--bare">What this Flint keeps</h2>
+      <section className="section arrival__kept">
+        <div className="arrival__bar">
+          <h2 className="arrival__title">What this Flint keeps</h2>
         </div>
         <WhatIsKept />
       </section>
@@ -307,13 +387,90 @@ export function ArrivalPage() {
   )
 }
 
+/** One finding, as a band.
+ *
+ *  It does not borrow `/checkup`'s row any more, and that is a real loss worth
+ *  naming: the two pages can now drift on what a finding looks like. It is worth
+ *  it because they are not the same reading. `/checkup` is a worklist, grouped by
+ *  area, read top to bottom by somebody who came to work through it; this is a
+ *  *ranking*, mixed across areas by weight, read by somebody who arrived ten
+ *  seconds ago. The gutter mark is the difference — there is no scale on a
+ *  worklist, because every row in an area is the same kind of thing.
+ *
+ *  What is shared is the part that would actually hurt to duplicate: `Finding`
+ *  itself, and every judge that produces one. A field added there appears here
+ *  and on the checkup or in neither.
+ */
+function Stratum({
+  finding,
+  heaviest,
+  index,
+}: {
+  finding: Finding
+  heaviest: Record<string, number>
+  index: number
+}) {
+  const gain = finding.gain
+  /* A share of the heaviest of its own kind, floored so the smallest finding on
+     the page still has a mark: a gutter that renders as nothing says the row
+     below is worth nothing, which is not what "smallest here" means. */
+  const weight =
+    gain.kind === 'none' ? 0 : Math.max(0.08, gain.n / Math.max(1, heaviest[gain.kind] ?? gain.n))
+  return (
+    <li
+      className={`strata__row strata__row--${finding.urgency}`}
+      style={{ '--i': index, '--weight': `${Math.round(weight * 100)}%` } as React.CSSProperties}
+    >
+      <span className="strata__weight" aria-hidden="true" />
+      <div className="strata__what">
+        <p className="strata__claim">{finding.title}</p>
+        <p className="strata__why">{finding.why}</p>
+        <p className="strata__evidence">{finding.evidence}</p>
+        {finding.act ? (
+          <Link className="link strata__act" to={finding.act.to}>
+            {finding.act.label} →
+          </Link>
+        ) : null}
+      </div>
+      {/* The unit is part of the figure and never dropped — see the stylesheet.
+          A finding with no quantity prints nothing rather than a zero: printing
+          `0` beside a backup that was never taken would say acting on it is
+          worth nothing. */}
+      {gain.kind === 'none' ? null : (
+        <p className="strata__worth">
+          <span className="strata__figure">
+            {gain.kind === 'bytes'
+              ? bytes(gain.n)
+              : gain.kind === 'seconds'
+                ? `${gain.n < 1 ? gain.n.toFixed(2) : Math.round(gain.n)} s`
+                : count(gain.n)}
+          </span>
+          <span className="strata__unit">
+            {gain.kind === 'bytes' ? 'on disk' : gain.kind === 'seconds' ? 'of query time' : 'rows'}
+          </span>
+        </p>
+      )}
+    </li>
+  )
+}
+
+/** One run of the verdict sentence, in the face it belongs to.
+ *
+ *  The whole component, and it is worth being one: the alternative is a ternary
+ *  inside the heading, and this is the rule the token file states — the data face
+ *  for characters that *are* the content, the interface face for everything that
+ *  labels it. */
+function Run({ said }: { said: Said }) {
+  return said.figure ? <b className="arrival__figure">{said.text}</b> : <>{said.text}</>
+}
+
 /** One react-query result, in the three words `lib/arrival` reasons about.
  *
  *  The `available: false` case is the one that matters and the one a
  *  `useQuery` cannot express: the request *succeeded*, and its answer is that
  *  ClickHouse would not say. Folding that into "read" would let the verdict
  *  speak for a reading that never happened. */
-function said(
+function stateOf(
   label: string,
   q: { data?: unknown; error?: unknown; isPending: boolean },
 ): Reading {
