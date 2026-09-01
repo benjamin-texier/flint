@@ -273,7 +273,7 @@ describe('volume', () => {
         available: true,
         reason: null,
         prior_windows_covered: 5,
-        tables: [volume({ qualified: 'parking.v2', rows_now: 300_000, bytes_now: 2_365_778 })],
+        tables: [volume({ qualified: 'analytics.sessions_v2', rows_now: 300_000, bytes_now: 2_365_778 })],
       },
     })
     const h = (volumeHeadlines(r))[0]!
