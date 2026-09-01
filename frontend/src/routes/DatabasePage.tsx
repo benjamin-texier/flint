@@ -19,6 +19,12 @@ import { isWindow, type Window as AffinityWindow } from '../lib/affinity'
 import { internalName } from '../lib/explain'
 import { bytes, count, exact, times } from '../lib/format'
 import { compression, onDisk, weigh } from '../lib/weight'
+import {
+  notable as notableTwins,
+  saysCost as saysTwinCost,
+  saysReport as saysTwinReport,
+  saysSet,
+} from '../lib/twins'
 import { MetricLine } from '../components/MetricLine'
 import { AffinityMatrix } from '../components/AffinityMatrix'
 import { MassMap } from '../components/MassMap'
@@ -436,6 +442,16 @@ export function DatabasePage({ database }: { database: string }) {
         )}
       </section>
 
+      {/* The same data, held twice, above the list rather than inside it. Above
+          because it is a fact about a *pair* of rows and there is no column a
+          pair fits in — and because it is the kind of thing nobody scrolls a
+          seventy-row table looking for.
+
+          No floor here, unlike the boards: on the database's own page this is
+          the answer rather than one finding among thirty, so a 40 MiB pair is
+          worth its line. */}
+      <Twins database={database} />
+
       {/* Selecting an object in the diagram swaps the inventory for its rows:
           the next question after "what is this joined to" is nearly always
           "and what is in it". Only under the diagram — the other readings have
@@ -754,6 +770,62 @@ function sortValue(t: TableSummary, key: SortKey): string | number {
  *  rather than as "this kind of object has no size". */
 function stores(kind: TableSummary['kind']): boolean {
   return kind !== 'view' && kind !== 'materialized_view'
+}
+
+/** Tables in this database that look like copies of each other.
+ *
+ *  It states the evidence and stops — see `lib/twins`. The two most convincing
+ *  sets on ClickHouse's own demo server are deliberate second *layouts* of one
+ *  dataset, and from the outside that is indistinguishable from the copy a
+ *  migration left behind. Which of them this is, is a fact about somebody's
+ *  intentions, and the reader has it.
+ *
+ *  Silent where there is nothing and where it was refused: a database with no
+ *  duplicates should not carry a panel saying so, and the boards say what could
+ *  not be read. Its own request, `retry: false`, because the commonest failure
+ *  here is a missing grant on `system.columns` and retrying a refusal three
+ *  times is three refusals.
+ */
+function Twins({ database }: { database: string }) {
+  const twins = useQuery({
+    queryKey: ['twins', database],
+    queryFn: () => api.twins({ database }),
+    retry: false,
+    staleTime: 120_000,
+  })
+  const sets = twins.data ? notableTwins(twins.data, 0) : []
+  if (sets.length === 0) return null
+  return (
+    <section className="section">
+      <div className="section__bar">
+        <h2 className="section__title section__title--bare">The same data, twice</h2>
+        <span className="label">{saysTwinReport(twins.data!, bytes)}</span>
+      </div>
+      <ul className="twins">
+        {sets.map((set) => (
+          <li className="twins__row" key={set.tables.map((t) => t.table).join('+')}>
+            <p className="twins__what">{saysSet(set)}</p>
+            <p className="says says--wide">{saysTwinCost(set, bytes)}</p>
+            <ul className="twins__list">
+              {set.tables.map((t) => (
+                <li key={t.table}>
+                  <Link
+                    className="link mono"
+                    to={`/db/${encodeURIComponent(database)}/${encodeURIComponent(t.table)}`}
+                  >
+                    {t.table}
+                  </Link>
+                  <span className="says">
+                    {bytes(t.bytes)} · {count(t.rows)} rows · last changed {t.modified.slice(0, 10)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
 }
 
 function ObjectTable({

@@ -37,6 +37,12 @@ import type { Heavy } from './api'
 import { saysCost, saysTable, trustworthy, type ColdReport } from './cold'
 import { bytes } from './format'
 import { nameOf, notable, saysCaveat, saysSpender, type SpendReport } from './spend'
+import {
+  notable as notableTwins,
+  saysCost as saysTwinCost,
+  saysSet,
+  type TwinReport,
+} from './twins'
 import type { BackupReport } from './backups'
 import type { QueryReport, StorageReport, TrafficReport } from './diagnose'
 import { partitionVerdict } from './diagnose'
@@ -443,6 +449,34 @@ export function fromSpend(report: SpendReport): Finding[] {
     gain: { kind: 'seconds' as const, n: s.seconds },
     object: s.busiest_table || undefined,
     act: { to: '/diagnose', label: 'What the statements cost' },
+  }))
+}
+
+/** The same data, held twice.
+ *
+ *  The one finding on this page that needs no query log at all — `system.columns`
+ *  and `system.tables` are enough — which makes it the only substantial thing
+ *  Flint can say about a server whose log it may not read.
+ *
+ *  It states the evidence and stops. See `lib/twins`: the two most convincing
+ *  sets on ClickHouse's own demo server are both deliberate second *layouts* of
+ *  one dataset, and from the outside that is indistinguishable from the copy a
+ *  migration left behind. A finding that guessed would eventually tell somebody
+ *  to drop the wrong table.
+ */
+export function fromTwins(report: TwinReport): Finding[] {
+  return notableTwins(report).map((set) => ({
+    id: `schema:twins:${set.database}:${set.tables.map((t) => t.table).join('+')}`,
+    area: 'schema' as const,
+    urgency: 'worth' as const,
+    title: `${set.database} holds ${set.tables.length} tables with the same ${set.columns} columns and the same rows`,
+    why: saysSet(set),
+    evidence: saysTwinCost(set, bytes),
+    /* The conservative figure, not the total: one of these is the data. The
+       field's own comment in `clickhouse::twins` carries the argument. */
+    gain: { kind: 'bytes' as const, n: set.redundant_bytes },
+    object: `${set.database}.${set.tables[0]?.table ?? ''}`,
+    act: { to: `/db/${encodeURIComponent(set.database)}`, label: 'The database' },
   }))
 }
 

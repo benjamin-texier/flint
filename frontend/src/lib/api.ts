@@ -900,6 +900,15 @@ export const api = {
   diagnoseStorage: () => request<import('./diagnose').StorageReport>('/diagnostics/storage'),
   /** Who the server has been working for. The other half of `diagnoseQueries`:
    *  that ranks statement shapes, this ranks the accounts behind them. */
+  /** Tables that look like copies of each other. Needs no query log, which is
+   *  why it answers on a server where the workload readings do not. */
+  twins: (opts: { database?: string; limit?: number } = {}) =>
+    request<import('./twins').TwinReport>(
+      `/diagnostics/twins?${new URLSearchParams({
+        ...(opts.database ? { database: opts.database } : {}),
+        ...(opts.limit === undefined ? {} : { limit: String(opts.limit) }),
+      })}`,
+    ),
   spend: (days = 7, limit = 20) =>
     request<import('./spend').SpendReport>(`/diagnostics/spend?days=${days}&limit=${limit}`),
   /** What this server pays for and nothing reads. `database` narrows it to one;
