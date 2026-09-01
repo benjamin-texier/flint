@@ -296,7 +296,13 @@ function AreaSection({
   )
 }
 
-function FindingRow({ finding }: { finding: Finding }) {
+/** One finding, drawn the way this page draws it.
+ *
+ *  Exported because the arrival board shows the same findings, and two
+ *  renderings of one `Finding` would drift — the day somebody adds a field
+ *  here, the home stops showing it and nobody notices, because both pages still
+ *  look finished. */
+export function FindingRow({ finding }: { finding: Finding }) {
   return (
     <li className={`checkup__row checkup__row--${finding.urgency}`}>
       <div className="checkup__head">

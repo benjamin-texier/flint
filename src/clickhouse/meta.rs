@@ -134,6 +134,12 @@ pub async fn databases(ch: &Client) -> Result<Vec<DatabaseSummary>> {
     // surgery on SQL that happens to miss its target silently produces the
     // original again.
     let build = |sizes: bool| {
+        /* Without `system.parts`, `system.tables` — not zero. The two agree to
+        the byte for a MergeTree (`total_bytes` *is* `sum(bytes_on_disk)` over
+        the active parts) and the second comes back for anybody who can see
+        the table at all, which is why an ordinary read-only role used to be
+        told its seven-terabyte server held nothing. See `lib/weight`, which
+        makes the same argument for one table. */
         let (bytes, rows, join) = if sizes {
             (
                 "coalesce(p.bytes, 0)",
@@ -144,7 +150,7 @@ pub async fn databases(ch: &Client) -> Result<Vec<DatabaseSummary>> {
                  ) AS p ON p.database = d.name",
             )
         } else {
-            ("0", "0", "")
+            ("coalesce(c.bytes, 0)", "coalesce(c.rows, 0)", "")
         };
         format!(
             "SELECT d.name                            AS name, \
@@ -163,7 +169,13 @@ pub async fn databases(ch: &Client) -> Result<Vec<DatabaseSummary>> {
                         countIf(engine NOT LIKE '%View' AND engine != 'Dictionary') AS tables, \
                         countIf(engine LIKE '%View' AND engine != 'MaterializedView') AS views, \
                         countIf(engine = 'MaterializedView') AS materialized_views, \
-                        countIf(engine = 'Dictionary') AS dictionaries \
+                        countIf(engine = 'Dictionary') AS dictionaries, \
+                        /* Nullable for a view and for an engine that keeps \
+                           nothing, and `sum` skips those rather than \
+                           poisoning the total. Only read where the parts \
+                           could not be. */ \
+                        sum(total_bytes) AS bytes, \
+                        sum(total_rows)  AS rows \
                  FROM system.tables \
                  /* Count an INFORMATION_SCHEMA view once, not once per case \
                     alias, so this agrees with the object list. */ \

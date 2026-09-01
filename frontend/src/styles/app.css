@@ -5043,6 +5043,21 @@ tr:hover .stratum__fill {
   color: var(--text-muted);
 }
 
+/* A finding's reasoning is prose, not a caption, and `.says` caps a caption at
+ * 34ch — which is right under a button and wrong inside a card the width of the
+ * page. It read as a broken layout: a 1,350px panel with its text wrapping at
+ * 280px, four lines where one would do. 68ch is a comfortable measure and stops
+ * short of the wall-to-wall line nobody's eye can track back from.
+ *
+ * On the checkup as well as the arrival, deliberately: it was wrong there too,
+ * and only looked less wrong because that page is narrower. */
+/* Two classes, not one, and that is the point rather than an accident: `.says`
+ * is defined further down this file, so a single-class rule here loses to it on
+ * source order and the cap stayed at 34ch. */
+.checkup__row .says {
+  max-width: 68ch;
+}
+
 .checkup__why {
   color: var(--text-secondary);
 }
@@ -14766,4 +14781,47 @@ button.acol__val:hover {
   font-size: var(--size-label);
   line-height: 1.45;
   color: var(--text-muted);
+}
+
+/* ── What Flint found, on arrival ──────────────────────────────────────────
+ *
+ * The verdict is the largest thing on the page and the only one set at the hero
+ * size: it is a *sentence*, not a label, and it is the one thing somebody who
+ * connected ten seconds ago should be able to read from across a desk.
+ */
+.arrival__verdict {
+  max-width: 34ch;
+  text-wrap: balance;
+}
+
+/* Two columns of findings past the width where one would leave half the page
+ * empty. Not a grid of equal cells — the rows are different heights, and a grid
+ * would pad every one of them to the tallest in its band. Columns let each row
+ * take the space it needs.
+ *
+ * The cost is that the order reads down and then across, which is the order
+ * `lib/arrival` deals them in anyway: failures first, then one from each area in
+ * turn, so the top of *both* columns is the strongest thing in it.
+ */
+@media (min-width: 1100px) {
+  .page--arrival .checkup__list {
+    display: block;
+    columns: 2;
+    column-gap: var(--s3);
+  }
+  .page--arrival .checkup__row {
+    /* A card that breaks across the column boundary is a card with its evidence
+     * in a different column from its title. */
+    break-inside: avoid;
+    margin-bottom: var(--s2);
+  }
+}
+
+/* The ways on. A row, and the caption sits with them rather than under: it is
+ * about the button beside it. */
+.arrival__ways {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s3);
 }

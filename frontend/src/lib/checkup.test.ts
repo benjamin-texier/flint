@@ -208,16 +208,35 @@ describe('fromTraffic', () => {
 })
 
 describe('fromBackups', () => {
-  it('says a Flint with no destination cannot back up at all', () => {
+  it('says nothing at all when the log could not be read', () => {
+    /* `available: false` here means only that Flint could not read
+       `system.backups`. It used to produce "This Flint cannot take a backup"
+       with the missing grant printed as the reason — a claim about the server
+       built out of a fact about the reader, and one nothing can be done with:
+       the answer to "you may not look" is a GRANT, not a backup policy. */
     const out = fromBackups({
       available: false,
-      reason: 'no disk named',
+      reason: 'this user is not granted SELECT on system.backups',
       persistent: false,
       object_storage: false,
       runs: [],
       disk: '',
     })
-    expect(out[0]!.id).toBe('risk:backups:nowhere')
+    expect(out).toEqual([])
+  })
+
+  it('still says a Flint with no destination has never backed anything up', () => {
+    // The case the removed finding was written for, reported by the branch that
+    // can actually tell: the log reads fine, and it is empty.
+    const out = fromBackups({
+      available: true,
+      persistent: true,
+      object_storage: false,
+      runs: [],
+      disk: '',
+    })
+    expect(out[0]!.id).toBe('risk:backups:none')
+    expect(out[0]!.evidence).toContain('none named')
   })
 
   it('hedges an empty list where the log does not survive a restart', () => {
