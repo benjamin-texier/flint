@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { api, FlintError, type AppConfig } from '../lib/api'
+import { DEMO, isDemo } from '../lib/demo'
 import { parseDsn, worthSplitting } from '../lib/dsn'
 import {
   capabilities,
@@ -65,8 +66,17 @@ export function SignIn({ config }: { config: AppConfig | undefined }) {
   const unpinned = config ? !config.pinned : false
   const ready = user.trim() !== '' && (!unpinned || endpoint.trim() !== '')
 
+  /* The credentials to send, where they are not the ones on the form. Only the
+     demo uses it, and it exists because React state is not readable in the
+     handler that just set it: filling three fields and submitting them in one
+     press would otherwise submit the three that were there before. */
   const signIn = useMutation({
-    mutationFn: () => api.login(user, password, unpinned ? endpoint : undefined),
+    mutationFn: (as?: { user: string; password: string; endpoint: string }) =>
+      api.login(
+        as?.user ?? user,
+        as?.password ?? password,
+        unpinned ? (as?.endpoint ?? endpoint) : undefined,
+      ),
     onSuccess: () => {
       /* Everything cached was fetched as nobody, or as somebody else, and the
          answers are grant-filtered — so the cache is not merely stale, it is
@@ -126,7 +136,22 @@ export function SignIn({ config }: { config: AppConfig | undefined }) {
     /* An empty endpoint is refused by the server with the right words, but a
        form that posts a request it knows will fail spends a round trip to say
        what it could have said itself. */
-    if (ready && !signIn.isPending) signIn.mutate()
+    if (ready && !signIn.isPending) signIn.mutate(undefined)
+  }
+
+  /** Take the offer: fill the form with the demo's details and send them.
+   *
+   *  The fields are filled *as well as* submitted, and not only for the look of
+   *  it. If that server is down, or `FLINT_TARGETS` refuses it, what is left on
+   *  screen is a form somebody can read, edit and retry — rather than an error
+   *  about an address that is nowhere to be seen. */
+  const openDemo = () => {
+    if (signIn.isPending) return
+    setEndpoint(DEMO.endpoint)
+    setUser(DEMO.user)
+    setPassword(DEMO.password)
+    setSplit(null)
+    signIn.mutate({ user: DEMO.user, password: DEMO.password, endpoint: DEMO.endpoint })
   }
 
   /* ⌘↵ from anywhere on the page, which is the point of advertising it: Enter
@@ -200,6 +225,17 @@ export function SignIn({ config }: { config: AppConfig | undefined }) {
             )}
           </p>
 
+          {/* The offer, and only where there is nothing to connect to. It fills
+              the three fields and submits them, so one press is one working
+              Flint — the alternative, filling them and waiting, is a form that
+              did the typing and then asked you to admire it.
+
+              Above the endpoint field rather than below the button, because it
+              is an answer to the question that field asks. Somebody who has a
+              server reads one line and carries on; somebody who has not would
+              otherwise have closed the tab. */}
+          {unpinned ? <Demo onTake={openDemo} pending={signIn.isPending} /> : null}
+
           {/* Each field is a `div` with an explicit `htmlFor`, not a wrapping
               `label`. The password field holds a button, and a button inside a
               label is a control whose click the label also claims. */}
@@ -268,6 +304,15 @@ export function SignIn({ config }: { config: AppConfig | undefined }) {
               {split ? (
                 <span className="signin__hint" id="signin-endpoint-hint" role="status">
                   Read as a connection string: {split}.
+                </span>
+              ) : isDemo(endpoint) ? (
+                /* Instead of the general advice, not under it. Somebody looking
+                   at this address did not type it and has no use for a note
+                   about which port ClickHouse's HTTP interface is on; what they
+                   need is the one thing that will otherwise look like a bug in
+                   Flint five clicks from here. */
+                <span className="signin__hint" id="signin-endpoint-hint" role="status">
+                  {DEMO.withholds}
                 </span>
               ) : (
                 /* The port, because 8123 and 9000 are one digit apart in the
@@ -384,6 +429,32 @@ export function SignIn({ config }: { config: AppConfig | undefined }) {
 
         <Panel probe={probe} stale={stale} ready={ready} been={been} onCheck={run} />
       </div>
+    </div>
+  )
+}
+
+/** A way in for somebody with no ClickHouse to point Flint at.
+ *
+ *  One press, one working Flint on seven terabytes of real data — and the
+ *  sentence underneath is not marketing, it is the part that keeps the offer
+ *  honest. See `lib/demo`: that account is granted the schema and the data and
+ *  nothing else, so half of Flint reports "not granted" there, and a first
+ *  minute spent wondering whether the product is broken is worse than no offer
+ *  at all.
+ *
+ *  A `button`, and `type="button"` explicitly: it sits inside the form, and a
+ *  button in a form submits it by default — which would post the empty fields
+ *  it is about to fill. */
+function Demo({ onTake, pending }: { onTake: () => void; pending: boolean }) {
+  return (
+    <div className="signin__demo">
+      <p className="signin__demoline">
+        No server to hand?{' '}
+        <button type="button" className="signin__demogo" onClick={onTake} disabled={pending}>
+          Open {DEMO.name}
+        </button>
+      </p>
+      <p className="signin__demoholds">{DEMO.holds}</p>
     </div>
   )
 }

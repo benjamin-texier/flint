@@ -14711,3 +14711,59 @@ button.acol__val:hover {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
+
+/* ── A way in for somebody with no server ──────────────────────────────────
+ *
+ * Set apart from the fields under it with a rule rather than a box: it is an
+ * alternative to filling the form in, not a field of it, and a panel here would
+ * compete with the one on the right that actually reports something.
+ */
+.signin__demo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--s3) 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.signin__demoline {
+  margin: 0;
+  font-size: var(--size-body);
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+/* A button that reads as a link, because that is what it does: it goes
+ * somewhere. Underlined rather than coloured alone — colour is the only signal
+ * a link has here, and one signal is not enough for a reader who cannot see it.
+ */
+.signin__demogo {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  transition: color var(--motion-fast) var(--ease);
+}
+.signin__demogo:hover:not(:disabled) {
+  color: var(--accent-strong);
+}
+.signin__demogo:disabled {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+/* What is on it. Figures rather than adjectives, so it is smaller than the
+ * offer above it and still the reason anybody takes it. */
+.signin__demoholds {
+  margin: 0;
+  max-width: 52ch;
+  font-size: var(--size-label);
+  line-height: 1.45;
+  color: var(--text-muted);
+}
