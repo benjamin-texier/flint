@@ -85,6 +85,26 @@ export function inOrder(findings: Finding[], cap = 8): Finding[] {
   return [...now, ...dealt]
 }
 
+/** One run of the verdict sentence.
+ *
+ *  Prose and figures kept apart, because they are set in different faces. The
+ *  token file states the rule and this is the first place it is followed inside a
+ *  *sentence*: Plus Jakarta Sans speaks for the interface, JetBrains Mono speaks
+ *  for the data — "everywhere the characters themselves are the content rather
+ *  than a label for it". A count in a verdict is content. Setting it in the body
+ *  face makes the most confident sentence in the product look like a heading. */
+export interface Said {
+  text: string
+  /** Set in the data face. Only ever a measured figure. */
+  figure?: true
+}
+
+/** The same sentence as one string — for a `title`, and for a test that is about
+ *  the wording rather than the setting. */
+export function plain(said: Said[]): string {
+  return said.map((s) => s.text).join('')
+}
+
 /** The one sentence at the top: what this server's own state amounts to.
  *
  *  It is a *verdict*, not a count, and it speaks even when the answer is good —
@@ -96,18 +116,28 @@ export function inOrder(findings: Finding[], cap = 8): Finding[] {
  *  verdict that changes from "nothing wrong" to "three things are failing" four
  *  seconds after it is read is worse than one that waited.
  */
-export function verdict(findings: Finding[], readings: Reading[]): string {
+export function verdict(findings: Finding[], readings: Reading[]): Said[] {
   const pending = readings.filter((r) => r.state === 'reading').length
   const now = findings.filter((f) => f.urgency === 'now').length
   const worth = findings.length - now
 
+  /* "One" stays prose. It is a word here, not a measurement — nobody reads
+     `1 thing` as a figure they might act on, and setting it in the data face
+     would make the calmest verdict the loudest-looking one. */
   if (now > 0) {
-    return `${now === 1 ? 'One thing on this server is' : `${now} things on this server are`} going wrong now.`
+    return now === 1
+      ? [{ text: 'One thing on this server is going wrong now.' }]
+      : [
+          { text: String(now), figure: true },
+          { text: ' things on this server are going wrong now.' },
+        ]
   }
   if (worth > 0) {
-    return `${worth === 1 ? 'One thing is' : `${worth} things are`} worth changing here.`
+    return worth === 1
+      ? [{ text: 'One thing here is worth changing.' }]
+      : [{ text: String(worth), figure: true }, { text: ' things here are worth changing.' }]
   }
-  if (pending > 0) return 'Reading this server.'
+  if (pending > 0) return [{ text: 'Reading this server.' }]
 
   /* Nothing found — but "nothing is wrong" is only as wide as the readings
      behind it, and on a locked-down account most of them never happened. Found
@@ -121,9 +151,61 @@ export function verdict(findings: Finding[], readings: Reading[]): string {
      gaps in. */
   const refused = readings.filter((r) => r.state === 'refused').length
   if (refused > readings.length / 2) {
-    return 'Flint could not read enough of this server to say.'
+    return [{ text: 'Flint could not read enough of this server to say.' }]
   }
-  return 'Nothing on this server is asking to be changed.'
+  return [{ text: 'Nothing on this server is asking to be changed.' }]
+}
+
+/** The server's disk, as one measured line.
+ *
+ *  This is what stands where a row of four big figures used to. The figures were
+ *  true and they were the template answer — a count of databases, a count of
+ *  objects, a count of rows, a total on disk, in the same weight, none of them
+ *  saying which part of the server is the *mass* of it.
+ *
+ *  One strip does say it, and it is the subject's own shape: a column, laid out
+ *  by weight, which is the only thing ClickHouse has ever drawn. On most servers
+ *  it makes one point immediately and without a word — that one database is
+ *  nine tenths of the machine — and that point is the beginning of every
+ *  conversation about a disk.
+ *
+ *  Past `cap` the tail folds into one segment that counts itself, because a strip
+ *  of forty two-pixel slivers is a texture rather than a measurement. Segments
+ *  keep their order by weight, so the fold is always the right-hand end.
+ */
+export interface Stratum {
+  name: string
+  bytes: number
+  share: number
+  /** True for the folded tail. It has a count in its name and no page to open. */
+  folded?: true
+}
+
+export function strata(
+  items: { name: string; bytes: number }[],
+  cap = 6,
+): { bands: Stratum[]; total: number } {
+  const weighed = items.filter((i) => i.bytes > 0).sort((a, b) => b.bytes - a.bytes)
+  const total = weighed.reduce((sum, i) => sum + i.bytes, 0)
+  if (total === 0) return { bands: [], total: 0 }
+
+  const head = weighed.slice(0, cap)
+  const tail = weighed.slice(cap)
+  const bands: Stratum[] = head.map((i) => ({
+    name: i.name,
+    bytes: i.bytes,
+    share: i.bytes / total,
+  }))
+  if (tail.length > 0) {
+    const bytes = tail.reduce((sum, i) => sum + i.bytes, 0)
+    bands.push({
+      name: `${tail.length} more`,
+      bytes,
+      share: bytes / total,
+      folded: true,
+    })
+  }
+  return { bands, total }
 }
 
 /** What was read to reach that verdict, and what would not be read.
@@ -151,7 +233,7 @@ export function saysRead(readings: Reading[]): string | null {
   }
   if (refused.length > 0) {
     parts.push(
-      `${cap(list(refused.map((r) => r.label)))} ${refused.length === 1 ? 'is' : 'are'} not readable as this account, so nothing here speaks for ${refused.length === 1 ? 'it' : 'them'}.`,
+      `${capitalise(list(refused.map((r) => r.label)))} ${refused.length === 1 ? 'is' : 'are'} not readable as this account, so nothing here speaks for ${refused.length === 1 ? 'it' : 'them'}.`,
     )
   }
   return parts.length ? parts.join(' ') : null
@@ -165,6 +247,6 @@ function list(items: string[]): string {
   return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1] ?? ''}`
 }
 
-function cap(s: string): string {
+function capitalise(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1)
 }
