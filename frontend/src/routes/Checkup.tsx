@@ -34,6 +34,7 @@ import {
   type Finding,
   type Gain,
 } from '../lib/checkup'
+import { ClearedList } from '../components/ClearedList'
 import { ErrorNote } from '../components/Note'
 
 /** One page that answers "what do I have to do".
@@ -369,24 +370,7 @@ function AreaSection({
         </ul>
       ) : null}
 
-      {cleared.length > 0 ? (
-        <>
-          {/* The count leads, and it counts the list below it. */}
-          <p className="cleared__head label">
-            {cleared.length} {cleared.length === 1 ? 'check' : 'checks'}
-            {findings.length > 0 ? ' also came back clear' : ' came back clear'}
-          </p>
-          <ul className="cleared">
-            {cleared.map((c) => (
-              <li className="cleared__row" key={c.id}>
-                <span className="cleared__mark" aria-hidden="true" />
-                <span className="cleared__label">{c.label}</span>
-                <span className="cleared__reading">{c.reading}</span>
-              </li>
-            ))}
-          </ul>
-        </>
-      ) : null}
+      <ClearedList cleared={cleared} also={findings.length > 0} />
 
       {/* Neither a finding nor a clearance, and not waiting either: every
           reading this area is made of came back unreadable. Said rather than

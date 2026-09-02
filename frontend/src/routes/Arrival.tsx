@@ -15,6 +15,14 @@ import {
   type Said,
 } from '../lib/arrival'
 import {
+  clearBackups,
+  clearCold,
+  clearDetached,
+  clearQueries,
+  clearSpend,
+  clearStorage,
+  clearTraffic,
+  clearTwins,
   fromBackups,
   fromDetached,
   fromHeavy,
@@ -24,11 +32,13 @@ import {
   fromStorage,
   fromTraffic,
   fromTwins,
+  type Cleared,
   type Finding,
 } from '../lib/checkup'
 import { bytes, count, exact, uptime } from '../lib/format'
 import { onDisk, weigh } from '../lib/weight'
 import { Headlines } from '../components/Headlines'
+import { ClearedList } from '../components/ClearedList'
 import { Dash } from '../components/Dash'
 import { WhatIsKept } from './Home'
 
@@ -183,6 +193,34 @@ export function ArrivalPage() {
     stateOf('who the server works for', spend),
     stateOf('the same data held twice', twins),
   ]
+
+  /* What came back clear, from the same readings the findings come from — the
+     `clear*` twins `/checkup` uses, so the two pages cannot disagree about what
+     passed. Shown here for the reason it is shown there: three of the four areas
+     have nothing to report on a healthy server, and a page whose answer to that
+     is one negative sentence has hidden all of its work. */
+  const cleared: Cleared[] = useMemo(
+    () => [
+      ...(storage.data ? clearStorage(storage.data) : []),
+      ...(detached.data ? clearDetached(detached.data) : []),
+      ...(backups.data ? clearBackups(backups.data) : []),
+      ...(twins.data ? clearTwins(twins.data) : []),
+      ...(queries.data ? clearQueries(queries.data) : []),
+      ...(traffic.data ? clearTraffic(traffic.data) : []),
+      ...(cold.data ? clearCold(cold.data) : []),
+      ...(spend.data ? clearSpend(spend.data) : []),
+    ],
+    [
+      storage.data,
+      detached.data,
+      backups.data,
+      twins.data,
+      queries.data,
+      traffic.data,
+      cold.data,
+      spend.data,
+    ],
+  )
 
   const ordered = inOrder(findings, SHOWN)
   /* The scale the gutter marks are drawn against: the largest gain *in each
@@ -344,7 +382,11 @@ export function ArrivalPage() {
              and it must not claim more than the readings behind it either — on
              an account granted almost nothing, "nothing is asking to be
              changed" is a verdict on four questions nobody was allowed to
-             ask. */
+             ask.
+             
+             Kept short, because the clearances underneath now carry the work:
+             the sentence says what state the list is in, and they say what was
+             measured. */
           <p className="says">
             {readings.some((r) => r.state === 'reading')
               ? 'Still reading.'
@@ -369,6 +411,9 @@ export function ArrivalPage() {
             ) : null}
           </>
         )}
+
+        {/* And what was measured and had nothing to say. */}
+        <ClearedList cleared={cleared} also={ordered.length > 0} />
       </section>
 
       {/* And what has been built on top of this server. Below the verdict on
