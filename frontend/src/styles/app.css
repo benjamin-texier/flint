@@ -15930,3 +15930,67 @@ button.acol__val:hover {
   white-space: nowrap;
   user-select: all;
 }
+
+
+/* ── The data along time ─────────────────────────────────────────────────
+ * The second figure on the arrival, and the one dimension the page had none of.
+ * See `DataByPeriod` for why it is bars and not a line, and `growth` for what it
+ * is allowed to claim.
+ *
+ * Sized in `em` off its own font so it scales with the page's measure rather
+ * than being a fixed 96px band that stops being proportionate the moment the
+ * type around it changes.
+ */
+
+.byperiod {
+  margin: 0 0 var(--s6);
+}
+
+.byperiod__bars {
+  display: flex;
+  align-items: flex-end;
+  /* One pixel between columns at any count: a gap in `%` closes to nothing at
+   * sixty buckets and yawns at four. */
+  gap: 1px;
+  height: 7em;
+  /* Room for the shortest bar to still be a bar. */
+  padding-top: 2px;
+}
+
+.byperiod__bar {
+  flex: 1 1 0;
+  min-width: 0;
+  border-radius: 1px 1px 0 0;
+  background: var(--bar);
+  transition: background var(--motion-fast) var(--ease);
+}
+.byperiod__bar:hover {
+  background: var(--accent);
+}
+
+.byperiod__legend {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  margin-top: var(--s2);
+  padding-top: var(--s2);
+  border-top: 1px solid var(--line);
+}
+
+/* The two ends of the axis, pinned to the ends of the bars they label. Two
+ * labels rather than a scale: the buckets between them are a hover away, and a
+ * date under every column at sixty columns is a smear. */
+.byperiod__ends {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.byperiod__says {
+  max-width: 74ch;
+  font-size: var(--size-label);
+  line-height: 1.55;
+  color: var(--chalk-faint);
+}

@@ -3,7 +3,17 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 
 import { api } from '../lib/api'
-import { inOrder, saysRead, strata, verdict, type Reading, type Said } from '../lib/arrival'
+import {
+  growth,
+  inOrder,
+  saysGrowth,
+  saysRead,
+  strata,
+  verdict,
+  type Growth,
+  type Reading,
+  type Said,
+} from '../lib/arrival'
 import {
   fromBackups,
   fromDetached,
@@ -122,6 +132,15 @@ export function ArrivalPage() {
      query log, which is why it is here rather than behind anything: on a server
      whose log Flint may not read it is the only substantial finding left. */
   const twins = useQuery({ queryKey: ['diag', 'twins'], queryFn: () => api.twins() })
+  /* And the one dimension this page had none of: time. `system.parts` bucketed by
+     month, which is metadata rather than a log — so it answers on the servers
+     whose query log is switched off, which is most of the ones Flint gets
+     pointed at first. The same cache key the server page uses, so whichever is
+     opened second pays nothing. */
+  const overTime = useQuery({
+    queryKey: ['server', 'timeline', 'month'],
+    queryFn: () => api.serverTimeline('month'),
+  })
 
   const findings: Finding[] = useMemo(
     () => [
@@ -189,6 +208,7 @@ export function ArrivalPage() {
      database with the most in it, which is the one they almost certainly came
      for. Falls back to the first, and to nothing at all on a server whose
      databases are all ClickHouse's own. */
+  const curve = growth(overTime.data)
   const { bands } = strata(mine.map((d) => ({ name: d.name, bytes: d.bytes })))
   const biggest = [...mine].sort(
     (a, b) => (onDisk({ total_bytes: b.bytes || null }) ?? 0) - (onDisk({ total_bytes: a.bytes || null }) ?? 0),
@@ -292,6 +312,14 @@ export function ArrivalPage() {
           </figcaption>
         </figure>
       ) : null}
+
+      {/* The same disk along the other axis — see `growth`. Two figures rather
+          than one because they answer different halves of "what is on here": the
+          strip says *which database* holds it, this says *when its rows are
+          from*. Dropped entirely where the parts carry no date, rather than
+          drawn flat: a row of equal bars is a picture of a server with no
+          history, and that is not what a missing partition key means. */}
+      {curve ? <DataByPeriod growth={curve} /> : null}
 
       {/* What is different today, which is a question nobody types and everybody
           has. Its own request, its own refusals, and it speaks even when the
@@ -482,4 +510,76 @@ function stateOf(
   if (q.error) return { label, state: 'refused', reason: String((q.error as Error).message ?? q.error) }
   if (q.isPending) return { label, state: 'reading' }
   return { label, state: 'read' }
+}
+
+/** The server's data along time, as a row of columns.
+ *
+ *  Bars rather than a line, and CSS rather than the `Chart` component. Both are
+ *  deliberate. A line asserts that the value moved continuously between its
+ *  points, and these are buckets — a month holds what it holds, and there is no
+ *  value between January and February to draw through. And `Chart` takes a
+ *  `QueryResult`: fabricating one so a landing page can draw twelve numbers
+ *  would be inventing a result that no statement returned, on the page whose
+ *  whole claim is that every figure came from a reading.
+ *
+ *  No y axis, which is the same restraint `components/OverTime` states for the
+ *  health sparklines. The figure answers "is this steady, or was it one
+ *  afternoon"; a reader who wants the number per month has the grid on
+ *  `/server`, and the caption links to it.
+ */
+function DataByPeriod({ growth: g }: { growth: Growth }) {
+  const peak = g.bars.reduce((n, b) => Math.max(n, b.bytes), 0)
+  const total = g.bars.reduce((n, b) => n + b.bytes, 0)
+  const first = g.bars[0]!
+  const last = g.bars[g.bars.length - 1]!
+  return (
+    <figure className="byperiod">
+      <div
+        className="byperiod__bars"
+        role="img"
+        aria-label={`${bytes(total)} on disk across ${g.bars.length} ${GRAIN_WORD[g.grain]}, from ${first.bucket} to ${last.bucket}`}
+      >
+        {g.bars.map((b) => (
+          <span
+            className="byperiod__bar"
+            key={b.bucket}
+            /* A floor for anything that holds something, and *nothing* for a
+               bucket that does not. Both halves matter and I had only the first:
+               with the axis filled, an unconditional floor drew a 2px mark on
+               every empty month, which says "a little is here" of a month that
+               holds none. `cellFill` states the rule this is the other side
+               of — small and absent are different answers, and a row of columns
+               exists to tell them apart. */
+            style={{
+              height: b.bytes > 0 ? `${Math.max(2, Math.round((b.bytes / peak) * 100))}%` : '0',
+            }}
+            aria-hidden={b.bytes === 0 || undefined}
+            title={`${b.bucket} — ${bytes(b.bytes)}, ${count(b.rows)} rows`}
+          />
+        ))}
+      </div>
+      <figcaption className="byperiod__legend">
+        <span className="byperiod__ends">
+          <span>{first.bucket}</span>
+          <span>{last.bucket}</span>
+        </span>
+        <span className="byperiod__says">
+          {saysGrowth(g)}{' '}
+          <Link className="link" to="/server">
+            The grid, per table →
+          </Link>
+        </span>
+      </figcaption>
+    </figure>
+  )
+}
+
+/** The plural of a grain, for the one sentence that counts buckets. */
+const GRAIN_WORD: Record<Growth['grain'], string> = {
+  partition: 'partitions',
+  day: 'days',
+  week: 'weeks',
+  month: 'months',
+  quarter: 'quarters',
+  year: 'years',
 }

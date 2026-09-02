@@ -31,6 +31,8 @@
 
 import type { Area, Finding } from './checkup'
 import { AREAS, rank } from './checkup'
+import { bytes } from './format'
+import { bucketOf, bucketSequence, GRAIN_LABEL, parseStamp, type Grain } from './timeline'
 
 /** One of the things the page is waiting on, and how it went.
  *
@@ -249,4 +251,187 @@ function list(items: string[]): string {
 
 function capitalise(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1)
+}
+
+/* ── How the data got here ───────────────────────────────────────────────
+ * The arrival had no dimension of time on it. Every figure was a state — this
+ * much disk, this many objects, these findings — and the one thing a column
+ * store is famous for is volume accumulating. A reader could not tell a server
+ * that has been filling steadily for two years from one that took everything in
+ * a single afternoon, and those are different servers to be responsible for.
+ *
+ * Read off the timeline `system.parts` already answers, so it costs no query log
+ * and works on the servers whose log is switched off. Which also fixes what it
+ * can honestly claim: this is **where the rows are, by the period they fall
+ * in** — not how much was written each month. On a table partitioned by
+ * `toYYYYMM(ts)` those are the same sentence; on one partitioned by anything
+ * else they are not, and the server says which by refusing a scale of time at
+ * all (`datable`).
+ *
+ * ## The 1970 lump
+ *
+ * A table with no partition key has no date, and the server folds it into the
+ * epoch bucket. Drawn as a bar it is a mountain labelled January 1970, which is
+ * the most confidently wrong thing this page could say — and on a schema of
+ * flat analytics tables it is most of the disk. So it is separated out and
+ * *counted* instead: the bars are the dated data, and the undated bytes are
+ * named beside them.
+ *
+ * Told apart by the date, because the cells do not carry the partition key.
+ * Data genuinely from the first days of 1970 does not occur in a ClickHouse
+ * table; data with no date occurs constantly. The assumption is stated here and
+ * asserted below rather than left in the shape of a suspiciously tall first bar.
+ */
+
+/** The epoch, and a little after it: ClickHouse hands back `1970-01-01` or
+ *  `1970-01-02` depending on which of its two date pairs it filled. */
+const UNDATED_BEFORE = Date.UTC(1970, 0, 4)
+
+/** A `Date` back in the format `parseStamp` reads, which is what
+ *  `bucketSequence` takes. `timeline`'s own `iso` prints the date alone and
+ *  `parseStamp` requires the time, so a stamp built from it parses as null and
+ *  the axis silently comes back empty. */
+function isoStamp(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`
+}
+
+export interface Bar {
+  /** The bucket as the server spells it, which is what the axis prints. */
+  bucket: string
+  bytes: number
+  rows: number
+}
+
+export interface Growth {
+  /** Every bucket between the ends, oldest first — including the empty ones.
+   *
+   *  Filled rather than only the buckets that hold something, and the axis is
+   *  the reason. Bars spaced by *presence* put 2001 next to 2002 with a year
+   *  between them and 2008-12 next to 2009-01 with a month, under two labels
+   *  inviting the position to be read as time. `Grid` states the same rule for
+   *  the same reason: with a filled axis a gap is a gap, and without one it is a
+   *  bucket that was never drawn. */
+  bars: Bar[]
+  /** What had no date to be placed by, named rather than drawn. */
+  undated: { bytes: number; rows: number }
+  grain: Grain
+  /** Whether `bars` is every bucket between the ends or only the ones holding
+   *  something. False means the gaps are not to scale, and the caption says so
+   *  rather than letting the reader assume otherwise. */
+  filled: boolean
+}
+
+/** How many columns the figure can carry and still be read. Above this the bars
+ *  are hairlines and the shape stops being a shape.
+ *
+ *  There is no floor to go with it. A server holding three months of data draws
+ *  three bars, and that is the truth about it; going finer than the month would
+ *  mean asking the server for a grain it was not asked for, to make a short
+ *  history look longer. */
+const MAX_BARS = 64
+
+/** Coarsest-last. The figure asks the server for months and coarsens from there
+ *  rather than asking again: re-bucketing is arithmetic over cells already in
+ *  hand, and a second round trip to draw the same bytes at a different scale is
+ *  a request nobody needs. */
+const LADDER: Grain[] = ['month', 'quarter', 'year']
+
+/** The server's data over time, or null where there is no such reading.
+ *
+ *  Null rather than an empty figure in four cases, and they are different things
+ *  the caller does not have to tell apart: the reading was refused, the parts
+ *  carry no date at all, nothing is dated once the epoch lump is taken out, or
+ *  only one bucket is. One bar is not a growth — it is a total with a chart
+ *  around it.
+ *
+ *  ## The grain is chosen here, not asked for
+ *
+ *  Asking for months and drawing them was the first version, and it is wrong on
+ *  the servers this page is for: one row from 2001 and one from 2026 is a filled
+ *  axis of three hundred and eight monthly columns, in which two years of real
+ *  data is a sixty-pixel smear at the right-hand end. Measured on a fixture that
+ *  had exactly that shape. So the span decides — months while they fit, then
+ *  quarters, then years — and the caption names whichever it landed on.
+ *
+ *  ## Buckets come from the date, not from the partition name
+ *
+ *  A cell's `partition` is whatever the table's key produced, and two tables on
+ *  one server rarely share a key. `covers_from` — the earliest row the parts
+ *  hold — is comparable across all of them, and re-bucketing it is what lets the
+ *  grain be chosen at all. It places a partition at its earliest row, which is
+ *  the rule and is why the caption says "by the period its rows fall in".
+ */
+export function growth(
+  timeline: {
+    available: boolean
+    datable: boolean
+    grain: Grain
+    cells: { partition: string; bytes: number; rows: number; covers_from?: string }[]
+  } | undefined,
+): Growth | null {
+  if (!timeline?.available || !timeline.datable) return null
+
+  /* Dated cells with their instant, and the undated ones counted. */
+  const dated: { at: Date; bytes: number; rows: number }[] = []
+  const undated = { bytes: 0, rows: 0 }
+  for (const cell of timeline.cells) {
+    const at = cell.covers_from ? parseStamp(cell.covers_from) : null
+    if (at === null || at.getTime() < UNDATED_BEFORE) {
+      undated.bytes += cell.bytes
+      undated.rows += cell.rows
+      continue
+    }
+    dated.push({ at, bytes: cell.bytes, rows: cell.rows })
+  }
+  if (dated.length === 0) return null
+
+  dated.sort((a, b) => a.at.getTime() - b.at.getTime())
+  const from = dated[0]!.at
+  const to = dated[dated.length - 1]!.at
+
+  /* The finest grain whose filled axis fits, and the coarsest as the floor: a
+     span of forty years has to be drawn at *something*, and years is it. */
+  const grain =
+    LADDER.find((g) => {
+      const axis = bucketSequence(g, isoStamp(from), isoStamp(to))
+      return axis.length > 0 && axis.length <= MAX_BARS
+    }) ?? LADDER[LADDER.length - 1]!
+
+  const axis = bucketSequence(grain, isoStamp(from), isoStamp(to))
+  const byBucket = new Map<string, Bar>()
+  for (const d of dated) {
+    const bucket = bucketOf(grain, d.at)
+    const bar = byBucket.get(bucket) ?? { bucket, bytes: 0, rows: 0 }
+    bar.bytes += d.bytes
+    bar.rows += d.rows
+    byBucket.set(bucket, bar)
+  }
+  if (byBucket.size < 2) return null
+
+  /* Fall back to the buckets that hold something where no axis could be
+     generated — `bucketSequence` refuses a range past its own cap, and returns
+     nothing at all for the partition grain. Uneven spacing is a lesser fault
+     than no figure, and `filled` says which of the two this is. */
+  const filled = axis.length >= byBucket.size
+  const bars = filled
+    ? axis.map((bucket) => byBucket.get(bucket) ?? { bucket, bytes: 0, rows: 0 })
+    : [...byBucket.values()].sort((a, b) => (a.bucket < b.bucket ? -1 : 1))
+  return { bars, undated, grain, filled }
+}
+
+/** What the figure covers, said under it. Never "growth" — see the header: this
+ *  is where the rows are, by the period they fall in. */
+export function saysGrowth(g: Growth): string {
+  const span = `${g.bars[0]!.bucket} to ${g.bars[g.bars.length - 1]!.bucket}`
+  const unit = GRAIN_LABEL[g.grain].toLowerCase()
+  const tail =
+    g.undated.bytes > 0
+      ? `. A further ${bytes(g.undated.bytes)} is in tables with no date to place it by.`
+      : ''
+  const per = `by the ${unit} its rows fall in, ${span}`
+  /* Said only when it is not: an axis to scale is what a reader assumes, and
+     stating the assumption every time is noise. */
+  const spacing = g.filled ? '' : ', with only the periods that hold something drawn'
+  return `On disk ${per}${spacing}${tail}`
 }
