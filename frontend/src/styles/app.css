@@ -15946,7 +15946,9 @@ button.acol__val:hover {
   margin: 0 0 var(--s6);
 }
 
-.byperiod__bars {
+/* The shared row of columns — see `components/BarRow.tsx`, which owns the one
+ * rule worth not duplicating. Both figures that use it set their own height. */
+.barrow {
   display: flex;
   align-items: flex-end;
   /* One pixel between columns at any count: a gap in `%` closes to nothing at
@@ -15957,14 +15959,14 @@ button.acol__val:hover {
   padding-top: 2px;
 }
 
-.byperiod__bar {
+.barrow__bar {
   flex: 1 1 0;
   min-width: 0;
   border-radius: 1px 1px 0 0;
   background: var(--bar);
   transition: background var(--motion-fast) var(--ease);
 }
-.byperiod__bar:hover {
+.barrow__bar:hover {
   background: var(--accent);
 }
 
@@ -15990,6 +15992,43 @@ button.acol__val:hover {
 
 .byperiod__says {
   max-width: 74ch;
+  font-size: var(--size-label);
+  line-height: 1.55;
+  color: var(--chalk-faint);
+}
+
+
+/* ── The window, as columns ──────────────────────────────────────────────
+ * Diagnostics' load figure. Same row of bars the arrival draws — see
+ * `components/BarRow.tsx` — with its own caption, because what the columns are
+ * differs and the shape does not. Shorter than the arrival's: this one sits
+ * above six tables and is read as an orientation, not as the page's subject. */
+
+.load {
+  margin: var(--s4) 0 0;
+}
+.load .barrow {
+  height: 5em;
+}
+
+.load__legend {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  margin-top: var(--s2);
+  padding-top: var(--s2);
+  border-top: 1px solid var(--line);
+}
+
+.load__ends {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.load__says {
   font-size: var(--size-label);
   line-height: 1.55;
   color: var(--chalk-faint);

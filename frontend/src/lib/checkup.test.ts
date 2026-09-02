@@ -99,6 +99,8 @@ describe('fromQueries', () => {
       summary: null,
       patterns: [],
       failures: [],
+      load: [],
+      bucket_seconds: 3600,
       ...over,
     }) as Parameters<typeof fromQueries>[0]
 
@@ -553,17 +555,17 @@ describe('clearances never contradict their findings', () => {
       queries: 1600, failures: 0, selects: 1500, inserts: 38,
       read_bytes: 11, read_rows: 11, avg_ms: 0.4, p95_ms: 2, max_ms: 9, users: 1, since: 'x',
     }
-    const clean = clearQueries({ available: true, window_days: 7, window_seconds: 1, summary, patterns: [], failures: [] })
+    const clean = clearQueries({ available: true, window_days: 7, window_seconds: 1, summary, patterns: [], failures: [], load: [], bucket_seconds: 3600 })
     expect(clean.map((c) => c.label)).toEqual(['Failures', 'Latency'])
     const failing = clearQueries({
       available: true, window_days: 7, window_seconds: 1,
-      summary: { ...summary, failures: 4 }, patterns: [], failures: [],
+      summary: { ...summary, failures: 4 }, patterns: [], failures: [], load: [], bucket_seconds: 3600,
     })
     expect(failing.map((c) => c.label)).toEqual(['Latency'])
   })
 
   it('queries: says nothing at all when the log was not readable', () => {
-    expect(clearQueries({ available: false, window_days: 7, window_seconds: 1, summary: null, patterns: [], failures: [] })).toEqual([])
+    expect(clearQueries({ available: false, window_days: 7, window_seconds: 1, summary: null, patterns: [], failures: [], load: [], bucket_seconds: 3600 })).toEqual([])
   })
 
   it('traffic: clear only when nothing went unread', () => {
@@ -577,7 +579,7 @@ describe('clearances never contradict their findings', () => {
       ...clearDetached({ available: true, parts: [], total: 0, total_bytes: 0, quarantined: 0 }),
       ...clearBackups({ persistent: true, object_storage: false, available: true, disk: 'd', runs: [{}] as never }),
       ...clearQueries({
-        available: true, window_days: 7, window_seconds: 1, patterns: [], failures: [],
+        available: true, window_days: 7, window_seconds: 1, patterns: [], failures: [], load: [], bucket_seconds: 3600,
         summary: { queries: 1, failures: 0, selects: 1, inserts: 0, read_bytes: 1, read_rows: 1, avg_ms: 1, p95_ms: 1, max_ms: 1, users: 1, since: 'x' },
       }),
     ]

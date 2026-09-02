@@ -6,6 +6,8 @@ import {
   databaseOf,
   diskVerdict,
   editorLink,
+  loadBars,
+  saysBucket,
   everRead,
   notable,
   partitionVerdict,
@@ -439,5 +441,91 @@ describe('when a scan share is worth a question', () => {
     // table starts to be more than one gulp.
     expect(worthAskingAboutProjections(1, 65_536)).toBe(true)
     expect(worthAskingAboutProjections(1, 65_535)).toBe(false)
+  })
+})
+
+describe('loadBars', () => {
+  const b = (at: string, queries = 1) => ({
+    at,
+    queries,
+    failures: 0,
+    read_bytes: queries,
+    total_ms: queries,
+  })
+
+  it('fills the gaps between the buckets that hold something', () => {
+    const out = loadBars([b('2026-09-01 12:00:00', 5), b('2026-09-01 15:00:00', 3)], 3600)
+    expect(out.map((x) => x.at)).toEqual([
+      '2026-09-01 12:00:00',
+      '2026-09-01 13:00:00',
+      '2026-09-01 14:00:00',
+      '2026-09-01 15:00:00',
+    ])
+    expect(out.map((x) => x.queries)).toEqual([5, 0, 0, 3])
+  })
+
+  /* The real answer from the dev server: 3-hour buckets over a 7-day window,
+     with the log only covering about a day. */
+  it('fills to the data, not to the window that was asked for', () => {
+    const out = loadBars(
+      [b('2026-09-01 12:00:00'), b('2026-09-01 15:00:00'), b('2026-09-02 06:00:00')],
+      10_800,
+    )
+    expect(out).toHaveLength(7)
+    expect(out[0]!.at).toBe('2026-09-01 12:00:00')
+    expect(out[out.length - 1]!.at).toBe('2026-09-02 06:00:00')
+    // Six days of empty columns in front of the data would invite the reader to
+    // conclude the server was idle for them, when nothing was kept.
+    expect(out.every((x) => x.at >= '2026-09-01 12:00:00')).toBe(true)
+  })
+
+  it('is empty where there is no shape to draw', () => {
+    expect(loadBars([], 3600)).toEqual([])
+    // One column is a figure with a chart around it.
+    expect(loadBars([b('2026-09-01 12:00:00')], 3600)).toEqual([])
+  })
+
+  it('refuses a step it cannot use rather than looping', () => {
+    const two = [b('2026-09-01 12:00:00'), b('2026-09-01 13:00:00')]
+    expect(loadBars(two, 0)).toEqual([])
+    expect(loadBars(two, -1)).toEqual([])
+    expect(loadBars(two, NaN)).toEqual([])
+  })
+
+  /* A step and a span that would generate more columns than any page can lay
+     out — a malformed pair, or a log with one very old entry. The held buckets
+     come back unfilled rather than four hundred thousand columns. */
+  it('hands back the held buckets rather than generating past its cap', () => {
+    const out = loadBars([b('2020-01-01 00:00:00'), b('2026-09-01 00:00:00')], 60)
+    expect(out).toHaveLength(2)
+  })
+
+  it('drops a stamp it cannot read rather than placing it at the epoch', () => {
+    expect(loadBars([b('not a date'), b('also not')], 3600)).toEqual([])
+    const out = loadBars([b('2026-09-01 12:00:00'), b('nonsense'), b('2026-09-01 13:00:00')], 3600)
+    expect(out.map((x) => x.at)).toEqual(['2026-09-01 12:00:00', '2026-09-01 13:00:00'])
+  })
+
+  it('is ordered oldest first whatever order it was given', () => {
+    const out = loadBars([b('2026-09-01 15:00:00', 3), b('2026-09-01 12:00:00', 5)], 10_800)
+    expect(out.map((x) => x.queries)).toEqual([5, 3])
+  })
+})
+
+describe('saysBucket', () => {
+  it('names every period the server can send', () => {
+    for (const [s, said] of [
+      [60, 'a minute'],
+      [3600, 'an hour'],
+      [10_800, 'three hours'],
+      [86_400, 'a day'],
+      [604_800, 'a week'],
+    ] as const) {
+      expect(saysBucket(s)).toBe(said)
+    }
+  })
+
+  it('falls back to the number rather than to nothing', () => {
+    expect(saysBucket(137)).toBe('137 seconds')
   })
 })

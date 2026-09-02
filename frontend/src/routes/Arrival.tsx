@@ -38,6 +38,7 @@ import {
 import { bytes, count, exact, uptime } from '../lib/format'
 import { onDisk, weigh } from '../lib/weight'
 import { Headlines } from '../components/Headlines'
+import { BarRow } from '../components/BarRow'
 import { ClearedList } from '../components/ClearedList'
 import { Dash } from '../components/Dash'
 import { WhatIsKept } from './Home'
@@ -573,36 +574,19 @@ function stateOf(
  *  `/server`, and the caption links to it.
  */
 function DataByPeriod({ growth: g }: { growth: Growth }) {
-  const peak = g.bars.reduce((n, b) => Math.max(n, b.bytes), 0)
   const total = g.bars.reduce((n, b) => n + b.bytes, 0)
   const first = g.bars[0]!
   const last = g.bars[g.bars.length - 1]!
   return (
     <figure className="byperiod">
-      <div
-        className="byperiod__bars"
-        role="img"
-        aria-label={`${bytes(total)} on disk across ${g.bars.length} ${GRAIN_WORD[g.grain]}, from ${first.bucket} to ${last.bucket}`}
-      >
-        {g.bars.map((b) => (
-          <span
-            className="byperiod__bar"
-            key={b.bucket}
-            /* A floor for anything that holds something, and *nothing* for a
-               bucket that does not. Both halves matter and I had only the first:
-               with the axis filled, an unconditional floor drew a 2px mark on
-               every empty month, which says "a little is here" of a month that
-               holds none. `cellFill` states the rule this is the other side
-               of — small and absent are different answers, and a row of columns
-               exists to tell them apart. */
-            style={{
-              height: b.bytes > 0 ? `${Math.max(2, Math.round((b.bytes / peak) * 100))}%` : '0',
-            }}
-            aria-hidden={b.bytes === 0 || undefined}
-            title={`${b.bucket} — ${bytes(b.bytes)}, ${count(b.rows)} rows`}
-          />
-        ))}
-      </div>
+      <BarRow
+        label={`${bytes(total)} on disk across ${g.bars.length} ${GRAIN_WORD[g.grain]}, from ${first.bucket} to ${last.bucket}`}
+        bars={g.bars.map((b) => ({
+          key: b.bucket,
+          value: b.bytes,
+          title: `${b.bucket} — ${bytes(b.bytes)}, ${count(b.rows)} rows`,
+        }))}
+      />
       <figcaption className="byperiod__legend">
         <span className="byperiod__ends">
           <span>{first.bucket}</span>

@@ -48,6 +48,20 @@ export interface Failure {
   message: string
 }
 
+/** One bucket of the window, as the server measured it. Only the buckets that
+ *  hold something — see `loadBars` for the gaps. */
+export interface LoadBucket {
+  /** The start of the bucket, as ClickHouse prints a DateTime. */
+  at: string
+  queries: number
+  failures: number
+  read_bytes: number
+  /** Wall time the statements in it spent, summed rather than averaged: the
+   *  question is when the server was busy, and one slow statement among a
+   *  thousand fast ones is not a busy minute. */
+  total_ms: number
+}
+
 export interface QueryReport {
   available: boolean
   reason?: string
@@ -59,6 +73,11 @@ export interface QueryReport {
   summary: Summary | null
   patterns: Pattern[]
   failures: Failure[]
+  /** The window in buckets, oldest first, with the empty ones left out. */
+  load: LoadBucket[]
+  /** How wide one bucket is. Sent because nothing here could infer it from
+   *  buckets that have gaps in them. */
+  bucket_seconds: number
 }
 
 export interface TableTraffic {
@@ -478,4 +497,84 @@ export function trafficMax(
     max = Math.max(max, index.get(`${o.database}.${o.name}`)?.reads ?? 0)
   }
   return max
+}
+
+/* ── The window, as columns ──────────────────────────────────────────────
+ * `Load` was seven figures and no shape. Seven true figures, and not one of
+ * them answers the question somebody opens this page with — *when*. A p95 of
+ * two milliseconds over a week says nothing about the Tuesday afternoon it went
+ * to four hundred, and the whole reason to keep a query log is that it knows.
+ *
+ * The server sends the buckets that hold something and how wide one is; the
+ * gaps are filled here. That split is the one this codebase keeps everywhere —
+ * ClickHouse's own `WITH FILL` would have done it in the `GROUP BY`, and it has
+ * to be told where the axis starts, which is a judgement about a log that may
+ * cover two hours of the seven days it was asked for.
+ */
+
+/** Never generate more than this. A malformed `bucket_seconds` of zero, or a
+ *  stamp the server printed in a format this cannot read, must not turn into a
+ *  loop that lays out a million columns. */
+const MAX_FILL = 400
+
+/** Every bucket between the first and the last, oldest first.
+ *
+ *  Filled between the *data's* ends rather than across the whole window asked
+ *  for: a seven-day question against a two-hour log is a two-hour answer, which
+ *  is what `Summary.since` says in words and what this says in shape. Filling to
+ *  the window would draw six days of empty columns in front of the data and
+ *  invite the reader to conclude the server was idle for them, when the truth is
+ *  that nothing was kept.
+ *
+ *  Empty in the two cases where there is no shape to draw: nothing logged, and
+ *  one bucket — one column is a figure with a chart around it. */
+export function loadBars(buckets: LoadBucket[], stepSeconds: number): LoadBucket[] {
+  if (buckets.length < 2 || !Number.isFinite(stepSeconds) || stepSeconds <= 0) return []
+
+  const at = (b: LoadBucket) => Date.parse(b.at.replace(' ', 'T') + 'Z')
+  const held = new Map<number, LoadBucket>()
+  for (const b of buckets) {
+    const t = at(b)
+    if (Number.isFinite(t)) held.set(t, b)
+  }
+  const stamps = [...held.keys()].sort((a, b) => a - b)
+  if (stamps.length < 2) return []
+
+  const step = stepSeconds * 1000
+  const from = stamps[0]!
+  const to = stamps[stamps.length - 1]!
+  if ((to - from) / step > MAX_FILL) return [...held.values()]
+
+  const out: LoadBucket[] = []
+  for (let t = from; t <= to; t += step) {
+    out.push(
+      held.get(t) ?? {
+        at: new Date(t).toISOString().replace('T', ' ').slice(0, 19),
+        queries: 0,
+        failures: 0,
+        read_bytes: 0,
+        total_ms: 0,
+      },
+    )
+  }
+  return out
+}
+
+/** How wide a bucket is, in words, for the caption. The server picked it off a
+ *  ladder of nameable periods — see `bucket_seconds` in `diagnostics.rs` — so
+ *  every value it can send has a name here. */
+export function saysBucket(stepSeconds: number): string {
+  const named: Record<number, string> = {
+    60: 'a minute',
+    300: 'five minutes',
+    900: 'a quarter hour',
+    1800: 'half an hour',
+    3600: 'an hour',
+    10800: 'three hours',
+    21600: 'six hours',
+    43200: 'twelve hours',
+    86400: 'a day',
+    604800: 'a week',
+  }
+  return named[stepSeconds] ?? `${stepSeconds} seconds`
 }
