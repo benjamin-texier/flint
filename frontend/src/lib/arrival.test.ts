@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
-import { inOrder, plain, saysRead, strata, verdict, type Reading } from './arrival'
+import { growth, inOrder, plain, saysGrowth, saysRead, strata, verdict, type Reading } from './arrival'
 import type { Area, Finding, Urgency } from './checkup'
+import type { Grain } from './timeline'
 
 function finding(id: string, area: Area, urgency: Urgency, gain = 0): Finding {
   return {
@@ -215,5 +216,214 @@ describe('what was read', () => {
       { label: 'c', state: 'reading' },
     ])
     expect(said).toBe('Reading a, b and c.')
+  })
+})
+
+describe('growth', () => {
+  const cell = (partition: string, bytes: number, from?: string) => ({
+    partition,
+    bytes,
+    rows: bytes,
+    covers_from: from,
+  })
+  const timeline = (cells: ReturnType<typeof cell>[], over: Partial<{ available: boolean; datable: boolean; grain: Grain }> = {}) => ({
+    available: true,
+    datable: true,
+    grain: 'month' as Grain,
+    cells,
+    ...over,
+  })
+
+  it('sums the cells of a bucket into one bar, oldest first', () => {
+    const g = growth(
+      timeline([
+        cell('2026-02', 20, '2026-02-01 00:00:00'),
+        cell('2026-01', 5, '2026-01-01 00:00:00'),
+        cell('2026-01', 7, '2026-01-14 00:00:00'),
+      ]),
+    )!
+    expect(g.bars.map((b) => b.bucket)).toEqual(['2026-01', '2026-02'])
+    expect(g.bars[0]!.bytes).toBe(12)
+    expect(g.bars[1]!.bytes).toBe(20)
+  })
+
+  /* The lie this exists to prevent: a table with no partition key is folded
+     into the epoch, and drawn as a bar it is a mountain labelled January 1970 —
+     on a schema of flat analytics tables, most of the disk. */
+  it('counts undated data instead of drawing it in 1970', () => {
+    const g = growth(
+      timeline([
+        cell('1970-01', 900, '1970-01-02 00:00:00'),
+        cell('2026-01', 5, '2026-01-01 00:00:00'),
+        cell('2026-02', 6, '2026-02-01 00:00:00'),
+      ]),
+    )!
+    expect(g.bars.map((b) => b.bucket)).toEqual(['2026-01', '2026-02'])
+    expect(g.undated.bytes).toBe(900)
+    expect(g.bars.some((b) => b.bucket.startsWith('1970'))).toBe(false)
+  })
+
+  it('treats both epoch dates the server may fill as undated', () => {
+    for (const at of ['1970-01-01 00:00:00', '1970-01-02 00:00:00', '1970-01-03 23:59:59']) {
+      const g = growth(
+        timeline([cell('1970-01', 9, at), cell('2026-01', 1, '2026-01-01 00:00:00'), cell('2026-02', 1, '2026-02-01 00:00:00')]),
+      )!
+      expect(g.undated.bytes).toBe(9)
+    }
+  })
+
+  it('counts a cell with no date at all as undated rather than dropping it', () => {
+    const g = growth(
+      timeline([
+        cell('all', 400),
+        cell('2026-01', 1, '2026-01-01 00:00:00'),
+        cell('2026-02', 1, '2026-02-01 00:00:00'),
+      ]),
+    )!
+    expect(g.undated.bytes).toBe(400)
+  })
+
+  it('is null where there is no reading, no scale of time, or nothing to compare', () => {
+    expect(growth(undefined)).toBeNull()
+    expect(growth(timeline([], { available: false }))).toBeNull()
+    expect(growth(timeline([], { datable: false }))).toBeNull()
+    // One bucket is a total with a chart around it, not a growth.
+    expect(growth(timeline([cell('2026-01', 5, '2026-01-01 00:00:00')]))).toBeNull()
+    // And a server whose only cells are undated has nothing dated to draw.
+    expect(growth(timeline([cell('1970-01', 900, '1970-01-02 00:00:00')]))).toBeNull()
+  })
+})
+
+describe('saysGrowth', () => {
+  const g = (undatedBytes: number, filled = true) => ({
+    bars: [
+      { bucket: '2026-01', bytes: 1, rows: 1 },
+      { bucket: '2026-06', bytes: 2, rows: 2 },
+    ],
+    undated: { bytes: undatedBytes, rows: undatedBytes },
+    grain: 'month' as Grain,
+    filled,
+  })
+
+  it('names the span and the grain, and never says "written"', () => {
+    const said = saysGrowth(g(0))
+    expect(said).toContain('2026-01 to 2026-06')
+    expect(said).toContain('month')
+    expect(said).not.toMatch(/written|growth|grew/i)
+  })
+
+  it('names the undated bytes when there are any, and stays quiet when there are none', () => {
+    expect(saysGrowth(g(2048))).toContain('no date to place it by')
+    expect(saysGrowth(g(0))).not.toContain('no date')
+  })
+
+  /* An axis to scale is what a reader assumes, so it is the exception that gets
+     stated. */
+  it('says when the gaps are not to scale, and nothing when they are', () => {
+    expect(saysGrowth(g(0, false))).toContain('only the periods that hold something')
+    expect(saysGrowth(g(0, true))).not.toContain('only the periods')
+  })
+})
+
+describe('growth fills the axis', () => {
+  const cell = (partition: string, bytes: number, from?: string) => ({
+    partition,
+    bytes,
+    rows: bytes,
+    covers_from: from,
+  })
+  const monthly = (cells: ReturnType<typeof cell>[]) => ({
+    available: true,
+    datable: true,
+    grain: 'month' as Grain,
+    cells,
+  })
+
+  /* The lie this fixes: bars spaced by presence put 2001 next to 2002 with a
+     year between them, under two end labels inviting the position to be read as
+     time. */
+  it('draws the empty periods between the ends', () => {
+    const g = growth(
+      monthly([
+        cell('2026-01', 10, '2026-01-05 00:00:00'),
+        cell('2026-04', 20, '2026-04-05 00:00:00'),
+      ]),
+    )!
+    expect(g.filled).toBe(true)
+    expect(g.bars.map((b) => b.bucket)).toEqual(['2026-01', '2026-02', '2026-03', '2026-04'])
+    expect(g.bars.map((b) => b.bytes)).toEqual([10, 0, 0, 20])
+  })
+
+  it('does not fill from the epoch when there is an undated lump', () => {
+    const g = growth(
+      monthly([
+        cell('1970-01', 900, '1970-01-02 00:00:00'),
+        cell('2026-01', 10, '2026-01-05 00:00:00'),
+        cell('2026-03', 20, '2026-03-05 00:00:00'),
+      ]),
+    )!
+    // Three months, not the six hundred and seventy since 1970.
+    expect(g.bars).toHaveLength(3)
+    expect(g.bars[0]!.bucket).toBe('2026-01')
+  })
+
+  /* The grain is chosen here rather than asked for, and this is why: one row
+     from 2001 and one from 2026 drew three hundred and eight monthly columns, in
+     which two years of real data was a sixty-pixel smear. Measured on a fixture
+     that had exactly that shape. */
+  it('coarsens the grain until the axis fits, rather than drawing hairlines', () => {
+    const twoYears = growth(
+      monthly([
+        cell('a', 10, '2024-09-01 00:00:00'),
+        cell('b', 20, '2026-08-01 00:00:00'),
+      ]),
+    )!
+    expect(twoYears.grain).toBe('month')
+    expect(twoYears.bars).toHaveLength(24)
+
+    const quarterCentury = growth(
+      monthly([
+        cell('a', 10, '2001-01-01 00:00:00'),
+        cell('b', 20, '2026-08-01 00:00:00'),
+      ]),
+    )!
+    expect(quarterCentury.grain).toBe('year')
+    expect(quarterCentury.bars.length).toBeLessThanOrEqual(64)
+    expect(quarterCentury.bars.length).toBeGreaterThan(20)
+  })
+
+  it('reaches for quarters between the two, and never exceeds the cap', () => {
+    const sixYears = growth(
+      monthly([
+        cell('a', 10, '2020-01-01 00:00:00'),
+        cell('b', 20, '2026-01-01 00:00:00'),
+      ]),
+    )!
+    expect(sixYears.grain).toBe('quarter')
+    expect(sixYears.bars.length).toBeLessThanOrEqual(64)
+  })
+
+  /* The partition grain never reaches `bucketSequence` any more — the ladder is
+     month, quarter, year — so a timeline that came back at it is re-bucketed by
+     date like every other. Two partitions of one month are one bar, and one bar
+     is not a growth. */
+  it('re-buckets a partition-grained timeline by date rather than by name', () => {
+    expect(
+      growth({
+        available: true,
+        datable: true,
+        grain: 'partition',
+        cells: [cell('eu', 10, '2026-01-05 00:00:00'), cell('us', 20, '2026-01-06 00:00:00')],
+      }),
+    ).toBeNull()
+
+    const spread = growth({
+      available: true,
+      datable: true,
+      grain: 'partition',
+      cells: [cell('eu', 10, '2026-01-05 00:00:00'), cell('us', 20, '2026-04-06 00:00:00')],
+    })!
+    expect(spread.grain).toBe('month')
+    expect(spread.bars.map((b) => b.bucket)).toEqual(['2026-01', '2026-02', '2026-03', '2026-04'])
   })
 })
