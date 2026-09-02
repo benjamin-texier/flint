@@ -72,6 +72,9 @@ services:
       # empty panel a broken advisor would show. Numbered last: every statement
       # in it queries the tables the schema script creates and fills.
       - ./contrib/dev-workload.sql:/docker-entrypoint-initdb.d/40-dev-workload.sql:ro
+      # Two years of monthly partitions, for every reading about time. The
+      # playground's own tables have none — see the file.
+      - ./contrib/dev-events.sql:/docker-entrypoint-initdb.d/45-dev-events.sql:ro
       # One table per kind of "somewhere else": a bucket, a URL, a file, three
       # databases, a Redis and a Kafka topic. None of their hosts resolves and
       # none of them needs to — the address is metadata, and reading it back is
