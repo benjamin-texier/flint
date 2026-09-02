@@ -6,6 +6,15 @@ import { api } from '../lib/api'
 import { bytes as fmtBytes, count } from '../lib/format'
 import {
   AREAS,
+  clearBackups,
+  clearCold,
+  clearDetached,
+  clearQueries,
+  clearSpend,
+  clearStorage,
+  clearTraffic,
+  clearTwins,
+  inAreaCleared,
   fromBackups,
   fromDetached,
   fromHeavy,
@@ -21,6 +30,7 @@ import {
   saysSession,
   sessionWindow,
   type Area,
+  type Cleared,
   type Finding,
   type Gain,
 } from '../lib/checkup'
@@ -51,7 +61,6 @@ import { ErrorNote } from '../components/Note'
  *  **There is no score.** See `lib/checkup`: a finding carries what acting
  *  gives back in its own unit, and nothing adds a gigabyte to a second. */
 export function CheckupPage() {
-  const config = useQuery({ queryKey: ['config'], queryFn: api.config })
 
   /* The mark, and nothing else. A session is a moment the browser remembers
      and a window computed from it — there is no session object anywhere,
@@ -184,6 +193,33 @@ export function CheckupPage() {
     ],
   )
 
+  /* What came back clear, from the same readings the findings come from. Built
+     here rather than derived from `findings.length === 0`, because "no finding
+     in this area" and "these five checks passed" are different claims and only
+     the second one is worth printing: see `Cleared`. */
+  const cleared: Cleared[] = useMemo(
+    () => [
+      ...(storage.data ? clearStorage(storage.data) : []),
+      ...(detached.data ? clearDetached(detached.data) : []),
+      ...(backups.data ? clearBackups(backups.data) : []),
+      ...(twins.data ? clearTwins(twins.data) : []),
+      ...(queries.data ? clearQueries(queries.data) : []),
+      ...(traffic.data ? clearTraffic(traffic.data) : []),
+      ...(cold.data ? clearCold(cold.data) : []),
+      ...(spend.data ? clearSpend(spend.data) : []),
+    ],
+    [
+      storage.data,
+      detached.data,
+      backups.data,
+      twins.data,
+      queries.data,
+      traffic.data,
+      cold.data,
+      spend.data,
+    ],
+  )
+
   const workloadAsked = read !== null
   const workloadPending =
     queries.isFetching || traffic.isFetching || cold.isFetching || spend.isFetching
@@ -270,8 +306,8 @@ export function CheckupPage() {
           key={area.id}
           area={area}
           findings={inArea(findings, area.id)}
+          cleared={inAreaCleared(cleared, area.id)}
           waiting={waitingFor(area.id, { stillReading, workloadAsked, workloadPending })}
-          workspace={Boolean(config.data?.workspace)}
         />
       ))}
     </article>
@@ -307,30 +343,60 @@ function waitingFor(
 function AreaSection({
   area,
   findings,
+  cleared,
   waiting,
-  workspace,
 }: {
   area: (typeof AREAS)[number]
   findings: Finding[]
+  /** The checks in this area that ran and came back clear. Shown *with* the
+   *  findings rather than instead of them: an area with one thing to change and
+   *  four things that are fine is telling the reader both, and hiding the four
+   *  is what made a healthy page look like a broken one. */
+  cleared: Cleared[]
   waiting: string | null
-  workspace: boolean
 }) {
   return (
     <section className="section">
       <h2 className="section__title">{area.label}</h2>
       <p className="says">{area.lead}</p>
-      {waiting ? (
-        <p className="says checkup__waiting">{waiting}</p>
-      ) : findings.length === 0 ? (
-        <p className="says">Nothing here is asking to be changed.</p>
-      ) : (
+      {waiting ? <p className="says checkup__waiting">{waiting}</p> : null}
+
+      {findings.length > 0 ? (
         <ul className="checkup__list">
           {findings.map((f) => (
             <FindingRow key={f.id} finding={f} />
           ))}
         </ul>
-      )}
-      {area.id === 'schema' && !workspace ? null : null}
+      ) : null}
+
+      {cleared.length > 0 ? (
+        <>
+          {/* The count leads, and it counts the list below it. */}
+          <p className="cleared__head label">
+            {cleared.length} {cleared.length === 1 ? 'check' : 'checks'}
+            {findings.length > 0 ? ' also came back clear' : ' came back clear'}
+          </p>
+          <ul className="cleared">
+            {cleared.map((c) => (
+              <li className="cleared__row" key={c.id}>
+                <span className="cleared__mark" aria-hidden="true" />
+                <span className="cleared__label">{c.label}</span>
+                <span className="cleared__reading">{c.reading}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+
+      {/* Neither a finding nor a clearance, and not waiting either: every
+          reading this area is made of came back unreadable. Said rather than
+          left blank — a section with nothing in it has told the reader that
+          everything is fine, which is the one thing it does not know. */}
+      {!waiting && findings.length === 0 && cleared.length === 0 ? (
+        <p className="says">
+          Nothing here could be read on this server, so nothing here speaks for it.
+        </p>
+      ) : null}
     </section>
   )
 }

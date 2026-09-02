@@ -1,4 +1,9 @@
 @import '@fontsource-variable/plus-jakarta-sans/index.css';
+/* The editorial serif. Fraunces is variable on two axes and only the weight is
+   used here — the optical-size axis is left at its default, because the sizes
+   this face is set at in Flint (a verdict, a page name) all sit in the display
+   end of the range the default already serves. */
+@import '@fontsource-variable/fraunces/index.css';
 @import '@fontsource/jetbrains-mono/400.css';
 @import '@fontsource/jetbrains-mono/500.css';
 @import '@fontsource/jetbrains-mono/400-italic.css';

@@ -145,6 +145,17 @@
   --ease-inout: cubic-bezier(0.4, 0, 0.6, 1);
 
   --font-sans: 'Plus Jakarta Sans Variable', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /* UI headings share the sans (nav, dialogs, section titles) — the serif is
+     reserved for editorial. Dashfile's line, kept verbatim: the token was in
+     that contract from the start and Flint simply never claimed it, which is
+     why every verdict in this product has been set in the same face as its
+     buttons. A page whose thesis and whose toolbar speak in one voice has no
+     editorial register at all — it was the single largest reason Flint read as
+     flatter than Dashfile on identical colours. */
+  --font-display: var(--font-sans);
+  /* Editorial serif for the storytelling moments: the arrival's verdict, a page's
+     name, the figure a sentence is built around. */
+  --font-editorial: 'Fraunces Variable', 'Georgia', serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
@@ -337,6 +348,12 @@
 
   --font-ui: var(--font-sans);
   --font-data: var(--font-mono);
+  /* Flint's third voice. `--font-ui` labels the interface, `--font-data` is the
+     characters that *are* the content, and this one is Flint talking: the verdict
+     on the arrival board, the name of the thing you opened, the sentence a
+     finding is written as. Reserved and rationed — a serif spent on a section
+     heading or a table caption stops being a register and becomes a font. */
+  --font-voice: var(--font-editorial);
 
   --size-hero: 1.875rem;
   --size-metric: 1.5rem;
