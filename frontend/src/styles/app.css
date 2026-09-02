@@ -15760,3 +15760,75 @@ button.acol__val:hover {
   line-height: 1.55;
   color: var(--chalk-faint);
 }
+
+/* ── What came back clear ────────────────────────────────────────────────
+ * The other half of a checkup, and the half that used to be one sentence:
+ * "Nothing here is asking to be changed." Three of the four areas say that on a
+ * healthy server, which is most servers most days, so the page somebody opens
+ * to be reassured read as a page that had failed to load.
+ *
+ * Drawn quieter than a finding and in the same grammar as one: a label, and the
+ * figure the reading rests on. Deliberately *not* a row of green ticks — the
+ * mark is a hairline dash, because "we looked and here is the number" is a
+ * different claim from "this is good", and only the first one is Flint's to
+ * make. See `lib/checkup`'s `Cleared`.
+ */
+
+.cleared__head {
+  margin: var(--s4) 0 var(--s2);
+  color: var(--chalk-faint);
+}
+
+.cleared {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cleared__row {
+  display: grid;
+  /* The label column is sized to the longest of them rather than to its own
+   * content, so the readings line up into a column somebody can scan down. */
+  grid-template-columns: 15px minmax(0, 22ch) minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--s2);
+  padding: 5px 0;
+  border-bottom: 1px solid var(--divider);
+  font-size: var(--size-body);
+  line-height: 1.5;
+}
+.cleared__row:last-child {
+  border-bottom: none;
+}
+
+/* A dash, not a tick. Flint measured something and is printing the figure; it
+ * is not awarding a pass. */
+.cleared__mark {
+  width: 9px;
+  height: 1px;
+  align-self: center;
+  background: var(--success);
+}
+
+.cleared__label {
+  color: var(--chalk);
+}
+
+.cleared__reading {
+  min-width: 0;
+  color: var(--chalk-faint);
+}
+
+/* Under about 620px the three columns stop being columns: the reading gets two
+ * words per line. The label takes its own line and the reading the next. */
+@media (max-width: 620px) {
+  .cleared__row {
+    grid-template-columns: 15px minmax(0, 1fr);
+  }
+  .cleared__reading {
+    grid-column: 2;
+  }
+}

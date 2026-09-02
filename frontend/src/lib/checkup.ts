@@ -64,7 +64,14 @@ export const AREAS: { id: Area; label: string; lead: string }[] = [
     lead: 'What the statements cost, what failed, and what would have served them.',
   },
   { id: 'schema', label: 'The schema', lead: 'Where the bytes are, and what holds them.' },
-  { id: 'risk', label: 'What is not covered', lead: 'Nothing is wrong yet.' },
+  {
+    id: 'risk',
+    label: 'What is not covered',
+    // Not "Nothing is wrong yet", which is what this said and which now sits
+    // directly above a finding and contradicts it. The area is about what would
+    // go wrong, not about whether anything has.
+    lead: 'What is not in place for the day something does go wrong.',
+  },
 ]
 
 /** What acting on a finding gives back.
@@ -653,4 +660,173 @@ export function couldHaveBeen(
     return `${pattern.runs} runs averaging ${Math.round(pattern.total_ms / pattern.runs)} ms. Each one is cheap and there are a great many — a materialised view or a cache in front of it would give back the total rather than the average.`
   }
   return null
+}
+
+/* ── What came back clear ────────────────────────────────────────────────
+ * A section with no findings printed one sentence: "Nothing here is asking to
+ * be changed." It is exactly true and it is not a screen. Three of the four
+ * areas say it on a healthy server, which is most servers most days, so the
+ * page a reader opens to be reassured reads as a page that failed to load —
+ * and the one thing it cannot do is show the work.
+ *
+ * So a clear area lists what was looked at and what the look measured. Same
+ * discipline as a finding: never the word "fine" on its own, always the figure
+ * that says so. `Parts per partition — the fullest holds 4 of the 150 the
+ * server delays inserts at` is a reader's own judgement made possible; "nothing
+ * here" is Flint's, taken on trust.
+ *
+ * A clearance is emitted only for a check that actually *ran* and actually came
+ * back clear. A reading Flint could not take is not a pass, and it is already
+ * said elsewhere — see the `waiting` prop on the section. This is why each of
+ * these mirrors its `from*` twin: the same guard, the other branch.
+ */
+
+/** A millisecond figure, at a precision that does not round a real reading to
+ *  nothing. `Math.round` on a 0.4 ms average prints `0 ms`, which reads as "no
+ *  time at all" for a workload that took time — the one way a clearance can
+ *  state a figure and still mislead. Below ten, one decimal. */
+export function ms(n: number): string {
+  if (!Number.isFinite(n)) return '—'
+  // Zero is a reading of its own and prints as one. Anything above it that a
+  // decimal would still round to zero says so instead: a 0.04 ms average is
+  // under a tenth of a millisecond, which is a fact, where `0 ms` is not.
+  if (n === 0) return '0 ms'
+  if (n < 0.1) return '<0.1 ms'
+  return n < 10 ? `${Number(n.toFixed(1))} ms` : `${Math.round(n)} ms`
+}
+
+export interface Cleared {
+  /** Stable, like a finding's, so the list has keys and two runs compare. */
+  id: string
+  area: Area
+  /** What was looked at, as a noun. */
+  label: string
+  /** What the look found, with the figure it rests on. */
+  reading: string
+}
+
+export function clearStorage(report: StorageReport): Cleared[] {
+  if (!report.available) return []
+  const worst = report.partitions.reduce((n, p) => Math.max(n, p.parts), 0)
+  /* The same two levels `fromStorage` flags, and no others: `watch` is the
+     server keeping an eye on a partition, not something asking to be changed,
+     and a clearance that disagreed with its own twin would be the page
+     contradicting itself between two sections. */
+  const bad = report.partitions.some((p) => {
+    const level = partitionVerdict(p.parts, report.thresholds).level
+    return level === 'delay' || level === 'throw'
+  })
+  if (bad) return []
+  return [
+    {
+      id: 'clear:server:parts',
+      area: 'server',
+      label: 'Parts per partition',
+      reading: report.partitions.length
+        ? `the fullest holds ${worst} of the ${report.thresholds.delay_insert} at which the server starts delaying inserts, across ${report.partitions.length} partitions`
+        : 'no partition on this server holds enough parts to be counted',
+    },
+  ]
+}
+
+export function clearDetached(report: DetachedReport): Cleared[] {
+  if (!report.available || report.total > 0) return []
+  return [
+    {
+      id: 'clear:server:detached',
+      area: 'server',
+      label: 'Detached parts',
+      reading: 'none — every part on the disk belongs to a table',
+    },
+  ]
+}
+
+export function clearBackups(report: BackupReport): Cleared[] {
+  if (!report.available || report.runs.length === 0) return []
+  return [
+    {
+      id: 'clear:risk:backups',
+      area: 'risk',
+      label: 'Backups',
+      reading: `${report.runs.length} in the list${report.disk ? `, to ${report.disk}` : ''}${
+        report.persistent ? '' : ' — an in-memory list, which a restart empties'
+      }`,
+    },
+  ]
+}
+
+export function clearTwins(report: TwinReport): Cleared[] {
+  if (!report.available || notableTwins(report).length > 0) return []
+  return [
+    {
+      id: 'clear:schema:twins',
+      area: 'schema',
+      label: 'The same data held twice',
+      reading: report.total_sets
+        ? `${report.total_sets} pairs of tables look alike, none of them above the ${bytes(report.row_floor)} floor this reading trusts`
+        : 'no two tables on this server hold the same rows',
+    },
+  ]
+}
+
+export function clearQueries(report: QueryReport): Cleared[] {
+  const s = report.summary
+  if (!report.available || !s) return []
+  const out: Cleared[] = []
+  if (s.failures === 0) {
+    out.push({
+      id: 'clear:queries:failures',
+      area: 'queries',
+      label: 'Failures',
+      reading: `none of the ${s.queries.toLocaleString('en')} statements in the log failed`,
+    })
+  }
+  out.push({
+    id: 'clear:queries:latency',
+    area: 'queries',
+    label: 'Latency',
+    reading: `${ms(s.p95_ms)} at the 95th percentile, ${ms(s.avg_ms)} on average, over ${s.queries.toLocaleString('en')} statements`,
+  })
+  return out
+}
+
+export function clearTraffic(report: TrafficReport): Cleared[] {
+  if (!report.available || report.unused.length > 0) return []
+  return [
+    {
+      id: 'clear:schema:unused',
+      area: 'schema',
+      label: 'Tables nothing read',
+      reading: `none — every one of the ${report.traffic.length} tables in the log was read at least once`,
+    },
+  ]
+}
+
+export function clearCold(report: ColdReport): Cleared[] {
+  if (!trustworthy(report).ok || report.total_cold_bytes > 0) return []
+  return [
+    {
+      id: 'clear:schema:cold',
+      area: 'schema',
+      label: 'Columns nothing reads',
+      reading: `none over ${bytes(report.floor_bytes)}, across ${bytes(report.total_bytes)} of columns and ${report.statements.toLocaleString('en')} statements`,
+    },
+  ]
+}
+
+export function clearSpend(report: SpendReport): Cleared[] {
+  if (!report.available || notable(report).length > 0) return []
+  return [
+    {
+      id: 'clear:queries:spend',
+      area: 'queries',
+      label: 'Who the server works for',
+      reading: `${report.accounts} account${report.accounts === 1 ? '' : 's'} ran ${report.total_statements.toLocaleString('en')} statements, none of them taking a share worth naming`,
+    },
+  ]
+}
+
+/** The clearances for one area, in the order the checks were declared. */
+export function inAreaCleared(cleared: Cleared[], area: Area): Cleared[] {
+  return cleared.filter((c) => c.area === area)
 }

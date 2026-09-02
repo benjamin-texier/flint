@@ -1,8 +1,15 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  clearBackups,
+  clearDetached,
+  clearQueries,
+  clearStorage,
+  clearTraffic,
   fromBackups,
   fromDetached,
+  inAreaCleared,
+  ms,
   fromHeavy,
   fromQueries,
   fromStorage,
@@ -458,5 +465,157 @@ describe('saysSession', () => {
     expect(saysSession(0, 45_000)).toBe('45 seconds')
     expect(saysSession(0, 12 * 60_000)).toBe('12 minutes')
     expect(saysSession(0, 3 * 3600_000)).toBe('3.0 hours')
+  })
+})
+
+/* ── Clearances ─────────────────────────────────────────────────────────
+ * The rule that matters is not the wording: it is that a clearance and its
+ * `from*` twin can never both speak. A section saying "none — every part on the
+ * disk belongs to a table" above a finding about detached parts is the page
+ * contradicting itself, and it is the only way this feature can do harm.
+ */
+describe('clearances never contradict their findings', () => {
+  it('detached: clear exactly when there is no finding', () => {
+    for (const report of [
+      { available: true, parts: [], total: 0, total_bytes: 0, quarantined: 0 },
+      { available: true, parts: [], total: 3, total_bytes: 900, quarantined: 0 },
+      { available: true, parts: [], total: 3, total_bytes: 900, quarantined: 3 },
+      { available: false, reason: 'no grant', parts: [], total: 0, total_bytes: 0, quarantined: 0 },
+    ]) {
+      const spoke = fromDetached(report).length > 0
+      const cleared = clearDetached(report).length > 0
+      expect(spoke && cleared).toBe(false)
+    }
+  })
+
+  it('detached: says none only when none, and says nothing when it could not look', () => {
+    expect(clearDetached({ available: true, parts: [], total: 0, total_bytes: 0, quarantined: 0 })[0]!.reading).toContain('none')
+    expect(clearDetached({ available: false, parts: [], total: 0, total_bytes: 0, quarantined: 0 })).toEqual([])
+  })
+
+  it('storage: uses the same two levels its twin flags, so `watch` is not a finding nor a lie', () => {
+    const thresholds = { delay_insert: 150, throw_insert: 300 }
+    const part = (parts: number) => ({
+      qualified: 'db.t',
+      partition: '202603',
+      partition_id: '202603',
+      parts,
+      row_count: 10,
+      bytes: 10,
+    })
+    for (const parts of [1, 40, 149, 150, 299, 300, 900]) {
+      const report = { available: true, tables: [], partitions: [part(parts)], thresholds } as never
+      const spoke = fromStorage(report).length > 0
+      const cleared = clearStorage(report).length > 0
+      expect(spoke && cleared).toBe(false)
+      // And one of them always speaks: an area with neither says nothing at all,
+      // which is the state this whole thing exists to remove.
+      expect(spoke || cleared).toBe(true)
+    }
+  })
+
+  it('storage: the reading carries the figure and the threshold, not a verdict', () => {
+    const report = {
+      available: true,
+      tables: [],
+      partitions: [
+        { qualified: 'db.t', partition: 'p', partition_id: 'p', parts: 4, row_count: 1, bytes: 1 },
+      ],
+      thresholds: { delay_insert: 150, throw_insert: 300 },
+    } as never
+    const [c] = clearStorage(report)
+    expect(c!.reading).toContain('4')
+    expect(c!.reading).toContain('150')
+    expect(c!.reading).not.toMatch(/\bfine\b|\bhealthy\b|\bgood\b/)
+  })
+
+  it('backups: a clearance needs a run, since "no backup" is its twin', () => {
+    const base = { persistent: true, object_storage: false, available: true, disk: 'backups' }
+    expect(clearBackups({ ...base, runs: [] })).toEqual([])
+    const [c] = clearBackups({ ...base, runs: [{}, {}] as never })
+    expect(c!.reading).toContain('2 in the list')
+    expect(c!.reading).toContain('backups')
+  })
+
+  it('backups: an in-memory list says so, because that is the caveat that matters', () => {
+    const [c] = clearBackups({
+      persistent: false,
+      object_storage: false,
+      available: true,
+      disk: '',
+      runs: [{}] as never,
+    })
+    expect(c!.reading).toContain('a restart empties')
+  })
+
+  it('queries: latency is always stated, failures only when there were none', () => {
+    const summary = {
+      queries: 1600, failures: 0, selects: 1500, inserts: 38,
+      read_bytes: 11, read_rows: 11, avg_ms: 0.4, p95_ms: 2, max_ms: 9, users: 1, since: 'x',
+    }
+    const clean = clearQueries({ available: true, window_days: 7, window_seconds: 1, summary, patterns: [], failures: [] })
+    expect(clean.map((c) => c.label)).toEqual(['Failures', 'Latency'])
+    const failing = clearQueries({
+      available: true, window_days: 7, window_seconds: 1,
+      summary: { ...summary, failures: 4 }, patterns: [], failures: [],
+    })
+    expect(failing.map((c) => c.label)).toEqual(['Latency'])
+  })
+
+  it('queries: says nothing at all when the log was not readable', () => {
+    expect(clearQueries({ available: false, window_days: 7, window_seconds: 1, summary: null, patterns: [], failures: [] })).toEqual([])
+  })
+
+  it('traffic: clear only when nothing went unread', () => {
+    const base = { available: true, window_days: 7, window_seconds: 1, traffic: [{}, {}] as never }
+    expect(clearTraffic({ ...base, unused: [] })[0]!.reading).toContain('2 tables')
+    expect(clearTraffic({ ...base, unused: [{}] as never })).toEqual([])
+  })
+
+  it('every clearance carries a distinct id, so a list of them can be keyed', () => {
+    const all = [
+      ...clearDetached({ available: true, parts: [], total: 0, total_bytes: 0, quarantined: 0 }),
+      ...clearBackups({ persistent: true, object_storage: false, available: true, disk: 'd', runs: [{}] as never }),
+      ...clearQueries({
+        available: true, window_days: 7, window_seconds: 1, patterns: [], failures: [],
+        summary: { queries: 1, failures: 0, selects: 1, inserts: 0, read_bytes: 1, read_rows: 1, avg_ms: 1, p95_ms: 1, max_ms: 1, users: 1, since: 'x' },
+      }),
+    ]
+    expect(new Set(all.map((c) => c.id)).size).toBe(all.length)
+    for (const c of all) expect(c.id.startsWith('clear:')).toBe(true)
+  })
+
+  it('sorts into areas the same way findings do', () => {
+    const all = clearBackups({ persistent: true, object_storage: false, available: true, disk: 'd', runs: [{}] as never })
+    expect(inAreaCleared(all, 'risk')).toHaveLength(1)
+    expect(inAreaCleared(all, 'server')).toHaveLength(0)
+  })
+})
+
+describe('ms', () => {
+  it('keeps a decimal below ten, so a real reading is not rounded to nothing', () => {
+    expect(ms(0.4)).toBe('0.4 ms')
+    expect(ms(1)).toBe('1 ms')
+    expect(ms(9.94)).toBe('9.9 ms')
+  })
+
+  it('rounds above ten, where a decimal is noise', () => {
+    expect(ms(14.4)).toBe('14 ms')
+    expect(ms(2481.6)).toBe('2482 ms')
+  })
+
+  it('drops a figure it does not have rather than printing zero', () => {
+    expect(ms(NaN)).toBe('—')
+  })
+
+  it('distinguishes nothing at all from too little to print', () => {
+    expect(ms(0)).toBe('0 ms')
+    expect(ms(0.04)).toBe('<0.1 ms')
+  })
+
+  /* The bug: a workload averaging 0.4 ms printed "0 ms on average", which reads
+     as a workload that took no time. */
+  it('never prints a bare 0 for a positive reading', () => {
+    for (const n of [0.04, 0.4, 0.9, 4.9]) expect(ms(n)).not.toBe('0 ms')
   })
 })
