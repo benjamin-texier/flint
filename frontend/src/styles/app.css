@@ -14,10 +14,29 @@
   flex: 1;
 }
 
+/* The ground the content actually stands on, and it is `--slab-sunk`
+ * (`--bg-canvas`, #f7f5f2) rather than `--ground` (`--bg-page`, #eceae6).
+ *
+ * Both values are Dashfile's and neither changed here — what was wrong was
+ * which one Flint painted. Dashfile reserves `--bg-page` for what sits *behind*
+ * a scroller and gives the scroller the lighter cream; Flint had been handing
+ * the reading surface the darker step, one whole value below its sibling, on
+ * every page. Sampled off two screenshots side by side it is the difference
+ * between #f7f5f2 and #eceae6 under every sentence in the product, and it is
+ * most of what made identical palettes read as muddier here. `--ground` keeps
+ * its job on the body beneath, so an overscroll still shows the deeper tone.
+ *
+ * The two themes move in opposite directions from this one line, and that is
+ * the intent rather than an oversight: in light `--bg-canvas` is a step *up*
+ * from the page and in dark it is a step *down*. Both times it is the step that
+ * puts more distance between the reading surface and the cards on it — the
+ * light theme stops sinking its own text, and the dark theme finally lets a
+ * `--bg-surface` panel lift, which at #0e1620 on #0b1119 it could not do. */
 .shell__main {
   flex: 1;
   min-width: 0;
   overflow: auto;
+  background: var(--slab-sunk);
 }
 
 /* ═══ Chrome ══════════════════════════════════════════════════════════════ */
@@ -104,13 +123,19 @@
   border-bottom-color: var(--text-primary);
 }
 
+/* The tray behind the section pills, on `--slab-raised` (`--bg-surface-2`) and
+ * not `--fill`. The same correction as `.shell__main` and for the same reason:
+ * `--fill` is the ground of a *hovered row*, a colour that means "the pointer is
+ * here", and spending it on a permanent tray both wastes the signal and sinks
+ * the one group of controls that is on every screen. Dashfile's own nav track is
+ * `--bg-surface-2`; this is the step that was missed, not a new value. */
 .chrome__sections {
   display: flex;
   align-items: center;
   gap: var(--s1);
   padding: 3px;
   border-radius: var(--radius-pill);
-  background: var(--fill);
+  background: var(--slab-raised);
 }
 
 .chrome__navsep {
@@ -140,7 +165,18 @@
    once per view, on the thing you are being asked to do — and a filled green
    pill sitting a hand's width from the page's primary button was spending it
    twice, on the louder of the two, for the one that is not an action at all.
-   Ink on ink says "here" at least as plainly and says nothing else. */
+   Ink on ink says "here" at least as plainly and says nothing else.
+
+   Tried the other way round in Sep 2026, with Dashfile open beside this bar,
+   because Dashfile *does* give its nav bubble the accent fill and reads better
+   for it. It failed `contrib/browser-check.mjs`'s `sparks` scene on `/`,
+   `/alerts` and `/query` — "lights the accent 2 times at rest — chrome__link,
+   btn" — which is this rule enforced, not merely commented. Dashfile can afford
+   the accented bubble because its primary action is a white button carrying an
+   accent *mark* (the teal triangle on `Présentation`) rather than an accent
+   fill; porting the bubble alone spends the spark twice and porting both is a
+   product-wide decision about every primary button in Flint. Left as it was
+   until that decision is actually made. */
 .chrome__link.active {
   color: var(--rail);
   background: var(--chalk);
@@ -988,13 +1024,24 @@
   flex-wrap: wrap;
 }
 
+/* The name of the thing you opened, in the editorial voice — a database, a
+ * server, a page's own title. This is the second of the two places the serif is
+ * spent, and the rationing is deliberate: section headings below it stay in the
+ * sans (`--font-display`), so the register change marks the top of the page
+ * rather than decorating every heading on it.
+ *
+ * `-0.025em` was tracking tuned for the geometric sans. Fraunces is drawn with
+ * its own fit and reads cramped at that figure, so it opens to -0.01em, the
+ * same value the verdict settles on. */
 .page__title {
   display: flex;
   align-items: center;
   gap: var(--s3);
+  font-family: var(--font-voice);
+  font-weight: 500;
   font-size: var(--size-hero);
-  line-height: 1.1;
-  letter-spacing: -0.025em;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
 }
 .page__title--hero {
   font-size: 2.375rem;
@@ -15084,14 +15131,22 @@ button.acol__val:hover {
  * `clamp` rather than a breakpoint: the sentence runs from four words to nine
  * depending on what was found, and one fixed size makes the short one look lost
  * and the long one wrap four times. */
+/* Set in `--font-voice`, which is the whole point of this sentence existing.
+ * It was in `--font-ui` — the face of the nav pills eight rows above it — at
+ * weight 700 and -0.035em tracking, which is how a geometric sans is made to
+ * shout at display size because it has no other register to change into. A
+ * serif does, so the shouting can stop: weight comes down to 500 and the
+ * tracking opens back out to -0.01em, and the sentence reads as written rather
+ * than as marketed. Fraunces' own display cut carries the emphasis that the
+ * extra 200 weight units were faking. */
 .arrival__verdict {
   max-width: 30ch;
   margin: 0;
-  font-family: var(--font-ui);
+  font-family: var(--font-voice);
   font-size: clamp(2rem, 4.6vw, 3.5rem);
-  font-weight: 700;
-  line-height: 1.04;
-  letter-spacing: -0.035em;
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
   text-wrap: balance;
   color: var(--chalk);
 }
@@ -15102,7 +15157,16 @@ button.acol__val:hover {
  * naively it reads as a footnote that wandered into the headline. */
 .arrival__figure {
   font-family: var(--font-data);
-  font-weight: 700;
+  /* 600, not 700, and 600 is now a weight that exists — see the note in
+     base.css, which loads the cut this and thirteen other mono rules were
+     already asking for. The 700 here was matched to a sentence that was also
+     700; the sentence is 500 now, and a mono digit two weight steps above the
+     words it counts stops being emphasis and becomes a lump.
+     Checked in the browser on the 2-or-more sentence, which is the only one
+     that has a figure at all — `lib/arrival.ts` spells "One" as a word, so this
+     pairing never renders on a server with a single finding and is easy to
+     leave untested. */
+  font-weight: 600;
   font-size: 1.06em;
   letter-spacing: -0.05em;
   /* Ink, not the accent — and that was a real mistake worth recording. The
@@ -15138,10 +15202,17 @@ button.acol__val:hover {
 
 /* Segments divided by a gap of the page ground rather than by a border: a
  * hairline between two fills of the same hue reads as a third thing. */
+/* Six pixels, not ten. At ten this is the widest, heaviest mark on the arrival
+ * board — a full-measure slab of one flat tone directly under the verdict, which
+ * puts the loudest thing on the page on the sentence's supporting evidence
+ * rather than on the sentence. At six it reads as a measured rule: the same
+ * proportions, the same reading, and the legend beneath it recovers the weight.
+ * The height is the whole change — the ink is still `--bar`, because it is still
+ * the one quantity. */
 .strip__bar {
   display: flex;
   gap: 2px;
-  height: 10px;
+  height: 6px;
   border-radius: var(--radius-pill);
 }
 
