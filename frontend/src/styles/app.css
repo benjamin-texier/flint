@@ -15903,3 +15903,30 @@ button.acol__val:hover {
     grid-column: 2;
   }
 }
+
+/* ── The workspace, offered ──────────────────────────────────────────────
+ * The state a first run meets on five of Flint's pages. See
+ * `components/NeedsWorkspace.tsx` for why there is one of it now and not seven.
+ * The line to copy is set as a block rather than inline, because it is the one
+ * thing on the card somebody is going to select. */
+
+.needsws .note__hint {
+  max-width: 66ch;
+}
+
+.needsws__env {
+  display: inline-block;
+  margin: var(--s3) 0;
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--slab-raised);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+  /* Selectable as one run: a reader copies this, and a wrapped env var pasted
+   * into a compose file with a newline in the middle of it is a config error
+   * that looks like Flint's fault. */
+  white-space: nowrap;
+  user-select: all;
+}

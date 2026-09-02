@@ -227,6 +227,28 @@ export function dataFor(
   return { ...DATA, sections }
 }
 
+/** What a workspace brings back, in the bar's own words.
+ *
+ *  Read off the section table rather than written out, so the offer a stateless
+ *  page makes and the sections that actually appear cannot disagree. They did:
+ *  seven places explained the workspace in four wordings, one of them naming
+ *  four sections and another five, and `Home` had stopped being one of them
+ *  months before the sentences noticed.
+ *
+ *  Sorted the way the bar sorts them, because the reader is about to look for
+ *  them there. */
+export function keptSections(): string[] {
+  return DATA.sections.filter((s) => s.needs).map((s) => s.label)
+}
+
+/** The same list as a sentence: `A, B, C and D`. Kept here beside the list so a
+ *  page cannot join it with a comma where the bar would use "and". */
+export function keptSentence(labels = keptSections()): string {
+  if (labels.length === 0) return ''
+  if (labels.length === 1) return labels[0]!
+  return `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}`
+}
+
 /** Whether this deployment keeps anything at all.
  *
  *  One reading of `config.workspace` for the whole frontend: pages gate their

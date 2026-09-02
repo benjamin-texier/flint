@@ -29,6 +29,17 @@ services:
       FLINT_CLICKHOUSE_DATABASE: ${FLINT_CLICKHOUSE_DATABASE:-default}
       # On by default here: pointing a fresh deployment at a real database
       # should not be able to write to it.
+      # Flint's own database, for the half of the product that keeps things:
+      # Dashboards, Alerts, Reports, APIs and saved statements. Empty by default
+      # — writing to somebody's warehouse is not a default — and the four
+      # sections are then absent from the bar rather than present and failing.
+      # Set it in .env to turn them on. See .env.example.
+      #
+      # Safe alongside FLINT_READONLY below, which is the reasonable assumption
+      # to make and the wrong one: read-only refuses writes to the data being
+      # explored, and this is Flint's own database. Both together is the
+      # ordinary setup.
+      FLINT_WORKSPACE_DATABASE: ${FLINT_WORKSPACE_DATABASE-}
       FLINT_READONLY: ${FLINT_READONLY:-true}
       FLINT_MAX_RESULT_ROWS: ${FLINT_MAX_RESULT_ROWS:-10000}
       FLINT_LOG: ${FLINT_LOG:-flint=info,tower_http=warn}

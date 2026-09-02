@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, type SavedQuery } from '../lib/api'
 import { relativeTime } from '../lib/format'
 import { EmptyNote, ErrorNote, Loading } from '../components/Note'
+import { NeedsWorkspace } from '../components/NeedsWorkspace'
 
 /** Saved queries, and the form that adds one.
  *
@@ -61,12 +62,7 @@ export function SavedPanel({
           </button>
         </header>
         <div className="history__body">
-          <EmptyNote title="Flint is running without a workspace">
-            It has nowhere to keep a saved query, and by design it will not create anything
-            uninvited. Set <code>FLINT_WORKSPACE_DATABASE</code> to a database it may write to —
-            <code>flint</code> is the conventional name — and restart. Your data is untouched
-            either way: the workspace only ever holds Flint's own metadata.
-          </EmptyNote>
+          <NeedsWorkspace holds="a saved statement" />
         </div>
       </section>
     )

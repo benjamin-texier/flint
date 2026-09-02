@@ -28,6 +28,16 @@ docker compose up --build
 
 Open <http://localhost:8080>.
 
+Flint writes nothing anywhere until you name a database for it, so Dashboards,
+Alerts, Reports and APIs are absent from the bar on a first run rather than
+present and failing. One line in `.env` turns them on, and it is safe alongside
+the read-only default — that refuses writes to *your* data, and this is Flint's
+own database:
+
+```bash
+FLINT_WORKSPACE_DATABASE=flint
+```
+
 If your ClickHouse is bound to the host's **loopback only** — which is what
 `kubectl port-forward` and Tilt give you — a bridged container cannot see it,
 whatever address you use. Add the host-network overlay:

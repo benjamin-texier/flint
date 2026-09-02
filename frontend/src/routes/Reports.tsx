@@ -31,6 +31,7 @@ import { ResultsGrid } from '../components/ResultsGrid'
 import { EmptyNote, ErrorNote, Loading } from '../components/Note'
 import { Operations } from '../components/Operations'
 import { CheckPanel } from '../components/CheckPanel'
+import { NeedsWorkspace } from '../components/NeedsWorkspace'
 import { readHandoff, suggestName, type Handoff } from '../lib/handoff'
 
 /** Reports: what the numbers were, kept.
@@ -132,10 +133,7 @@ export function ReportsPage() {
       </header>
 
       {stateless ? (
-        <EmptyNote title="Reports need somewhere to live">
-          Flint is running without a workspace, so it has nowhere to keep a report or its
-          snapshots. Set `FLINT_WORKSPACE_DATABASE` to a database it may write to.
-        </EmptyNote>
+        <NeedsWorkspace title="Reports need somewhere to live" holds="a report or its snapshots" />
       ) : null}
 
       {reports.isPending && !stateless ? <Loading label="Reading reports" /> : null}

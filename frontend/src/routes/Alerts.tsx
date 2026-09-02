@@ -26,6 +26,7 @@ import {
 } from '../lib/alert'
 import { EmptyNote, ErrorNote, Loading } from '../components/Note'
 import { CheckPanel } from '../components/CheckPanel'
+import { NeedsWorkspace } from '../components/NeedsWorkspace'
 import { readHandoff, suggestName, type Handoff } from '../lib/handoff'
 import { keeps } from '../lib/spaces'
 
@@ -115,10 +116,7 @@ export function AlertsPage() {
       </header>
 
       {stateless ? (
-        <EmptyNote title="Alerts need somewhere to live">
-          Flint is running without a workspace, so it has nowhere to keep an alert or its
-          history. Set `FLINT_WORKSPACE_DATABASE` to a database it may write to.
-        </EmptyNote>
+        <NeedsWorkspace title="Alerts need somewhere to live" holds="an alert or its history" />
       ) : null}
 
       {alerts.isPending && !stateless ? <Loading label="Reading alerts" /> : null}
