@@ -21,6 +21,7 @@ import { EmptyNote, ErrorNote, Loading } from '../components/Note'
 import { PublishForm } from '../components/PublishForm'
 import { ExposeTables } from '../components/ExposeTables'
 import { Keys } from '../components/Keys'
+import { NeedsWorkspace } from '../components/NeedsWorkspace'
 import { readHandoff, type Handoff } from '../lib/handoff'
 import { count } from '../lib/format'
 import { keeps } from '../lib/spaces'
@@ -125,10 +126,7 @@ export function PublishPage() {
       </header>
 
       {stateless ? (
-        <EmptyNote title="Publishing needs a workspace">
-          Flint is running without one, so it has nowhere to keep an endpoint. Set
-          `FLINT_WORKSPACE_DATABASE` to a database it may write to.
-        </EmptyNote>
+        <NeedsWorkspace title="Publishing needs a workspace" holds="an endpoint" />
       ) : null}
 
       {list.isPending && !stateless ? <Loading label="Reading endpoints" /> : null}

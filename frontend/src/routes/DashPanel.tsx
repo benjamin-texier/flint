@@ -5,7 +5,8 @@ import { Link } from 'react-router-dom'
 import { api } from '../lib/api'
 import type { ChartSpec } from '../lib/chart'
 import { addTile, emptySpec, parseSpec, serialiseSpec } from '../lib/dashboard'
-import { EmptyNote, ErrorNote, Loading } from '../components/Note'
+import { ErrorNote, Loading } from '../components/Note'
+import { NeedsWorkspace } from '../components/NeedsWorkspace'
 
 /** Add what is on screen to a dashboard.
  *
@@ -87,9 +88,7 @@ export function DashPanel({
           </button>
         </header>
         <div className="history__body">
-          <EmptyNote title="Flint is running without a workspace">
-            Set <code>FLINT_WORKSPACE_DATABASE</code> to a database it may write to and restart.
-          </EmptyNote>
+          <NeedsWorkspace holds="a dashboard" />
         </div>
       </section>
     )

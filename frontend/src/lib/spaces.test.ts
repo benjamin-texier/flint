@@ -1,6 +1,18 @@
 import { describe, expect, it } from 'vitest'
 
-import { activeSection, allows, countIn, dataFor, keeps, runs, spaceById, spaceOf, spacesFor } from './spaces'
+import {
+  activeSection,
+  allows,
+  countIn,
+  dataFor,
+  keeps,
+  keptSections,
+  keptSentence,
+  runs,
+  spaceById,
+  spaceOf,
+  spacesFor,
+} from './spaces'
 
 /** A deployment that has everything, for the tests that are about something
  *  else. Written out rather than defaulted, so a test that cares about a
@@ -250,5 +262,39 @@ describe('the sections themselves', () => {
       'config',
       'audit',
     ])
+  })
+})
+
+describe('keptSections', () => {
+  it('names the sections the bar actually gates, and no others', () => {
+    expect(keptSections()).toEqual(['Dashboards', 'Alerts', 'Reports', 'APIs'])
+  })
+
+  /* The drift this exists to stop: Home stopped needing a workspace and seven
+     sentences went on saying it did. The list and the bar are now one source. */
+  it('agrees with what a stateless bar leaves out', () => {
+    const withOne = dataFor({ workspace: 'flint', scheduled: true }).sections.map((s) => s.label)
+    const without = dataFor({ workspace: null, scheduled: false }).sections.map((s) => s.label)
+    const missing = withOne.filter((l) => !without.includes(l))
+    expect(missing).toEqual(keptSections())
+  })
+
+  it('never names a section that is always present', () => {
+    for (const always of ['Home', 'Explore', 'Query', 'Diagnostics']) {
+      expect(keptSections()).not.toContain(always)
+    }
+  })
+})
+
+describe('keptSentence', () => {
+  it('joins the way a sentence does, not the way an array does', () => {
+    expect(keptSentence(['A', 'B', 'C', 'D'])).toBe('A, B, C and D')
+    expect(keptSentence(['A', 'B'])).toBe('A and B')
+    expect(keptSentence(['A'])).toBe('A')
+    expect(keptSentence([])).toBe('')
+  })
+
+  it('reads the real list by default', () => {
+    expect(keptSentence()).toBe('Dashboards, Alerts, Reports and APIs')
   })
 })

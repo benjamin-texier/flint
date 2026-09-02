@@ -32,6 +32,7 @@ import { Chart } from '../components/Chart'
 import { Download } from '../components/Download'
 import { ResultsGrid } from '../components/ResultsGrid'
 import { EmptyNote, ErrorNote, Loading, Sentence } from '../components/Note'
+import { NeedsWorkspace } from '../components/NeedsWorkspace'
 import { keeps } from '../lib/spaces'
 
 /** How tall a tile's plot may be. Matches `.tile__body`'s own floor: a board is
@@ -72,11 +73,7 @@ export function DashboardList() {
           <p className="eyebrow">Dashboards</p>
           <h1 className="page__title page__title--hero">Nothing to keep them in</h1>
         </header>
-        <EmptyNote title="Flint is running without a workspace">
-          A dashboard has to be stored somewhere, and Flint will not create anything uninvited.
-          Set <code>FLINT_WORKSPACE_DATABASE</code> to a database it may write to and restart.
-          Only Flint's own metadata goes there — your tables are untouched.
-        </EmptyNote>
+        <NeedsWorkspace holds="a dashboard" />
       </article>
     )
   }
