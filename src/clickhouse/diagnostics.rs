@@ -28,6 +28,41 @@ fn window(days: u64) -> u64 {
     days.clamp(1, 90)
 }
 
+/// How wide one bucket of the load figure is, for a window this long.
+///
+/// A ladder rather than `seconds / n`, because the labels are read: three hours
+/// is a period somebody can name and 8,640 seconds is not. The finest step whose
+/// bucket count stays under the cap wins, so a ten-minute session is drawn in
+/// minutes and a week in three-hour blocks.
+///
+/// The cap is the figure's, not the server's: past about seventy columns the
+/// bars are hairlines. It is the same reasoning as `MAX_BARS` on the arrival,
+/// kept on this side because the bucketing has to happen in the `GROUP BY`.
+fn bucket_seconds(window_seconds: u64) -> u64 {
+    const LADDER: [u64; 10] = [
+        60,
+        300,
+        900,
+        1800,
+        3600,
+        3 * 3600,
+        6 * 3600,
+        12 * 3600,
+        86_400,
+        // A week. The rung `unwrap_or` used to fall back to was the day, and a
+        // day cannot satisfy the cap for the longest window the product asks
+        // for: `window` clamps at 90 days, which is 90 daily columns. Found by
+        // the test below rather than by looking at the page, because nothing in
+        // the dev stack has ninety days of log.
+        7 * 86_400,
+    ];
+    const CAP: u64 = 72;
+    LADDER
+        .into_iter()
+        .find(|step| window_seconds.div_ceil(*step) <= CAP)
+        .unwrap_or(7 * 86_400)
+}
+
 /// How far back a reading of the log looks.
 ///
 /// Every page but one asks for "lately" and means days. The checkup asks
@@ -169,6 +204,28 @@ async fn rows_or_denial<T: DeserializeOwned>(
 
 // ── Queries ────────────────────────────────────────────────────────────────
 
+/// One bucket of the window: what the server was asked in it, and what that
+/// cost.
+///
+/// Only the buckets that hold something. The gaps between them are filled by
+/// the frontend, which is where the deciding is — see `lib/diagnose`'s `load`.
+/// Filling here with ClickHouse's own `WITH FILL` was the first idea and it is
+/// the wrong side of the line this codebase keeps: `WITH FILL FROM` has to be
+/// told where the axis starts, and "where the axis starts" is a judgement about
+/// a log that may cover two hours of the seven days it was asked for.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoadBucket {
+    /// The start of the bucket, as ClickHouse prints a DateTime.
+    pub at: String,
+    pub queries: u64,
+    pub failures: u64,
+    pub read_bytes: u64,
+    /// Wall time the statements in this bucket spent, summed. Not an average:
+    /// the question this figure answers is when the server was busy, and one
+    /// slow statement among a thousand fast ones is not a busy minute.
+    pub total_ms: u64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Summary {
     pub queries: u64,
@@ -233,6 +290,11 @@ pub struct QueryReport {
     pub summary: Option<Summary>,
     pub patterns: Vec<Pattern>,
     pub failures: Vec<Failure>,
+    /// The window in buckets, oldest first, and how wide a bucket is. The width
+    /// is chosen from the window — see `bucket_seconds` — and is sent because
+    /// nothing downstream can infer it from buckets that have gaps in them.
+    pub load: Vec<LoadBucket>,
+    pub bucket_seconds: u64,
 }
 
 impl QueryReport {
@@ -245,6 +307,8 @@ impl QueryReport {
             summary: None,
             patterns: Vec::new(),
             failures: Vec::new(),
+            load: Vec::new(),
+            bucket_seconds: bucket_seconds(days * 86_400),
         }
     }
 }
@@ -325,6 +389,21 @@ pub async fn queries(ch: &Client, span: Span, limit: u64) -> Result<QueryReport>
          LIMIT {limit}"
     );
 
+    let step = bucket_seconds(seconds);
+    // Every statement type, not just SELECTs: the question is when the server
+    // was busy, and an insert that took a minute made it busy.
+    let load_sql = format!(
+        "SELECT toString(toStartOfInterval(event_time, INTERVAL {step} SECOND)) AS at, \
+                count()                                       AS queries, \
+                countIf(exception_code != 0)                  AS failures, \
+                sum(read_bytes)                               AS read_bytes, \
+                sum(query_duration_ms)                        AS total_ms \
+         FROM system.query_log \
+         WHERE type != 'QueryStart' AND event_time > now() - INTERVAL {seconds} SECOND {ours}\
+         GROUP BY at \
+         ORDER BY at"
+    );
+
     // Grouped by what went wrong, not by when: twenty rows of the same
     // exception say one thing, and it is easier to read once.
     let failures_sql = format!(
@@ -354,6 +433,10 @@ pub async fn queries(ch: &Client, span: Span, limit: u64) -> Result<QueryReport>
         Ok(rows) => rows,
         Err(reason) => return Ok(QueryReport::unavailable(days, reason)),
     };
+    let load = match rows_or_denial::<LoadBucket>(ch, &load_sql, "query_log").await? {
+        Ok(rows) => rows,
+        Err(reason) => return Ok(QueryReport::unavailable(days, reason)),
+    };
 
     Ok(QueryReport {
         available: true,
@@ -363,6 +446,8 @@ pub async fn queries(ch: &Client, span: Span, limit: u64) -> Result<QueryReport>
         summary,
         patterns,
         failures,
+        load,
+        bucket_seconds: step,
     })
 }
 
@@ -1280,6 +1365,69 @@ mod tests {
         let t: TableTraffic = serde_json::from_str(json).expect("write-only tables parse");
         assert_eq!(t.avg_ms, 0.0);
         assert_eq!(t.writes, 3);
+    }
+
+    /// The load figure's bucket width, which decides how many columns the page
+    /// draws. A ladder rather than `seconds / n` because the labels are read:
+    /// three hours is a period somebody can name, 8,640 seconds is not.
+    #[test]
+    fn a_bucket_is_a_period_somebody_can_name() {
+        // A ten-minute session is drawn in minutes.
+        assert_eq!(bucket_seconds(600), 60);
+        // A week is coarser than an hour: hourly would be 168 columns.
+        assert!(bucket_seconds(7 * 86_400) > 3600);
+        // And the longest window the product asks for is drawn in weeks — a day
+        // would be 90 columns, which is what the cap exists to refuse.
+        assert_eq!(bucket_seconds(90 * 86_400), 7 * 86_400);
+        // Every step is a period off the ladder rather than a division, which
+        // is the whole reason this is not `seconds / n`. Asserted rather than
+        // spot-checked: the specific value for a given window is the ladder's
+        // business, and pinning one is how a test starts describing an
+        // assumption instead of a rule.
+        let ladder = [
+            60, 300, 900, 1800, 3600, 10_800, 21_600, 43_200, 86_400, 604_800,
+        ];
+        for seconds in [60, 600, 3600, 86_400, 7 * 86_400, 30 * 86_400, 90 * 86_400] {
+            assert!(
+                ladder.contains(&bucket_seconds(seconds)),
+                "{seconds}s got {}, which is not a period",
+                bucket_seconds(seconds)
+            );
+        }
+    }
+
+    /// The cap is the whole point of the ladder: past about seventy columns the
+    /// bars are hairlines. Asserted across every window the product can ask
+    /// for — the checkup's session is seconds, every other page asks in days.
+    #[test]
+    fn no_window_is_drawn_as_hairlines() {
+        let windows = (1..=90)
+            .map(|d| d * 86_400)
+            .chain([60, 300, 600, 1800, 3600]);
+        for seconds in windows {
+            let step = bucket_seconds(seconds);
+            let columns = seconds.div_ceil(step);
+            assert!(
+                columns <= 72,
+                "{seconds}s in {step}s buckets is {columns} columns"
+            );
+            assert!(step > 0, "{seconds}s got a zero-width bucket");
+        }
+    }
+
+    /// And the other direction: a step so coarse the window is one column says
+    /// nothing about *when*, which is the only thing this figure is for. Only
+    /// checked where the window is longer than the finest step — a window of one
+    /// minute genuinely is one column.
+    #[test]
+    fn a_window_longer_than_its_step_gets_more_than_one_column() {
+        for seconds in [300, 3600, 86_400, 7 * 86_400, 30 * 86_400] {
+            let step = bucket_seconds(seconds);
+            assert!(
+                seconds.div_ceil(step) > 1,
+                "{seconds}s collapsed into one {step}s bucket"
+            );
+        }
     }
 }
 

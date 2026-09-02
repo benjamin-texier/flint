@@ -10,9 +10,11 @@ import {
   databaseOf,
   editorLink,
   everRead,
+  loadBars,
   percent,
   projectionsLink,
   scanShare,
+  saysBucket,
   scanVerdict,
   tableLink,
   worthAskingAboutProjections,
@@ -27,6 +29,7 @@ import { nameOf, notable, saysCaveat, trustworthy, type SpendReport } from '../l
 import { keeps } from '../lib/spaces'
 import { readPlan, verdicts } from '../lib/plan'
 import { Flag, Says, Section, SectionIndex, type Q } from '../components/Diag'
+import { BarRow } from '../components/BarRow'
 import { MetricLine } from '../components/MetricLine'
 import { EmptyNote } from '../components/Note'
 import { ShareBar } from '../components/StratumBar'
@@ -321,6 +324,8 @@ function Watching({ items, anything }: { items: Item[]; anything: boolean }) {
 
 function Load({ report, days }: { report: Q<QueryReport>; days: number }) {
   const s = report.data?.summary
+  const step = report.data?.bucket_seconds ?? 0
+  const bars = loadBars(report.data?.load ?? [], step)
   return (
     <Section title="Load" sub={`Everything the log kept for the last ${days === 1 ? '24 hours' : `${days} days`}.`} q={report}>
       {s ? (
@@ -340,9 +345,35 @@ function Load({ report, days }: { report: Q<QueryReport>; days: number }) {
           ]}
         />
       ) : null}
+      {/* When, which none of the figures above can say. A p95 of two
+          milliseconds over a week says nothing about the Tuesday afternoon it
+          went to four hundred, and knowing that is the whole reason to keep a
+          query log. See `loadBars` for what fills the gaps and why the axis
+          stops at the data rather than at the window. */}
+      {bars.length > 0 ? (
+        <figure className="load">
+          <BarRow
+            label={`${count(bars.reduce((n, x) => n + x.queries, 0))} statements across ${bars.length} periods of ${saysBucket(step)}, ${bars[0]!.at} to ${bars[bars.length - 1]!.at}`}
+            bars={bars.map((x) => ({
+              key: x.at,
+              value: x.queries,
+              title: `${x.at} — ${count(x.queries)} statements${x.failures > 0 ? `, ${count(x.failures)} failed` : ''}, ${bytes(x.read_bytes)} read`,
+            }))}
+          />
+          <figcaption className="load__legend">
+            <span className="load__ends">
+              <span>{bars[0]!.at}</span>
+              <span>{bars[bars.length - 1]!.at}</span>
+            </span>
+            <span className="load__says">
+              Statements per {saysBucket(step)}, over what the log actually kept.
+            </span>
+          </figcaption>
+        </figure>
+      ) : null}
       {s && !s.queries ? (
         <EmptyNote title="Nothing logged in this window">
-          Widen the window, or check that `log_queries` is on.
+          Widen the window, or check that <code>log_queries</code> is on.
         </EmptyNote>
       ) : null}
     </Section>
