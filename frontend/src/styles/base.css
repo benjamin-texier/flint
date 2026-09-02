@@ -6,6 +6,14 @@
 @import '@fontsource-variable/fraunces/index.css';
 @import '@fontsource/jetbrains-mono/400.css';
 @import '@fontsource/jetbrains-mono/500.css';
+/* 600, because fourteen rules in app.css ask the data face for it — a table
+   figure, an endpoint's status, the arrival's count — and until this line none
+   of them got it. The browser was synthesising every one of them by smearing
+   the 500 cut, which is why mono emphasis read slightly soft and mushy
+   everywhere it was used and nowhere obviously enough to file a bug about.
+   Found by grepping app.css for mono rules above 500 and comparing against what
+   was actually loaded here. One real cut fixes all fourteen call sites. */
+@import '@fontsource/jetbrains-mono/600.css';
 @import '@fontsource/jetbrains-mono/400-italic.css';
 @import './tokens.css';
 
