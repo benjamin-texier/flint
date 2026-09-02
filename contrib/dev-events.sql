@@ -30,6 +30,19 @@
 -- *shape* — one row every five minutes, unbroken, for two years — which is what
 -- an event table looks like to a partition key and is exactly what none of the
 -- playground's tables provide.
+--
+-- ## And one pipeline, for the diagram
+--
+-- The schema diagram is the thing Flint is best known for and there was nothing
+-- in any fixture that produced a single arrow: every database on the dev stack
+-- came back with `edges: 0`, including all four from the playground. So the
+-- flow reading could only ever be looked at as one box in an empty canvas —
+-- which is exactly the state it was drawing badly, and the state that could not
+-- be told from the fixed version without an edge to compare against.
+--
+-- A materialized view over the table above gives two: `events` is read by the
+-- view, and the view writes into `events_by_hour`. That is the smallest thing
+-- that is genuinely a pipeline rather than a picture of one.
 
 CREATE TABLE IF NOT EXISTS default.events
 (
@@ -49,3 +62,29 @@ SELECT
     1 + ((number * 7919) % 5000) AS user_id,
     1 + ((number * 31) % 900) AS ms
 FROM numbers(210000);
+
+-- The rollup the view writes into. `SummingMergeTree`, so the arrow out of the
+-- view points at something whose engine explains why it exists.
+CREATE TABLE IF NOT EXISTS default.events_by_hour
+(
+    `hour` DateTime,
+    `kind` LowCardinality(String),
+    `n` UInt64,
+    `ms_total` UInt64
+)
+ENGINE = SummingMergeTree
+PARTITION BY toYYYYMM(hour)
+ORDER BY (kind, hour);
+
+-- Created after the INSERT above on purpose: a materialized view only sees rows
+-- written after it exists, so the target starts empty. That is the honest state
+-- for a pipeline somebody just added, and it is the one Flint has to draw
+-- without claiming the view has moved anything.
+CREATE MATERIALIZED VIEW IF NOT EXISTS default.events_by_hour_mv TO default.events_by_hour AS
+SELECT
+    toStartOfHour(ts) AS hour,
+    kind,
+    count()  AS n,
+    sum(ms)  AS ms_total
+FROM default.events
+GROUP BY hour, kind;

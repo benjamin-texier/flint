@@ -86,7 +86,13 @@ const READING_LABEL: Record<Reading, string> = {
  *  database in front of you. A chain of ternaries in the markup was four
  *  sentences nobody could read as a set — and they are a set, since each one has
  *  to say how it differs from the other three. */
-function subtitle(reading: Reading, pipelines: number): string {
+/** What the reading on screen is, in one line.
+ *
+ *  `fellBack` is the one case where the sentence has to explain itself rather
+ *  than describe: the reader asked for nothing, the diagram had nothing, and the
+ *  page opened somewhere else. Left unsaid, the strip appears to have remembered
+ *  a choice nobody made. */
+function subtitle(reading: Reading, pipelines: number, fellBack = false): string {
   if (reading === 'review') {
     return 'The same tables by what their column types cost: one decision per column, however many tables share it.'
   }
@@ -97,7 +103,10 @@ function subtitle(reading: Reading, pipelines: number): string {
     return 'The same tables on a time axis: every partition each one holds, weighed.'
   }
   if (reading === 'mass') {
-    return 'The same tables by weight: where this database\u2019s disk actually is, column by column.'
+    const weight = 'tables by weight: where this database\u2019s disk actually is, column by column'
+    return fellBack
+      ? `Nothing in this database reads from anything else, so this opens on ${weight}.`
+      : `The same ${weight}.`
   }
   if (reading === 'together') {
     return 'The same tables by what people do with them: which of them get read in one statement.'
@@ -154,13 +163,10 @@ export function DatabasePage({ database }: { database: string }) {
      it has always meant. */
   const [params, setParams] = useSearchParams()
   const raw = params.get('view')
-  const reading: Reading = READINGS.includes(raw as Reading) ? (raw as Reading) : 'flow'
-  const setReading = (next: Reading) => {
-    const updated = new URLSearchParams(params)
-    if (next === 'flow') updated.delete('view')
-    else updated.set('view', next)
-    setParams(updated, { replace: true })
-  }
+  /** The reading somebody asked for, or null for the plain address. Kept apart
+   *  from the reading that is *shown*, because what the plain address means
+   *  depends on whether the diagram has anything to draw — see `reading`. */
+  const asked: Reading | null = READINGS.includes(raw as Reading) ? (raw as Reading) : null
   /* The pattern the review is aimed at, in the URL for the same reason the
      reading is: "the review of default, raw_% only" is a link somebody sends.
      Empty stays unwritten, so a plain address means the whole database. */
@@ -187,6 +193,35 @@ export function DatabasePage({ database }: { database: string }) {
   }
   const tables = useQuery({ queryKey: ['tables', database], queryFn: () => api.tables(database) })
   const graph = useQuery({ queryKey: ['graph', database], queryFn: () => api.graph(database) })
+  /* The plain address opens on the diagram, except where there is no diagram.
+     
+     A database of flat analytics tables — which is most of them in ClickHouse,
+     and every one of the playground's — has no edges at all, and the flow
+     reading then drew the largest and most central thing on the page as a
+     450px canvas containing one box, captioned "not referenced by anything
+     else". Around it: a hops selector, a filter, three layout controls, a
+     full-screen button and a zoom, all serving that one box. The page already
+     knew — `subtitle` has said "nothing in this database reads from anything
+     else yet" the whole time — and drew it anyway.
+     
+     So the plain address falls through to weight, which every database has.
+     Nothing is taken away: `flow` is still on the strip and still one click,
+     and `?view=flow` still resolves. The subtitle says why it opened here.
+     
+     Only once the graph has answered. `undefined` is "not read yet", and
+     defaulting on it would open every database on the mass map for a moment
+     and then jump. */
+  const hasFlow = graph.data ? graph.data.edges.length > 0 : null
+  const reading: Reading = asked ?? (hasFlow === false ? 'mass' : 'flow')
+  const setReading = (next: Reading) => {
+    const updated = new URLSearchParams(params)
+    /* `flow` is the plain address only while it is also what the plain address
+       shows. Where it is not, choosing it has to be written down — otherwise
+       the click clears the param and lands straight back on the fallback. */
+    if (next === 'flow' && hasFlow !== false) updated.delete('view')
+    else updated.set('view', next)
+    setParams(updated, { replace: true })
+  }
   /* Only for the header, and only ever a cache hit in practice: the rail and
      the switcher have both asked for this list already. A database engine is
      the one thing about a database that its own tables cannot tell you — a
@@ -295,6 +330,7 @@ export function DatabasePage({ database }: { database: string }) {
   const pipelines = graph.data?.edges.length ?? 0
   const external = catalogue.data?.find((d) => d.name === database)
 
+
   return (
     <article className="page page--database page--wide">
       <header className="page__head">
@@ -332,7 +368,16 @@ export function DatabasePage({ database }: { database: string }) {
                 },
               ]
             : []),
-          { value: pipelines ? exact(pipelines) : <Dash />, label: 'dependencies' },
+          /* Zero is a figure and prints as one. The dash is for the reading
+             Flint could not take — a role without the grants for
+             `system.tables`' dependency columns — and printing it for a database
+             that genuinely has no dependencies claimed Flint had not looked.
+             The repo's own rule: an absent figure is dropped, and a dash is for
+             something that should have a value and does not. */
+          {
+            value: graph.data ? exact(pipelines) : <Dash />,
+            label: 'dependencies',
+          },
         ]}
         lead
       />
@@ -340,7 +385,9 @@ export function DatabasePage({ database }: { database: string }) {
       <section className="schema">
         <div className="schema__head">
           <h2 className="schema__title">Schema</h2>
-          <p className="schema__sub">{subtitle(reading, pipelines)}</p>
+          <p className="schema__sub">
+            {subtitle(reading, pipelines, asked === null && hasFlow === false)}
+          </p>
           <span className="panel__spacer" />
           <div className="segmented" role="group" aria-label="How to read this database">
             {READINGS.map((r) => (
