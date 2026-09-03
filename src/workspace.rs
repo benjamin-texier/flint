@@ -226,6 +226,20 @@ pub struct Published {
     /// put there.
     #[serde(default)]
     pub published_by: String,
+    /// The question as a document, for the endpoint that was published from
+    /// the Builder rather than typed. Empty is a statement-backed endpoint,
+    /// which is every endpoint made before this field existed.
+    ///
+    /// This is the source of truth for such an endpoint: `sql` beside it is a
+    /// record of what the document last rendered to, kept because a person
+    /// reading the page needs to see what will run. The statement that
+    /// actually runs is rendered on the call — see `published::document`.
+    #[serde(default)]
+    pub document: String,
+    /// The values the document's statement binds, as a JSON object. Empty for
+    /// a statement somebody typed, whose values are its caller's to supply.
+    #[serde(default)]
+    pub bindings: String,
 }
 
 /// Where a revision sits in its life. One way, and the order is the order.
@@ -286,6 +300,10 @@ pub struct PublishedInput {
     pub id: Option<String>,
     pub name: String,
     pub slug: String,
+    /// Absent for an endpoint published from the Builder: the handler renders
+    /// its document into this field before the row is written, so what is
+    /// stored is always a statement a person can read.
+    #[serde(default)]
     pub sql: String,
     #[serde(default)]
     pub database: String,
@@ -342,6 +360,16 @@ pub struct PublishedInput {
     pub state: Option<String>,
     #[serde(default)]
     pub published_by: Option<String>,
+    /// The question as a document. Absent keeps what was there; `""` is a
+    /// deliberate return to a statement somebody typed.
+    #[serde(default)]
+    pub document: Option<String>,
+    /// What that document's statement binds. Never posted by a browser: the
+    /// handler renders the document and fills this in, because a caller who
+    /// could send both could send a statement that asks one thing and a
+    /// document that reads as another.
+    #[serde(skip_deserializing)]
+    pub bindings: Option<String>,
 }
 
 /// A key as ClickHouse hands it back: `scope` is a JSON string in the column
@@ -960,7 +988,23 @@ impl Workspace {
                        say, which is how every endpoint behaved before there \
                        was a contract to break. */ \
                     contract   String, \
-                    published_by String \
+                    published_by String, \
+                    /* The question, as the Builder's document — empty for the \
+                       endpoint that is a statement somebody typed. \
+                       \
+                       Kept beside the statement rather than instead of it, \
+                       because they answer different questions about the same \
+                       endpoint: the document is what reopens in the form, and \
+                       the statement is what a person reads to see what will \
+                       run. A document-backed endpoint renders its statement \
+                       on every call, so the one stored here is a record of \
+                       what it rendered to and never the thing that runs. */ \
+                    document   String, \
+                    /* The values the document's statement binds, as a JSON \
+                       object. Not defaults: a default is a value a caller may \
+                       replace, and these are the question itself — see \
+                       `published::bind`. */ \
+                    bindings   String \
                  ) \
                  ENGINE = ReplacingMergeTree(version) \
                  ORDER BY id"
@@ -1141,6 +1185,8 @@ impl Workspace {
             ("published", "cache_ttl", "UInt32"),
             ("published", "contract", "String"),
             ("published", "published_by", "String"),
+            ("published", "document", "String"),
+            ("published", "bindings", "String"),
             ("reports", "timezone", "String"),
         ] {
             self.ch
@@ -1400,6 +1446,8 @@ impl Workspace {
                     argMax(cache_ttl, version)     AS pcache_ttl, \
                     argMax(contract, version)      AS pcontract, \
                     argMax(published_by, version)  AS ppublished_by, \
+                    argMax(document, version)      AS pdocument, \
+                    argMax(bindings, version)      AS pbindings, \
                     min(created_at)                AS pcreated, \
                     max(updated_at)                AS pupdated \
              FROM {}.published \
@@ -1442,7 +1490,9 @@ impl Workspace {
                 pdescription             AS description, \
                 pcache_ttl               AS cache_ttl, \
                 pcontract                AS contract, \
-                ppublished_by            AS published_by";
+                ppublished_by            AS published_by, \
+                pdocument                AS document, \
+                pbindings                AS bindings";
 
     /// Every revision of every endpoint, newest revision of each address
     /// first. Drafts and retired revisions included: this is what the page
@@ -1616,7 +1666,9 @@ impl Workspace {
         }
         if input.sql.trim().is_empty() {
             return Err(Error::BadRequest(
-                "a published endpoint needs a statement".into(),
+                "a published endpoint needs a statement — one typed here, or one rendered \
+                 from a question the Builder wrote"
+                    .into(),
             ));
         }
         serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&input.defaults)
@@ -1682,11 +1734,19 @@ impl Workspace {
         if let Some(before) = before {
             let live = State::parse(&before.state).answers();
             let sql_changed = before.sql.trim() != input.sql.trim();
+            // A document is the question a document-backed endpoint answers,
+            // so changing it changes what comes back exactly as changing a
+            // statement does. Left out of this check it would have been the
+            // one way to edit a live revision under the callers pinned to it.
+            let document_changed = match &input.document {
+                Some(given) => given.trim() != before.document.trim(),
+                None => false,
+            };
             let contract_changed = match &input.contract {
                 Some(given) => Contract::parse(given) != Contract::parse(&before.contract),
                 None => false,
             };
-            if live && (sql_changed || contract_changed) {
+            if live && (sql_changed || document_changed || contract_changed) {
                 return Err(Error::BadRequest(format!(
                     "v{} of `{}` is {} and callers are pinned to what it returns. \
                      Start a new revision: the change lands on v{}, and v{} goes on \
@@ -1780,6 +1840,23 @@ impl Workspace {
             }
         }
 
+        // Absent keeps; present is taken at its word, `""` included — which is
+        // how an endpoint goes back to being a statement somebody typed.
+        let document = match (&input.document, before) {
+            (Some(given), _) => given.trim().to_string(),
+            (None, Some(before)) => before.document.clone(),
+            (None, None) => String::new(),
+        };
+        // Together with the document, always: they are one fact in two columns,
+        // and a statement bound with the previous revision's values would be a
+        // question nobody asked.
+        let bindings = match (&input.document, &input.bindings, before) {
+            (Some(_), Some(given), _) => given.trim().to_string(),
+            (Some(_), None, _) => String::new(),
+            (None, _, Some(before)) => before.bindings.clone(),
+            (None, _, None) => String::new(),
+        };
+
         let id_expr = if input.id.is_some() {
             "{id:UUID}"
         } else {
@@ -1857,6 +1934,8 @@ impl Workspace {
                     (None, None) => String::new(),
                 },
             ),
+            ("document".to_string(), Self::text(&document)),
+            ("bindings".to_string(), Self::text(&bindings)),
         ];
         if let Some(id) = &input.id {
             params.push(("id".to_string(), id.clone()));
@@ -1868,7 +1947,8 @@ impl Workspace {
                     "INSERT INTO {}.published \
                  (id, name, slug, sql, database, defaults, token, public, enabled, \
                   max_rows, created_at, updated_at, deleted, version, expires_at, run_as, \
-                  timezone, revision, state, description, cache_ttl, contract, published_by) \
+                  timezone, revision, state, description, cache_ttl, contract, published_by, \
+                  document, bindings) \
                  SELECT {id_expr}, {{name:String}}, {{slug:String}}, unhex({{sql:String}}), \
                         {{database:String}}, {{defaults:String}}, {{token:String}}, \
                         {{public:UInt8}}, {{enabled:UInt8}}, {{max_rows:UInt32}}, \
@@ -1876,7 +1956,8 @@ impl Workspace {
                         {{expires_at:DateTime64(3)}}, {{run_as:String}}, {{timezone:String}}, \
                         {{revision:UInt32}}, {{state:String}}, unhex({{description:String}}), \
                         {{cache_ttl:UInt32}}, unhex({{contract:String}}), \
-                        {{published_by:String}}",
+                        {{published_by:String}}, unhex({{document:String}}), \
+                        unhex({{bindings:String}})",
                     self.quoted()
                 ),
                 QueryOptions {
@@ -2063,6 +2144,10 @@ impl Workspace {
                         contract: Some(contract),
                         state: Some(state.as_str().to_string()),
                         published_by: Some(input.published_by.clone()),
+                        // A table published wholesale is `SELECT * FROM t` and
+                        // says so. There is no question behind it to reopen.
+                        document: None,
+                        bindings: None,
                     },
                 )
                 .await?;
@@ -2117,14 +2202,16 @@ impl Workspace {
                     "INSERT INTO {}.published \
                  (id, name, slug, sql, database, defaults, token, public, enabled, \
                   max_rows, created_at, updated_at, deleted, version, expires_at, run_as, \
-                  timezone, revision, state, description, cache_ttl, contract, published_by) \
+                  timezone, revision, state, description, cache_ttl, contract, published_by, \
+                  document, bindings) \
                  SELECT generateUUIDv4(), {{name:String}}, {{slug:String}}, unhex({{sql:String}}), \
                         {{database:String}}, {{defaults:String}}, '', {{public:UInt8}}, 1, \
                         {{max_rows:UInt32}}, now64(3), now64(3), 0, \
                         toUnixTimestamp64Milli(now64(3)), {{expires_at:DateTime64(3)}}, \
                         {{run_as:String}}, {{timezone:String}}, {{revision:UInt32}}, 'draft', \
                         unhex({{description:String}}), {{cache_ttl:UInt32}}, \
-                        unhex({{contract:String}}), {{published_by:String}}",
+                        unhex({{contract:String}}), {{published_by:String}}, \
+                        unhex({{document:String}}), unhex({{bindings:String}})",
                     self.quoted()
                 ),
                 QueryOptions {
@@ -2150,6 +2237,8 @@ impl Workspace {
                         ("cache_ttl".into(), from.cache_ttl.to_string()),
                         ("contract".into(), Self::text(&from.contract)),
                         ("published_by".into(), from.published_by.clone()),
+                        ("document".into(), Self::text(&from.document)),
+                        ("bindings".into(), Self::text(&from.bindings)),
                     ],
                     ..self.write_opts()
                 },
@@ -2269,7 +2358,8 @@ impl Workspace {
                     "INSERT INTO {}.published \
                  (id, name, slug, sql, database, defaults, token, public, enabled, \
                   max_rows, created_at, updated_at, deleted, version, expires_at, run_as, \
-                  timezone, revision, state, description, cache_ttl, contract, published_by) \
+                  timezone, revision, state, description, cache_ttl, contract, published_by, \
+                  document, bindings) \
                  SELECT {{id:UUID}}, {{name:String}}, {{slug:String}}, unhex({{sql:String}}), \
                         {{database:String}}, {{defaults:String}}, {{token:String}}, \
                         {{public:UInt8}}, {{enabled:UInt8}}, {{max_rows:UInt32}}, \
@@ -2277,7 +2367,8 @@ impl Workspace {
                         {{expires_at:DateTime64(3)}}, {{run_as:String}}, {{timezone:String}}, \
                         {{revision:UInt32}}, {{state:String}}, unhex({{description:String}}), \
                         {{cache_ttl:UInt32}}, unhex({{contract:String}}), \
-                        {{published_by:String}}",
+                        {{published_by:String}}, unhex({{document:String}}), \
+                        unhex({{bindings:String}})",
                     self.quoted()
                 ),
                 QueryOptions {
@@ -2307,6 +2398,8 @@ impl Workspace {
                         ("cache_ttl".into(), row.cache_ttl.to_string()),
                         ("contract".into(), Self::text(&row.contract)),
                         ("published_by".into(), row.published_by.clone()),
+                        ("document".into(), Self::text(&row.document)),
+                        ("bindings".into(), Self::text(&row.bindings)),
                     ],
                     ..self.write_opts()
                 },

@@ -285,8 +285,8 @@ pub async fn query(
     let (sql, params, extra_columns) = if shape.wraps() {
         // One row more than the page: what makes "there is more behind this" a
         // fact rather than a guess.
-        let wrapped =
-            shape::wrap(&inner, &shape, &columns, limit + 1, &prefix).map_err(Error::BadRequest)?;
+        let wrapped = shape::wrap(&inner, &shape, &columns, Some(limit + 1), &prefix)
+            .map_err(Error::BadRequest)?;
         (wrapped.sql, wrapped.params, wrapped.extra_columns)
     } else {
         (inner.clone(), Vec::new(), Vec::new())

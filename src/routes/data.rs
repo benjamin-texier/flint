@@ -146,7 +146,12 @@ async fn answer(
 
     let declared = published::declared_params(&endpoint.sql);
     let defaults = defaults_of(&endpoint);
-    let bound = published::bind(&endpoint.sql, params, &defaults).map_err(|missing| {
+    // The values a published document settled when it was published. They are
+    // declared by the generated statement like any other placeholder, which is
+    // why they have to be named here: without this, `?flint_f0=Lyon` would be a
+    // caller rewriting the question through its own address.
+    let fixed = published::document::from_json(&endpoint.bindings);
+    let bound = published::bind(&endpoint.sql, params, &defaults, &fixed).map_err(|missing| {
         Error::BadRequest(format!(
             "this endpoint needs {}",
             missing
@@ -272,7 +277,7 @@ async fn answer(
     let (sql, mut call_params, extra_columns) = if shape.wraps() {
         // One row more than the page: what makes "there is more behind this" a
         // fact rather than a guess. `table()` trims it back off.
-        let wrapped = shape::wrap(&endpoint.sql, &shape, &columns, limit + 1, &prefix)
+        let wrapped = shape::wrap(&endpoint.sql, &shape, &columns, Some(limit + 1), &prefix)
             .map_err(Error::BadRequest)?;
         (wrapped.sql, wrapped.params, wrapped.extra_columns)
     } else {
@@ -586,7 +591,7 @@ pub async fn describe_endpoint(
     headers: HeaderMap,
 ) -> Result<Response> {
     let (endpoint, _) = resolve(&state, &slug, &headers, &params, &mut Journal::default()).await?;
-    let declared = published::declared_params_typed(&endpoint.sql);
+    let declared = published::caller_params_typed(&endpoint);
     let defaults = defaults_of(&endpoint);
 
     let parameters: Vec<ParameterDoc> = declared
@@ -644,7 +649,7 @@ pub async fn describe_endpoint(
         reserved: shape::RESERVED.to_vec(),
         // The reserved names this statement took for itself. A caller reading
         // `limit` here knows why paging is not on offer.
-        shadowed: shape::shadowed(&published::declared_params(&endpoint.sql)),
+        shadowed: shape::shadowed(&published::caller_params(&endpoint)),
     };
 
     let mut response = axum::Json(doc).into_response();
@@ -668,7 +673,7 @@ pub async fn openapi_document(
     headers: HeaderMap,
 ) -> Result<Response> {
     let (endpoint, _) = resolve(&state, &slug, &headers, &params, &mut Journal::default()).await?;
-    let declared = published::declared_params_typed(&endpoint.sql);
+    let declared = published::caller_params_typed(&endpoint);
     let defaults = defaults_of(&endpoint);
     let columns = describe_with_probe(&state, &endpoint, &declared, &defaults).await;
 
@@ -685,7 +690,7 @@ pub async fn openapi_document(
         parameters: &declared,
         defaults: &defaults,
         columns: columns.as_deref(),
-        shadowed: &shape::shadowed(&published::declared_params(&endpoint.sql)),
+        shadowed: &shape::shadowed(&published::caller_params(&endpoint)),
         server: origin(&headers).as_deref(),
     });
 
@@ -715,7 +720,7 @@ pub async fn tool_definition(
     headers: HeaderMap,
 ) -> Result<Response> {
     let (endpoint, _) = resolve(&state, &slug, &headers, &params, &mut Journal::default()).await?;
-    let declared = published::declared_params_typed(&endpoint.sql);
+    let declared = published::caller_params_typed(&endpoint);
     let defaults = defaults_of(&endpoint);
     let columns = describe_with_probe(&state, &endpoint, &declared, &defaults).await;
 
@@ -841,12 +846,12 @@ pub async fn openapi_index(State(state): State<AppState>, headers: HeaderMap) ->
         if !crate::workspace::State::parse(&endpoint.state).answers() {
             continue;
         }
-        let declared = published::declared_params_typed(&endpoint.sql);
+        let declared = published::caller_params_typed(&endpoint);
         let defaults = defaults_of(&endpoint);
         // One `DESCRIBE` per endpoint. They read no data, and this is a
         // document somebody asked for rather than something on a hot path.
         let columns = describe_with_probe(&state, &endpoint, &declared, &defaults).await;
-        let shadowed = shape::shadowed(&published::declared_params(&endpoint.sql));
+        let shadowed = shape::shadowed(&published::caller_params(&endpoint));
         let contract = Contract::parse(&endpoint.contract);
         described.push(Described {
             endpoint,
@@ -1117,7 +1122,7 @@ async fn describe_probing(
     declared: &[(String, String)],
     defaults: &[(String, String)],
 ) -> Result<Vec<ColumnMeta>> {
-    let probe: Vec<(String, String)> = declared
+    let mut probe: Vec<(String, String)> = declared
         .iter()
         .map(|(name, ty)| {
             let value = defaults
@@ -1128,6 +1133,11 @@ async fn describe_probing(
             (name.clone(), value)
         })
         .collect();
+    // A document's own bindings are not probed, they are known — and they are
+    // not in `declared`, because a caller cannot supply one. Left out, the
+    // `DESCRIBE` would fail on a parameter with no value and every
+    // document-backed endpoint would publish a schema with no columns in it.
+    probe.extend(published::document::from_json(&endpoint.bindings));
     describe(state, endpoint, &probe).await
 }
 
