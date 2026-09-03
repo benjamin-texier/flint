@@ -6,6 +6,7 @@ mod dataset;
 mod error;
 mod export;
 mod jobs;
+mod k8s;
 mod published;
 mod reports;
 mod routes;
@@ -30,11 +31,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Before the manifest is read for anything: a variable set to nothing is a
     // variable that is not set, and every check below is entitled to assume it.
     config.normalise();
-    let config = config;
 
     if config.health_check {
         return health_check(&config).await;
     }
+
+    // A subcommand arranges the manifest and then gets out of the way. `k8s`
+    // resolves a workload to a pod, opens a tunnel to it and fills in the
+    // endpoint and the credentials somebody would otherwise have typed — so
+    // everything below this line is the ordinary boot, reading an ordinary
+    // config, with no idea it is talking through a port-forward.
+    //
+    // Held for the life of the process rather than dropped here: the tunnel is
+    // a child process, and dropping this closes the port Flint is about to
+    // spend its life talking to.
+    let _tunnel = match config.cmd.clone() {
+        Some(config::Cmd::K8s(args)) => Some(k8s::connect(&mut config, &args).await?),
+        None => None,
+    };
+
+    let config = config;
 
     // Before anything is opened: a manifest that contradicts itself should stop
     // here, not serve a UI missing the half somebody asked for.
@@ -331,7 +347,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("Flint is listening on http://{addr}");
 
     axum::serve(listener, routes::router(state))
-        .with_graceful_shutdown(shutdown())
+        .with_graceful_shutdown(shutdown(_tunnel.as_ref().map(k8s::Tunnel::closing)))
         .await?;
     Ok(())
 }
@@ -359,7 +375,13 @@ async fn health_check(config: &config::Config) -> Result<(), Box<dyn std::error:
     }
 }
 
-async fn shutdown() {
+/// Waits for the signal, and tells the tunnel it was expected.
+///
+/// The flag is set here rather than in `Tunnel`'s `Drop` because the shell
+/// signals the whole process group: `kubectl` is usually already dead by the
+/// time this future returns, and the supervisor has to know that before it
+/// decides whether to shout.
+async fn shutdown(tunnel_closing: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>) {
     let ctrl_c = async {
         tokio::signal::ctrl_c()
             .await
@@ -379,6 +401,9 @@ async fn shutdown() {
     tokio::select! {
         _ = ctrl_c => {}
         _ = terminate => {}
+    }
+    if let Some(closing) = tunnel_closing {
+        closing.store(true, std::sync::atomic::Ordering::Relaxed);
     }
     tracing::info!("shutting down");
 }
