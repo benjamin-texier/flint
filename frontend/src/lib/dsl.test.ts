@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { specToDsl, type DslQuery } from './dsl'
+import { dslToSpec, specToDsl, type DslQuery } from './dsl'
 import { startingSpec, type Condition, type Having, type Projection, type QuerySpec } from './query'
 
 const spec = (over: Partial<QuerySpec> = {}): QuerySpec => ({
@@ -290,6 +290,273 @@ describe('specToDsl', () => {
 
     it('and before a table is chosen', () => {
       expect(blocked({ ...startingSpec('analytics', ''), projections: [] })).toContain('table')
+    })
+  })
+})
+
+/* ── The document, back ────────────────────────────────────────────────── */
+
+/** The form the document would have been written by. */
+function back(document: DslQuery, ownDatabase = ''): QuerySpec {
+  const out = dslToSpec(document, ownDatabase)
+  if ('blocked' in out) throw new Error(`blocked: ${out.blocked}`)
+  return out.spec
+}
+
+function refused(document: DslQuery, ownDatabase = ''): string {
+  const out = dslToSpec(document, ownDatabase)
+  if (!('blocked' in out)) throw new Error('expected it to be blocked')
+  return out.blocked
+}
+
+/** The property the whole direction exists for: a document written by the form
+ *  reopens as a form that writes the same document. Not the same spec — the ids
+ *  are minted fresh and a bucketed dimension has no seat of its own to return
+ *  to — the same question. */
+function roundTrips(s: QuerySpec): void {
+  const document = query(s)
+  expect(query(back(document))).toEqual(document)
+}
+
+describe('dslToSpec round-trips what specToDsl writes', () => {
+  it('a plain selection', () => {
+    roundTrips(spec({ projections: [dim('city'), dim('status')] }))
+  })
+
+  it('a grouping with its metrics', () => {
+    roundTrips(
+      spec({ projections: [dim('city'), met('*', 'count'), met('latency_ms', 'p95'), met('city', 'uniq')] }),
+    )
+  })
+
+  it('every filter the form can write', () => {
+    roundTrips(
+      spec({
+        projections: [dim('city')],
+        conditions: [
+          cond({ value: 'Oslo' }),
+          cond({ id: 'b', column: 'n', op: '>', value: '5' }),
+          cond({ id: 'c2', column: 'n', op: 'between', value: '1', value2: '9' }),
+          cond({ id: 'd', op: 'notLike', value: '%a%' }),
+          cond({ id: 'e', op: 'in', value: 'Oslo, Lyon' }),
+          cond({ id: 'f', column: 'seen_at', op: 'isNull' }),
+        ],
+      }),
+    )
+  })
+
+  it('a lone `between`, which is its own conjunction at the top', () => {
+    roundTrips(
+      spec({
+        projections: [dim('city')],
+        conditions: [cond({ column: 'n', op: 'between', value: '1', value2: '9' })],
+      }),
+    )
+  })
+
+  it('a having, an order and a limit', () => {
+    roundTrips(
+      spec({
+        projections: [dim('city'), met('*', 'count')],
+        having: [have({ ref: 'rows' })],
+        orderings: [{ id: 'o', ref: 'rows', desc: true }],
+        limit: 25,
+      }),
+    )
+  })
+
+  it('every shape of time, including the ones that took a list to say', () => {
+    roundTrips(spec({ projections: [dim('ts', 'day'), dim('seen_at', 'hour'), met('*', 'count')] }))
+    roundTrips(
+      spec({
+        projections: [met('*', 'count')],
+        conditions: [
+          cond({ column: 'created_at', op: 'since', value: '7d' }),
+          cond({ id: 'd', column: 'updated_at', op: 'since', value: '24h' }),
+        ],
+      }),
+    )
+    roundTrips(
+      spec({
+        projections: [dim('ts', 'day'), met('*', 'count')],
+        conditions: [cond({ column: 'seen_at', op: 'since', value: '15m' })],
+      }),
+    )
+    // A window and a bucket on one column, which the document says as one entry.
+    roundTrips(
+      spec({
+        projections: [dim('ts', 'day'), met('*', 'count')],
+        conditions: [cond({ column: 'ts', op: 'since', value: '7d' })],
+      }),
+    )
+  })
+
+  it('a zone, where there is a boundary for it to move', () => {
+    roundTrips(
+      spec({ projections: [dim('ts', 'day'), met('*', 'count')], timezone: 'Pacific/Auckland' }),
+    )
+  })
+})
+
+describe('dslToSpec', () => {
+  it('brings back the control somebody used, not an equivalent one', () => {
+    // Two bounds on one column really are two filters, and reopening them as
+    // two would ask the same question. It would also quietly replace the row
+    // the person filled in with a pair they never touched.
+    const s = back({
+      dataset: 'analytics.events',
+      select: ['city'],
+      filter: {
+        all: [
+          { column: 'n', op: 'gte', value: '1' },
+          { column: 'n', op: 'lte', value: '9' },
+        ],
+      },
+    })
+    expect(s.conditions).toHaveLength(1)
+    expect(s.conditions[0]?.op).toBe('between')
+
+    const unlike = back({
+      dataset: 'analytics.events',
+      select: ['city'],
+      filter: { not: { column: 'city', op: 'like', value: '%a%' } },
+    })
+    expect(unlike.conditions[0]?.op).toBe('notLike')
+
+    const list = back({
+      dataset: 'analytics.events',
+      select: ['city'],
+      filter: { column: 'city', op: 'in', values: ['Oslo', 'Lyon'] },
+    })
+    expect(list.conditions[0]?.value).toBe('Oslo, Lyon')
+  })
+
+  it('splits the dataset on the first dot, and lends a database to a bare name', () => {
+    expect(back({ dataset: 'analytics.events.v2', select: ['city'] })).toMatchObject({
+      database: 'analytics',
+      table: 'events.v2',
+    })
+    expect(back({ dataset: 'events', select: ['city'] }, 'analytics')).toMatchObject({
+      database: 'analytics',
+      table: 'events',
+    })
+  })
+
+  it('takes no limit as no limit, rather than as the form’s starting one', () => {
+    // A document that asked for everything must not come back capped by a
+    // default nobody wrote down — and the cap would be invisible, because 500
+    // is what an untouched form shows anyway.
+    expect(back({ dataset: 'analytics.events', select: ['city'] }).limit).toBe(0)
+  })
+
+  it('reads the plural the documentation writes as the singular the form sends', () => {
+    const s = back({
+      dataset: 'analytics.events',
+      metrics: [{ aggregation: 'count', as: 'rows' }],
+      time: { column: 'ts', last: 7, unit: 'days' },
+    })
+    expect(s.conditions[0]).toMatchObject({ column: 'ts', op: 'since', value: '7d' })
+  })
+
+  describe('what it will not reopen', () => {
+    it('an `any`, because the form has no or', () => {
+      expect(
+        refused({
+          dataset: 'analytics.events',
+          select: ['city'],
+          filter: { any: [{ column: 'city', op: 'eq', value: 'Oslo' }] },
+        }),
+      ).toContain('AND only')
+    })
+
+    it('a field it does not know, because the ones it does not know all narrow', () => {
+      // `compare`, `period`, `from` and `to` are every one of them a narrowing.
+      // Dropped on the way in, "December against November" reopens as
+      // "everything, ever" in a form that looks complete.
+      expect(
+        refused({
+          dataset: 'analytics.events',
+          metrics: [{ aggregation: 'count', as: 'rows' }],
+          time: { column: 'ts', granularity: 'month', compare: 'previous_year' },
+        } as unknown as DslQuery),
+      ).toContain('compare')
+    })
+
+    it('a column named something the form would not name it', () => {
+      // The form has no field to override an alias, so reopening this one would
+      // rename a key somebody’s chart is reading — and an `order` or a `having`
+      // pointing at the old name would stop resolving.
+      expect(
+        refused({
+          dataset: 'analytics.events',
+          metrics: [{ aggregation: 'count', column: 'city', as: 'how_many' }],
+        }),
+      ).toContain('how_many')
+    })
+
+    it('a grouping with nothing computed over it', () => {
+      // `SELECT city … GROUP BY city` dedupes and `SELECT city …` does not.
+      expect(refused({ dataset: 'analytics.events', dimensions: ['city'] })).toContain(
+        'without computing',
+      )
+    })
+
+    it('a window or a bucket the form has no control for', () => {
+      expect(
+        refused({
+          dataset: 'analytics.events',
+          metrics: [{ aggregation: 'count', as: 'rows' }],
+          time: { column: 'ts', last: 2, unit: 'week' },
+        }),
+      ).toContain('minutes, hours and days')
+      expect(
+        refused({
+          dataset: 'analytics.events',
+          metrics: [{ aggregation: 'count', as: 'rows' }],
+          time: { column: 'ts', granularity: 'year' },
+        }),
+      ).toContain('not one of the form')
+    })
+
+    it('a time with no column, which only the server can resolve', () => {
+      expect(
+        refused({
+          dataset: 'analytics.events',
+          metrics: [{ aggregation: 'count', as: 'rows' }],
+          time: { last: 7, unit: 'day' },
+        }),
+      ).toContain('no column')
+    })
+
+    it('a filter nested deeper than a list of rows', () => {
+      expect(
+        refused({
+          dataset: 'analytics.events',
+          select: ['city'],
+          filter: {
+            all: [
+              { column: 'city', op: 'eq', value: 'Oslo' },
+              { all: [{ column: 'n', op: 'gt', value: '1' }, { column: 'm', op: 'lt', value: '9' }] },
+            ],
+          },
+        }),
+      ).toContain('flat list')
+    })
+
+    it('a half a name, and a bare one with no database to lend it', () => {
+      expect(refused({ dataset: 'analytics.', select: ['city'] })).toContain('half a name')
+      expect(refused({ dataset: 'events', select: ['city'] })).toContain('names no database')
+      expect(refused({ dataset: '', select: ['city'] })).toContain('no dataset')
+    })
+
+    it('two ways of saying what comes back', () => {
+      expect(
+        refused({
+          dataset: 'analytics.events',
+          select: ['city'],
+          metrics: [{ aggregation: 'count', as: 'rows' }],
+        }),
+      ).toContain('two ways')
     })
   })
 })

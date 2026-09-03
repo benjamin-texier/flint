@@ -21,8 +21,8 @@
  */
 
 import type { QueryResult } from './api'
-import type { Condition, Having, Op, QuerySpec } from './query'
-import { aliasOf, parseWindow } from './query'
+import type { Agg, Bucket, Condition, Having, Op, Ordering, Projection, QuerySpec } from './query'
+import { aliasOf, parseWindow, startingSpec } from './query'
 
 /** One node of the document's filter tree. Mirrors `src/dataset/mod.rs`. */
 export interface DslFilter {
@@ -314,4 +314,337 @@ export function specToDsl(spec: QuerySpec): Translation {
   if (spec.timezone && times.length) query.timezone = spec.timezone
 
   return { query }
+}
+
+/* ── The document, back ────────────────────────────────────────────────────
+ *
+ *  One direction is enough to *ask* a question. It is not enough to publish
+ *  one. A published document is a bookmark, and a bookmark nobody can reopen is
+ *  a dead end: "this URL returns exactly what you are looking at" is only
+ *  believable if pasting it back proves it in two seconds. So the document has
+ *  to come back as the form that would have written it.
+ *
+ *  The property the tests hold this to: for every document `specToDsl` can
+ *  produce, `specToDsl(dslToSpec(d))` is `d` again. Not the same spec — ids are
+ *  minted fresh, and a bucketed dimension has no seat of its own to return to —
+ *  the same *question*.
+ *
+ *  Where the form cannot hold what the document says, it shows nothing and says
+ *  why. Refusing is the unusual choice in this codebase, which prefers a lossy
+ *  answer that names its losses, and it is the right one exactly here: a filter
+ *  quietly dropped on the way in leaves a form asking a different question than
+ *  the URL printed beside it, with nothing on screen saying so. Every refusal
+ *  below is a difference in which rows come back. Nothing is refused for being
+ *  merely inelegant.
+ */
+
+/** The form that would have written this document, or why none would have. */
+export type Rehydration = { spec: QuerySpec } | { blocked: string }
+
+/** The document's operator words, back in the Builder's. */
+const OPS_BACK = new Map<string, Op>(
+  (Object.entries(OPS) as [Op, string][]).map(([op, word]) => [word, op]),
+)
+
+const AGGS_BACK = new Map<string, Agg>(
+  (Object.entries(AGGS) as [Agg, string][]).map(([agg, word]) => [word, agg]),
+)
+
+/** The buckets the form has a control for. The server knows more units than
+ *  this — a year, for one — and a document asking for one of those is a real
+ *  question the form has no row to show it in. */
+const BUCKETS = new Set<string>(['minute', 'hour', 'day', 'week', 'month'])
+
+/** A window's unit, back as the letter `parseWindow` reads. Weeks, months and
+ *  years are missing for the same reason: `24h` and `30d` are the whole of the
+ *  shorthand the form's field accepts. */
+const WINDOW_LETTERS = new Map<string, string>([
+  ['minute', 'm'],
+  ['hour', 'h'],
+  ['day', 'd'],
+])
+
+const HAVING_OPS = new Set<string>(['=', '!=', '>', '>=', '<', '<='])
+
+/* The keys each object of a document may carry.
+ *
+ *  Mirrors `#[serde(deny_unknown_fields)]` on the Rust side, and for a stronger
+ *  reason than symmetry. A field this file does not know about is a field it
+ *  drops, and the fields it does not know about are `period`, `from`, `to` and
+ *  `compare` — every one of them a narrowing. Dropping one turns "December
+ *  against November" into "everything, ever" and reopens it in a form that
+ *  looks complete. So an unknown key is a refusal, not a shrug. */
+const QUERY_KEYS = [
+  'dataset',
+  'select',
+  'dimensions',
+  'metrics',
+  'filter',
+  'having',
+  'time',
+  'order',
+  'limit',
+  'timezone',
+  'query_id',
+]
+const TIME_KEYS = ['column', 'last', 'unit', 'granularity']
+const METRIC_KEYS = ['aggregation', 'column', 'as']
+const ORDER_KEYS = ['column', 'desc']
+const NODE_KEYS = ['all', 'any', 'not', 'column', 'op', 'value', 'values']
+
+/** The first key `known` does not list, or null. */
+function strayKey(value: unknown, known: string[]): string | null {
+  if (typeof value !== 'object' || value === null) return null
+  return Object.keys(value as Record<string, unknown>).find((k) => !known.includes(k)) ?? null
+}
+
+function newId(): string {
+  return crypto.randomUUID()
+}
+
+/** The two-bound shape `between` becomes on the way out.
+ *
+ *  Recognised rather than remembered: the document has no `between`, because
+ *  the server has no `between` and does not need one where it has a tree. Two
+ *  bounds on one column, the lower first, is what one looks like. */
+function isBetween(node: DslFilter): boolean {
+  const pair = node.all
+  if (!pair || pair.length !== 2) return false
+  const [lower, upper] = pair as [DslFilter, DslFilter]
+  return (
+    !!lower.column &&
+    lower.column === upper.column &&
+    lower.op === 'gte' &&
+    upper.op === 'lte' &&
+    lower.value !== undefined &&
+    upper.value !== undefined
+  )
+}
+
+/** A value as the form's field holds it: text, because a field is text. */
+function typed(value: string | number | boolean | undefined): string {
+  return value === undefined ? '' : String(value)
+}
+
+/** One node as a filter row, or a sentence saying why it cannot be one. */
+function conditionOf(node: DslFilter): Condition | string {
+  const stray = strayKey(node, NODE_KEYS)
+  if (stray) return `The form does not know the filter field \`${stray}\`.`
+
+  if (node.any) {
+    // The one refusal that is about the form's shape rather than its
+    // vocabulary. Its filters are a list, and a list is an AND; there is no
+    // control anywhere on it that would show an OR, so an `any` reopened as a
+    // list of rows would return rows the document never asked for.
+    return 'This question has an `any` in it — the form filters with AND only.'
+  }
+
+  if (node.not) {
+    const inner = node.not
+    if (inner.op !== 'like' || !inner.column || inner.value === undefined) {
+      // `notLike` is the only negation the form can spell, and it spells it as
+      // a `not` around a `like` because that is what the form's own translation
+      // produces. Any other negation is a tree.
+      return 'The form can only negate a `like`.'
+    }
+    return {
+      id: newId(),
+      column: inner.column,
+      op: 'notLike',
+      value: typed(inner.value),
+      value2: '',
+    }
+  }
+
+  if (node.all) {
+    if (!isBetween(node)) return 'This question nests its filters; the form keeps a flat list.'
+    const [lower, upper] = node.all as [DslFilter, DslFilter]
+    return {
+      id: newId(),
+      column: lower.column as string,
+      op: 'between',
+      value: typed(lower.value),
+      value2: typed(upper.value),
+    }
+  }
+
+  const op = node.op ? OPS_BACK.get(node.op) : undefined
+  if (!node.column || !op) {
+    return node.op
+      ? `The form has no \`${node.op}\` filter.`
+      : 'A filter in this question names no operator.'
+  }
+  if (op === 'in' || op === 'notIn') {
+    // Back into the one comma-separated field the form offers, which `listOf`
+    // splits the same way on the trip out.
+    return {
+      id: newId(),
+      column: node.column,
+      op,
+      value: (node.values ?? []).map(typed).join(', '),
+      value2: '',
+    }
+  }
+  return { id: newId(), column: node.column, op, value: typed(node.value), value2: '' }
+}
+
+/** The tree's top level as the rows the form shows.
+ *
+ *  A single `between` is its own `all` at the top, because `conjunction`
+ *  unwraps a list of one — so it has to be recognised before an `all` is read
+ *  as a list of rows. Read the other way it would still ask the same question,
+ *  but it would come back as two rows where somebody used one control. */
+function rowsOf(filter: DslFilter): DslFilter[] {
+  if (isBetween(filter)) return [filter]
+  return filter.all ?? [filter]
+}
+
+export function dslToSpec(query: DslQuery, ownDatabase = ''): Rehydration {
+  const stray = strayKey(query, QUERY_KEYS)
+  if (stray) return { blocked: `The form does not know the field \`${stray}\`.` }
+
+  const raw = (query.dataset ?? '').trim()
+  if (!raw) return { blocked: 'This document names no dataset.' }
+  // The first dot, the way `dataset::parse_name` splits it: a database name
+  // cannot contain one and a table name can.
+  const dot = raw.indexOf('.')
+  const database = dot === -1 ? ownDatabase : raw.slice(0, dot)
+  const table = dot === -1 ? raw : raw.slice(dot + 1)
+  if (!database) return { blocked: `\`${raw}\` names no database, and this page has none to lend it.` }
+  if (!table) return { blocked: `\`${raw}\` is half a name — write \`database.table\`.` }
+
+  const select = query.select ?? []
+  const dimensions = query.dimensions ?? []
+  const metrics = query.metrics ?? []
+  if (select.length && (dimensions.length || metrics.length)) {
+    // The server refuses this pair too, and for the same reason: they are two
+    // ways of saying what comes back.
+    return { blocked: '`select` and `dimensions` are two ways of saying what comes back.' }
+  }
+
+  const times = query.time === undefined ? [] : Array.isArray(query.time) ? query.time : [query.time]
+  const projections: Projection[] = []
+  const windows: Condition[] = []
+
+  for (const column of select.length ? select : dimensions) {
+    projections.push({ id: newId(), column, agg: null, bucket: null })
+  }
+
+  for (const time of times) {
+    const strayTime = strayKey(time, TIME_KEYS)
+    if (strayTime) return { blocked: `The form does not know the time field \`${strayTime}\`.` }
+    if (!time.column) {
+      // The server resolves an absent column against the dataset's own, where
+      // it has exactly one. That takes describing the dataset, which is a round
+      // trip, and this is a pure function — so the document has to say.
+      return { blocked: 'A time in this question names no column, and the form cannot guess it.' }
+    }
+    if (time.granularity !== undefined) {
+      if (!BUCKETS.has(time.granularity)) {
+        return { blocked: `\`${time.granularity}\` is not one of the form's buckets.` }
+      }
+      projections.push({
+        id: newId(),
+        column: time.column,
+        agg: null,
+        bucket: time.granularity as Bucket,
+      })
+    }
+    if (time.last !== undefined) {
+      // The plural the documentation writes and the singular the form sends are
+      // the same unit; the server takes either, so this does too.
+      const letter = WINDOW_LETTERS.get((time.unit ?? '').toLowerCase().replace(/s$/, ''))
+      if (!letter) {
+        return { blocked: `The form has no window in ${time.unit ?? 'that unit'} — only minutes, hours and days.` }
+      }
+      windows.push({
+        id: newId(),
+        column: time.column,
+        op: 'since',
+        value: `${time.last}${letter}`,
+        value2: '',
+      })
+    }
+    if (time.granularity === undefined && time.last === undefined) {
+      return { blocked: 'A time in this question is neither a window nor a bucket.' }
+    }
+  }
+
+  const bucketed = projections.some((p) => p.bucket !== null)
+  if (dimensions.length && !metrics.length && !bucketed) {
+    // `SELECT city FROM t GROUP BY city` and `SELECT city FROM t` are different
+    // answers — the first one dedupes. The form has no grouping it can express
+    // without something computed over it, so it cannot show this one.
+    return { blocked: 'This question groups without computing anything, which the form cannot show.' }
+  }
+
+  for (const metric of metrics) {
+    const strayMetric = strayKey(metric, METRIC_KEYS)
+    if (strayMetric) return { blocked: `The form does not know the metric field \`${strayMetric}\`.` }
+    const agg = AGGS_BACK.get(metric.aggregation)
+    if (!agg) return { blocked: `The form cannot compute \`${metric.aggregation}\`.` }
+    // `count` with no column counts rows, which the form spells `count(*)`.
+    const projection: Projection = {
+      id: newId(),
+      column: metric.column ?? '*',
+      agg,
+      bucket: null,
+    }
+    // What this column will be called in the answer, and therefore what an
+    // `order` or a `having` elsewhere in the document is pointing at. The form
+    // names its own columns and has no field to override it, so a document that
+    // calls one something else cannot be reopened here without silently
+    // renaming a key somebody's chart is reading. Said, rather than done.
+    const given = metric.as ?? (metric.column ? `${metric.aggregation}_${metric.column}` : metric.aggregation)
+    const wanted = aliasOf(projection)
+    if (given !== wanted) {
+      return { blocked: `This question calls a column \`${given}\`; the form would call it \`${wanted}\`.` }
+    }
+    projections.push(projection)
+  }
+
+  const conditions: Condition[] = []
+  if (query.filter) {
+    for (const node of rowsOf(query.filter)) {
+      const row = conditionOf(node)
+      if (typeof row === 'string') return { blocked: row }
+      conditions.push(row)
+    }
+  }
+  // After the filters, because that is where they came from: `specToDsl` reads
+  // the windows out of the same list and the order among them is what the
+  // document's `time` entries preserve.
+  conditions.push(...windows)
+
+  const having: Having[] = []
+  for (const node of query.having ? rowsOf(query.having) : []) {
+    const row = conditionOf(node)
+    if (typeof row === 'string') return { blocked: row }
+    if (!HAVING_OPS.has(row.op)) {
+      return { blocked: `The form has no \`${row.op}\` to compare a computed value with.` }
+    }
+    having.push({ id: newId(), ref: row.column, op: row.op as Having['op'], value: row.value })
+  }
+
+  const orderings: Ordering[] = []
+  for (const sort of query.order ?? []) {
+    const straySort = strayKey(sort, ORDER_KEYS)
+    if (straySort) return { blocked: `The form does not know the order field \`${straySort}\`.` }
+    orderings.push({ id: newId(), ref: sort.column, desc: sort.desc })
+  }
+
+  return {
+    spec: {
+      ...startingSpec(database, table),
+      projections,
+      conditions,
+      having,
+      orderings,
+      // No limit in the document is no limit in the form, and not the 500 a
+      // fresh one starts at: a document that asked for everything must not come
+      // back capped by a default nobody wrote down.
+      limit: query.limit ?? 0,
+      timezone: query.timezone ?? '',
+    },
+  }
 }
