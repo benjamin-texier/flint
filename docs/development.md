@@ -7,7 +7,7 @@ Everything in containers, hot reload on both sides, against a throwaway
 ClickHouse seeded with `contrib/play-schema.sql`:
 
 ```bash
-docker compose -f docker-compose.dev.yml up --build
+docker compose -f docker/dev.yml up --build
 ```
 
 Open <http://localhost:5173>. The seed is ClickHouse's own: 85 tables and 5

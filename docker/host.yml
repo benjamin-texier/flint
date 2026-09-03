@@ -1,6 +1,6 @@
 # Overlay for when ClickHouse listens on the host's loopback only.
 #
-#   docker compose -f docker-compose.yml -f docker-compose.host.yml up --build
+#   docker compose -f docker-compose.yml -f docker/host.yml up --build
 #
 # `host.docker.internal` reaches the host's *routable* address, so it cannot
 # see a service bound to 127.0.0.1 — which is what a `kubectl port-forward` or

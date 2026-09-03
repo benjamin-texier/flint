@@ -1637,7 +1637,7 @@ from the routine three: re-initialising a replica from Keeper is what you do whe
 something is already wrong.
 
 To verify them, the repository gained a real cluster:
-`docker-compose.cluster.yml` — one Keeper and two replicas of one shard, separate
+`docker/cluster.yml` — one Keeper and two replicas of one shard, separate
 from the single-node development environment because a single node is what most
 people run and what Flint must stay honest about. Four things do not exist
 without it: a populated `system.replicas`, a replication queue with entries in it,
@@ -2325,7 +2325,7 @@ half of this that matters — a file deleted by hand is still in the list, and t
 restore offered against it fails with the server's own words.
 
 **S3 is there, and most of it needed no code.** A MinIO fixture
-(`docker-compose.s3.yml`) and an S3 *disk* in the server's configuration
+(`docker/s3.yml`) and an S3 *disk* in the server's configuration
 (`contrib/dev-s3-backups.xml`) are enough: Flint keeps naming a disk, the existing
 `Disk(disk, file)` statement is unchanged, and nothing secret passes through
 Flint. That is the point of doing it that way — `BACKUP … TO S3(url, key,
