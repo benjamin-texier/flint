@@ -276,10 +276,10 @@ dials, which is the shape of an SSRF. So:
 There are **three** ways an address fails, and they send you to three different
 places — so Flint names them separately:
 
-| What happened | What you see |
-| --- | --- |
-| Nothing is listening | `could not reach ClickHouse at http://…` |
-| ClickHouse answered, and said no | its own message — a wrong password, a missing grant |
+| What happened                                | What you see                                                                                            |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Nothing is listening                         | `could not reach ClickHouse at http://…`                                                                |
+| ClickHouse answered, and said no             | its own message — a wrong password, a missing grant                                                     |
 | Something answered, and it is not ClickHouse | `reached http://…, and what answered is not ClickHouse: it answered 400 and sent no ClickHouse headers` |
 
 The third is new with this mode, and it is the one an unpinned Flint meets most,
@@ -302,3 +302,109 @@ A pinned Flint **refuses** an endpoint offered at sign-in rather than ignoring
 it. Ignoring is the tempting reading and the wrong one: a caller answered `200`
 has every reason to think the address was used, and a pinned Flint that took the
 field would be an open proxy behind a manifest promising it is not.
+
+### Starting from Kubernetes
+
+`flint k8s -n clickhouse sts/clickhouse` resolves a workload to one pod,
+opens a `kubectl port-forward` to it, reads what the manifest declares about its
+users, and then boots the ordinary Flint against the tunnel. Everything after the
+first six lines of output is the normal startup, reading a normal config, with no
+idea it is talking through a forwarded port — there is one boot path, not two.
+
+Three decisions are the whole design.
+
+**It shells out to `kubectl`.** A kubeconfig is contexts, exec credential
+plugins, OIDC and three clouds' worth of authentication, and a client library
+that re-implements it is a second implementation that can disagree with the
+first — the same argument this codebase makes for attempting a read rather than
+parsing `SHOW GRANTS`. `kubectl` is already on the machine of anybody typing
+`sts/`, it is already logged in, and it is the thing they know how to debug. The
+cost is a binary on the `PATH`, and the one error where that matters says so.
+
+**It follows references; it does not guess.** Everything it reads is a pointer
+some manifest wrote down:
+
+| Where                            | What it gives                                                                                                                             |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `env` → `valueFrom.secretKeyRef` | the secret **and** the key                                                                                                                |
+| `env` → `value:`                 | the password itself, written into the pod spec                                                                                            |
+| `envFrom` → `secretRef`          | the secret, and no key — the key is then the image's convention, and the output says so                                                   |
+| a `ClickHouseInstallation`       | `spec.configuration.users`, including `k8s_secret_password`, which is the operator's own way of saying "not here, there"                  |
+| a volume mounted into `users.d/` | named, not read: it is XML, and a third-party parser to find one field is a poor trade when the CHI beside it says the same thing in JSON |
+
+What it never does is sweep the namespace for a secret whose name contains
+`clickhouse`. That is the guess this refuses to make, because a guess that
+*succeeds* is the one that gets somebody into a server they did not mean to open.
+Where nothing is declared, `--password-from secret/name#key` is somebody who
+knows telling it, and that outranks everything above.
+
+**Reading the secret is not an escalation, and it does not pretend to be.**
+Anybody holding `get secrets` in that namespace also holds `exec`, and
+`kubectl exec -it pod -- clickhouse-client` is the same session by a longer road.
+So there is no guard on the way in — there is nothing there to guard. The guard
+is on what the session may then *do*: `flint k8s` resolves to the `read` tier,
+and `readonly=2` with it, unless `--tier` or an explicit `FLINT_TIER` says
+otherwise. Being *able* to be admin and *being* admin all afternoon are not the
+same thing, and the name of a StatefulSet is not a sentence that asks for `DROP`.
+
+#### What it says when it cannot
+
+Reading the workload and reading the secret are **two RBAC verbs**, granted
+separately, and "the developers see workloads but not secrets" is one of the most
+common splits there is. So a refused secret is not a dead end, and it is not
+reported as an absence:
+
+```
+user `analyst`, password in secret/creds key `password` — your RBAC does not
+let you read secrets here (kubectl auth can-i get secrets → no)
+  sign in on the form, or --password-from
+```
+
+The reference is printed *because* the read failed. It names the exact secret and
+key somebody would have to be granted — the same courtesy the sign-in screen does
+for a missing `GRANT`, rather than quoting an API server at them. A user declared
+by `password_sha256_hex` gets its own sentence for the same reason: the cluster
+holds proof of the password, not the password, and no grant will ever change that.
+Three failures that used to look identical from the outside — refused, absent,
+hashed — say which they are, and the tunnel opens in all three so the only thing
+left is to type a password.
+
+#### One pod, said out loud
+
+A port-forward reaches exactly one pod, and almost everything Flint shows is
+per-node: `system.query_log`, `system.parts`, the merges, the whole diagnose
+page. A reading labelled "the server" that is really one replica of three is the
+kind of wrong that looks right, so the output names the pod and the count, and
+`--pod` picks another. The cluster page still shows the rest — `system.clusters`
+marks the one you are on with `is_local`.
+
+This is also why a `svc/` target still resolves to a pod rather than being
+forwarded to as a service: load-balancing would hand a different node to each
+request, and the incoherence would never announce itself.
+
+#### The fourth way an address fails
+
+The three above — nothing listening, ClickHouse said no, something answered and
+it is not ClickHouse — are about the far end. A tunnel that dies is a fourth, and
+without a name for it a dead port-forward is reported as the first, which sends
+somebody to look at a database that is perfectly healthy. So the supervisor says
+it, with the pod in the line, and reopens on the same local port — which is why
+the port is chosen before the first spawn rather than by `kubectl` after it. A
+Flint already pointed at `127.0.0.1:49731` keeps working across a rescheduled pod.
+
+It stays quiet when *we* are the ones closing: the shell signals the whole
+process group, so `kubectl` dies at the same moment Flint does, and an `ERROR`
+on every clean Ctrl-C is a line nobody reads on the one exit that was not clean.
+
+#### Where this is not the answer
+
+`flint k8s` is a command for a laptop. In-cluster there is no tunnel to open —
+Flint is a `Deployment` beside ClickHouse, reaching it by Service name, and the
+things to know there are different ones: sessions live in the process, so
+`replicas: 1` (a second replica also means a second alert scheduler, since there
+is no leader election); the SPA serves its assets from the root, so an Ingress on
+a sub-path will not work; and `FLINT_CLICKHOUSE_CA_CERT` takes a path, so an
+operator's self-signed CA arrives as a mounted secret. The image is already built
+for it: distroless, `USER nonroot`, nothing written to disk, and `/api/health`
+answers even while ClickHouse is down — which is what you want in a liveness
+probe and not in a readiness one.

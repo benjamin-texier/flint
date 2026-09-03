@@ -49,7 +49,7 @@ const NOT_PRUNED = String.raw`└──ReadFromMergeTree (system.query_log)
       Parts: 5 | Granules: 12
       Output: query_duration_ms
       Prewhere filter
-      Prewhere filter column:  user = \'jeeves\'
+      Prewhere filter column:  user = \'clickhouse\'
       Indexes:
         Min-Max
           Condition: true

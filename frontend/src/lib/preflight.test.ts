@@ -41,7 +41,7 @@ function pre(over: Partial<Preflight> = {}, reading: Partial<Preflight['reading'
         clusters: 'readable',
       },
       grants: {
-        user: 'jeeves',
+        user: 'clickhouse',
         roles: [],
         grants: [grant('SELECT, INSERT', 'analytics.*'), grant('BACKUP', '*.*')],
         revokes: [],

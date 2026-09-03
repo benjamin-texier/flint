@@ -292,6 +292,22 @@ pub struct Config {
     /// binary itself.
     #[arg(long, hide_short_help = true)]
     pub health_check: bool,
+
+    /// A subcommand, where one was asked for.
+    ///
+    /// `None` is Flint as it has always been — every flag above, and a server.
+    /// A subcommand does not replace that boot, it *arranges* it: `k8s` opens a
+    /// tunnel and then fills in the same fields somebody would otherwise have
+    /// typed, so there is one startup path rather than two.
+    #[command(subcommand)]
+    pub cmd: Option<Cmd>,
+}
+
+/// The ways of starting Flint that are more than a set of flags.
+#[derive(Debug, Clone, clap::Subcommand)]
+pub enum Cmd {
+    /// Reach a ClickHouse that only Kubernetes can route to.
+    K8s(crate::k8s::K8s),
 }
 
 impl Config {

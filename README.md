@@ -57,6 +57,40 @@ docker run --rm -p 8080:8080 \
   flint:local
 ```
 
+### From Kubernetes
+
+Where ClickHouse only exists inside a cluster, `flint k8s` is the whole start:
+
+```bash
+flint k8s -n clickhouse sts/clickhouse
+```
+
+```
+context prod-eu, namespace clickhouse
+statefulset/clickhouse → 3 pods, forwarding to clickhouse-0 (--pod for another)
+port 8123 (named `http` in the pod spec)
+user `analyst`, password from secret/creds key `password`
+  (declared by CLICKHOUSE_PASSWORD — --sign-in to ignore it)
+tunnel up on 127.0.0.1:49731
+read-only (--tier data|ddl|admin to widen)
+```
+
+It resolves the workload to one pod, opens a `kubectl port-forward` to it, reads
+the credentials the pod template *declares*, and boots the ordinary Flint against
+the tunnel. Targets are spelled as `kubectl` spells them — `sts/`, `svc/`,
+`pod/`, `chi/`, or a bare name read as a StatefulSet — and `kubectl` is what it
+shells out to, so your context, your exec plugin and your OIDC all work because
+they already work.
+
+Two things it will not do: guess (nothing sweeps the namespace for a secret whose
+name looks promising — every credential above came from a reference in a manifest,
+and the output names it), and assume you meant to write. It resolves to the `read`
+tier unless `--tier` says otherwise. `--sign-in` skips the credentials entirely
+and leaves the account to whoever opens the page, which is the shape for a tunnel
+more than one person is behind.
+
+[More on what it reads, and what it does when it cannot](docs/configuration.md#starting-from-kubernetes).
+
 `docker build -t flint .` builds it: one stage compiles the frontend, one
 compiles the binary with the frontend embedded, and the runtime image is
 `distroless/cc` carrying nothing but Flint — 34 MB. That image has no shell and
