@@ -1284,7 +1284,7 @@ consequence accepted — the page can no longer redisplay it, so `publish.ts`'s
 snippets have to be produced at that moment. Cheap now; impossible once other
 people's workspaces hold tokens in clear.
 
-#### A7.5 What publishing becomes
+#### A7.5 What publishing becomes — **built**
 
 Smaller and clearer, not useless. A published object is one of two things:
 
@@ -1299,6 +1299,60 @@ Smaller and clearer, not useless. A published object is one of two things:
 The statement-backed endpoint stays as the escape hatch for the analyst with no
 DDL rights on a shared cluster who needs a join today. A fallback, no longer the
 main road.
+
+**Both halves exist now**, and the delegation half turned out to have been built
+already — the hashed token, the expiry, `run_as` and its `delegation_check`,
+and keys with a scope and a quota are between them the "role, scope and expiry"
+`A7.4` asked for. What was missing was the *name*, and building it settled the
+one question this section left open in a way it did not predict.
+
+**The query string stays.** This document proposed rewriting the published
+endpoint "around delegation rather than kept as a second query surface with its
+own query string", and that is not what a document-backed endpoint wanted to be.
+The two surfaces are not the same surface: the *question* is the endpoint's and
+fixed, and the query string is the *caller's* — a page, a format, a sort, a
+filter over the answer. Every other address already works that way, and taking
+it away from this one would have made the endpoint published from a question the
+only one a caller cannot page through. What went away instead is the requirement
+that the question be SQL.
+
+Five things were decided in the building, each of them a rule rather than a
+mechanism:
+
+- **A question is rendered once, when it is published.** A revision's promises
+  are frozen the moment it goes live, and a question re-rendered on every call
+  would slip out from under the callers pinned to it the first time somebody
+  added a column to the table. It is also what lets the endpoint page show the
+  statement that will run, which is the only way anybody reviews a draft.
+- **A settled value outranks the query string, silently.** The rendered
+  statement binds its values rather than writing them in, so its placeholders
+  are declared like any other — and `?flint_f0=Lyon` on an endpoint published as
+  "orders in Oslo" would be a caller editing the question through its own
+  address. `published::bind` gained the argument that closes it. The same names
+  are then kept out of the schema, the OpenAPI document, the tool definition and
+  the endpoint page, because a box labelled `flint_f0 · required` invites
+  somebody to fill in the question's own filter.
+- **A page belongs to the address and a zone belongs to the endpoint.** Both are
+  refused *in the question*, by name. A `limit` in a Builder document is five
+  hundred rows on a screen; published unchanged it would have become a ceiling
+  on everything the address can ever return, with the caller's own paging
+  stopping at it and nothing saying why. The same for `offset`, `cursor`,
+  `count`, `format`, `explain` and `query_id`: they belong to a call.
+- **`shape::wrap` takes no page for the inner wrap.** The document's statement is
+  wrapped a second time by the endpoint's own shape layer, and an inner `LIMIT`
+  would not have been a page size — it would have been a ceiling. Measured
+  rather than reasoned about: offset 100 on an endpoint capped at 100 rows
+  returns rows.
+- **A question the form cannot hold is still an endpoint.** An `any` — an OR,
+  which the form's flat list of filters has no control for — publishes, answers
+  and pages like any other address, and the page says the form cannot show that
+  one and why. The reverse rule holds on the way in: `dslToSpec` refuses rather
+  than doing its usual lossy best, because a filter dropped on the way back
+  leaves a form asking a different question than the URL beside it. Every one of
+  its refusals is a difference in which rows come back; nothing is refused for
+  being merely inelegant. The sharpest of them is that an **unknown field** is a
+  refusal — the fields it does not know are `period`, `from`, `to` and `compare`,
+  and every one of them narrows.
 
 #### A7.6 What a per-request DSL gives up, and where each piece lands
 
@@ -1521,20 +1575,21 @@ their own rows. `order` could already name it, which made the inconsistency the
 tell. The label is threaded into the `HAVING` renderer now, so "only the previous
 half" is a filter like any other and the message lists what is really there.
 
-A7 is finished. `A7.5`'s question is now the live one, and this section answers
+A7 is finished, `A7.5` with it. This section answers
 half of it already: publishing is for **delegation** — a question handed to
 somebody who has no account — and the delegation is only as real as the account
 Flint runs as. If a deployment cannot meet that precondition, the honest advice
 is the dataset API with a real identity, not a published endpoint with a role
 that does nothing.
 
-Then `A7.5`'s question becomes the live one, and it is worth stating plainly
-rather than discovering: **what is publishing for**, now that anybody with an
-account can ask anything without it? The answer this document has been assuming
-is *delegation* — a slug and a token for a caller who has no account at all — and
-that is the half of A7.4 still unbuilt. If that turns out to be the only
-remaining use, the published endpoint should be rewritten around it rather than
-kept as a second query surface with its own query string.
+The other half of "what is publishing for", now that anybody with an account can
+ask anything without it, is the **name** — and that is what `A7.5` above turned
+out to be. Delegation was the answer this document kept assuming, and it was only
+ever half of one: an address is also worth having when everybody calling it has
+an account, because it is the one thing a dashboard elsewhere, a spreadsheet
+formula and a five-line script can all hold on to. What it needed in order to be
+worth more than the SQL somebody would otherwise paste was the way back — the
+form it was written in.
 
 One thing found repeatedly while building this, worth carrying forward: every
 bug that survived `cargo test` was about **names**. An alias shadowing its own
@@ -2880,6 +2935,10 @@ nobody has built. Either is a good next release. Doing halves of both is not.
 has been overtaken: what is left on Data is A5's ingestion APIs and A7.5's
 naming, and neither is a foundation anything else waits on. The next release is
 a choice between them rather than between the tracks.
+
+**A7.5's naming is built**, so what is left on Data is A5 alone — the write side
+of the APIs, and the one feature here that still needs a background component to
+land on rather than a page.
 
 ---
 

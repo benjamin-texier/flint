@@ -3,21 +3,43 @@
 **The workspace ClickHouse doesn't ship with.**
 
 Flint is a self-hosted web interface for exploring, querying and operating
-ClickHouse. It opens by telling you what it found on your server — the disk
-nothing reads, the account spending the week, the data held twice — and goes as
-far as publishing a statement as a JSON API. Your schema is one click on, drawn
-rather than listed. One Rust binary serves the API and embeds the built frontend,
-so a deployment is one process and no second database.
-
-No ClickHouse to hand? The sign-in screen will open ClickHouse's public demo
-server for you in one press: 7 TiB and 246 billion rows, including every public
-GitHub event since 2011.
+ClickHouse. It opens on a verdict about your server — the columns nothing has
+read, the account that spent the week, the data held twice — and goes as far as
+publishing a statement as a JSON API. Your schema is one click on, drawn rather
+than listed. One Rust binary serves the API and embeds the built frontend, so a
+deployment is one process and no second database.
 
 Point it at a server and it changes nothing there: `FLINT_READONLY` is the
 default in the shipped compose file, and without a workspace database Flint
 writes nothing at all.
 
----
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/home-dark.png">
+  <img alt="Flint's home page: the headline &ldquo;7 things here are worth changing&rdquo;, the server's 153 MiB broken down by database, rows on a time axis, and the first finding — one statement shape taking 31% of the workload's time." src="docs/images/home.png">
+</picture>
+
+<sub>A throwaway dev server seeded from ClickHouse's own playground schemas. Two
+minutes of uptime is why <em>What changed</em> says it has nothing to compare
+against yet rather than inventing a baseline — which is the point.</sub>
+
+## Try it without a ClickHouse
+
+The sign-in screen will open **ClickHouse's own public demo server** for you in
+one press — 7 TiB and 246 billion rows, including every public GitHub event
+since 2011, a decade of taxi trips, and the web-analytics set the benchmarks
+use. No signup, no local server, no `.env`:
+
+```bash
+docker build -t flint:local . && docker run --rm -p 8080:8080 flint:local
+```
+
+Then press **Open the demo** on the sign-in screen.
+
+Flint says up front what that account *withholds*, too: it is granted the schema
+and the data, so the diagram, the types and the queries all work — but
+`system.parts`, `system.disks` and `system.query_log` are refused there, so
+storage, the workload and the checkup have nothing to answer with. Better said
+before the click than discovered as four grey panels after it.
 
 ## Quick start
 
@@ -49,6 +71,8 @@ docker compose -f docker-compose.yml -f docker/host.yml up --build
 Without compose:
 
 ```bash
+docker build -t flint:local .
+
 docker run --rm -p 8080:8080 \
   -e FLINT_CLICKHOUSE_URL=http://clickhouse:8123 \
   -e FLINT_CLICKHOUSE_USER=explorer \
@@ -57,45 +81,10 @@ docker run --rm -p 8080:8080 \
   flint:local
 ```
 
-### From Kubernetes
-
-Where ClickHouse only exists inside a cluster, `flint k8s` is the whole start:
-
-```bash
-flint k8s -n clickhouse sts/clickhouse
-```
-
-```
-context prod-eu, namespace clickhouse
-statefulset/clickhouse → 3 pods, forwarding to clickhouse-0 (--pod for another)
-port 8123 (named `http` in the pod spec)
-user `analyst`, password from secret/creds key `password`
-  (declared by CLICKHOUSE_PASSWORD — --sign-in to ignore it)
-tunnel up on 127.0.0.1:49731
-read-only (--tier data|ddl|admin to widen)
-```
-
-It resolves the workload to one pod, opens a `kubectl port-forward` to it, reads
-the credentials the pod template *declares*, and boots the ordinary Flint against
-the tunnel. Targets are spelled as `kubectl` spells them — `sts/`, `svc/`,
-`pod/`, `chi/`, or a bare name read as a StatefulSet — and `kubectl` is what it
-shells out to, so your context, your exec plugin and your OIDC all work because
-they already work.
-
-Two things it will not do: guess (nothing sweeps the namespace for a secret whose
-name looks promising — every credential above came from a reference in a manifest,
-and the output names it), and assume you meant to write. It resolves to the `read`
-tier unless `--tier` says otherwise. `--sign-in` skips the credentials entirely
-and leaves the account to whoever opens the page, which is the shape for a tunnel
-more than one person is behind.
-
-[More on what it reads, and what it does when it cannot](docs/configuration.md#starting-from-kubernetes).
-
-`docker build -t flint .` builds it: one stage compiles the frontend, one
-compiles the binary with the frontend embedded, and the runtime image is
-`distroless/cc` carrying nothing but Flint — 34 MB. That image has no shell and
-no curl, so the container healthcheck is the binary itself
-(`flint --health-check`).
+One stage compiles the frontend, one compiles the binary with the frontend
+embedded, and the runtime image is `distroless/cc` carrying nothing but Flint —
+34 MB. That image has no shell and no curl, so the container healthcheck is the
+binary itself (`flint --health-check`).
 
 ## What it does
 
@@ -122,6 +111,11 @@ rows; **Infrastructure** works on structure and on the server. See
 - **Publish** — a statement exposed as a JSON API with typed parameters, an
   OpenAPI document, hashed tokens and per-key quotas.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/explore-dark.png">
+  <img alt="Flint's Explore page: a database of 78 objects drawn as a diagram, materialized views and their targets connected by arrows that follow the data, with the tables nothing references collected below." src="docs/images/explore.png">
+</picture>
+
 **Infrastructure**
 
 - **Health** — replication, parts, merges, mutations, free space, and what is
@@ -138,36 +132,85 @@ Every cap, fold and filter states its own count, and a figure that cannot be had
 is dropped rather than dashed. The [full feature guide](docs/features.md) walks
 through all of it.
 
+## Why another one
+
+The usual shape for a ClickHouse front-end is a query console: a box, a grid, a
+history. Flint has that box, but it is not what the product is for.
+
+- **It arrives with an opinion.** A console opens empty and waits for you to
+  already know what to ask. Flint's `/` is a verdict it measured before you
+  typed anything, and every finding on it is also on the page that can act on
+  it.
+- **It has a second half.** Replication, parts, merges, grants, `ALTER`s that
+  price themselves before the button — the operating surface, kept in its own
+  space so somebody working on rows never trips over it.
+
+Two things it is deliberately not. It is not a BI tool: Metabase and Superset
+are better at charts for people who will never write SQL. And it is not a
+multi-database client: DBeaver and DataGrip speak twenty dialects, where Flint
+speaks one and knows what `system.parts` means.
+
+## From Kubernetes
+
+Where ClickHouse only exists inside a cluster, `flint k8s` is the whole start:
+
+```bash
+flint k8s -n play-clickhouse sts/clickhouse-clickhouse
+```
+
+It resolves the workload to one pod, opens a `kubectl port-forward` to it, reads
+the credentials the pod template *declares*, and boots the ordinary Flint against
+the tunnel — naming each of those in its output as it goes. Targets are spelled
+as `kubectl` spells them (`sts/`, `svc/`, `pod/`, `chi/`, or a bare name read as
+a StatefulSet) and `kubectl` is what it shells out to, so your context, your exec
+plugin and your OIDC all work because they already work.
+
+Two things it will not do: guess — nothing sweeps the namespace for a secret
+whose name looks promising — and assume you meant to write, resolving to the
+`read` tier unless `--tier` says otherwise.
+
+[What it reads, the full output, and what it does when it cannot](docs/configuration.md#starting-from-kubernetes).
+
 ## Configuration
 
-Every option is a flag or an environment variable. `flint --help` lists them.
-The three that are more than a value — grants, signing in, and running without a
-server in the manifest — are explained in
-[docs/configuration.md](docs/configuration.md).
+Every option is a flag or an environment variable, and `flint --help` lists them
+all. These are the ones a first deployment actually sets:
 
-| Variable                    | Default                  | What it does                                                                        |
-| --------------------------- | ------------------------ | ----------------------------------------------------------------------------------- |
-| `FLINT_AUTH`                | `false`                  | Require everyone to sign in with their own ClickHouse credentials                   |
-| `FLINT_CLICKHOUSE_CA_CERT`  | —                        | PEM bundle for a private CA                                                         |
-| `FLINT_CLICKHOUSE_DATABASE` | `default`                | Database the editor starts in                                                       |
-| `FLINT_CLICKHOUSE_PASSWORD` | *empty*                  | ClickHouse password                                                                 |
-| `FLINT_CLICKHOUSE_URL`      | —                        | ClickHouse HTTP endpoint. Unset = unpinned: the browser names the server at sign-in |
-| `FLINT_CLICKHOUSE_USER`     | `default`                | ClickHouse user                                                                     |
-| `FLINT_CORS_ORIGIN`         | —                        | Extra allowed origin (dev only)                                                     |
-| `FLINT_HOST`                | `0.0.0.0`                | Bind address                                                                        |
-| `FLINT_INFRASTRUCTURE`      | `true`                   | Whether the Infrastructure space exists in the UI                                   |
-| `FLINT_LOG`                 | `flint=info`             | `tracing` filter                                                                    |
-| `FLINT_MAX_RESULT_ROWS`     | `10000`                  | Row cap per query                                                                   |
-| `FLINT_PORT`                | `8080`                   | Bind port                                                                           |
-| `FLINT_QUERY_TIMEOUT_SECS`  | `120`                    | Server-side query timeout                                                           |
-| `FLINT_READONLY`            | `false`                  | Send `readonly=2`: writes are refused                                               |
-| `FLINT_SESSION_IDLE_HOURS`  | `12`                     | How long an unused session survives                                                 |
-| `FLINT_TARGETS`             | *any*                    | Servers a browser may point an unpinned Flint at. Ignored when the URL is set       |
-| `FLINT_TIER`                | follows `FLINT_READONLY` | What this deployment may do: `read`, `data`, `ddl`, `admin`                         |
-| `FLINT_WORKSPACE_DATABASE`  | —                        | Where Flint may keep its own metadata. Unset = stateless                            |
-| `FLINT_WORKSPACE_PASSWORD`  | —                        | Password for the above                                                              |
-| `FLINT_WORKSPACE_URL`       | —                        | A server of Flint's own to keep that metadata on. Unset = the explored one          |
-| `FLINT_WORKSPACE_USER`      | `default`                | Account on the workspace server. Not inherited from the explored one                |
+| Variable                    | Default   | What it does                                                                        |
+| --------------------------- | --------- | ----------------------------------------------------------------------------------- |
+| `FLINT_CLICKHOUSE_URL`      | —         | ClickHouse HTTP endpoint. Unset = unpinned: the browser names the server at sign-in |
+| `FLINT_CLICKHOUSE_USER`     | `default` | ClickHouse user                                                                     |
+| `FLINT_CLICKHOUSE_PASSWORD` | *empty*   | ClickHouse password                                                                 |
+| `FLINT_READONLY`            | `false`   | Send `readonly=2`: writes are refused                                               |
+| `FLINT_AUTH`                | `false`   | Require everyone to sign in with their own ClickHouse credentials                   |
+| `FLINT_WORKSPACE_DATABASE`  | —         | Where Flint may keep its own metadata. Unset = stateless                            |
+
+<details>
+<summary>Every other variable</summary>
+
+| Variable                    | Default                  | What it does                                                                  |
+| --------------------------- | ------------------------ | ----------------------------------------------------------------------------- |
+| `FLINT_CLICKHOUSE_CA_CERT`  | —                        | PEM bundle for a private CA                                                   |
+| `FLINT_CLICKHOUSE_DATABASE` | `default`                | Database the editor starts in                                                 |
+| `FLINT_CORS_ORIGIN`         | —                        | Extra allowed origin (dev only)                                               |
+| `FLINT_HOST`                | `0.0.0.0`                | Bind address                                                                  |
+| `FLINT_INFRASTRUCTURE`      | `true`                   | Whether the Infrastructure space exists in the UI                             |
+| `FLINT_LOG`                 | `flint=info`             | `tracing` filter                                                              |
+| `FLINT_MAX_RESULT_ROWS`     | `10000`                  | Row cap per query                                                             |
+| `FLINT_PORT`                | `8080`                   | Bind port                                                                     |
+| `FLINT_QUERY_TIMEOUT_SECS`  | `120`                    | Server-side query timeout                                                     |
+| `FLINT_SESSION_IDLE_HOURS`  | `12`                     | How long an unused session survives                                           |
+| `FLINT_TARGETS`             | *any*                    | Servers a browser may point an unpinned Flint at. Ignored when the URL is set |
+| `FLINT_TIER`                | follows `FLINT_READONLY` | What this deployment may do: `read`, `data`, `ddl`, `admin`                   |
+| `FLINT_WORKSPACE_PASSWORD`  | —                        | Password for the workspace database                                           |
+| `FLINT_WORKSPACE_URL`       | —                        | A server of Flint's own to keep that metadata on. Unset = the explored one    |
+| `FLINT_WORKSPACE_USER`      | `default`                | Account on the workspace server. Not inherited from the explored one          |
+
+</details>
+
+The three options that are more than a value — grants, signing in, and running
+without a server in the manifest — are explained in
+[docs/configuration.md](docs/configuration.md).
 
 ### Statefulness, in one paragraph
 
@@ -221,4 +264,4 @@ rather than left to be discovered.
 
 ## License
 
-Apache-2.0, as declared in `Cargo.toml`.
+[Apache-2.0](LICENSE).
