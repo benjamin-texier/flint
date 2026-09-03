@@ -1449,11 +1449,18 @@ pub struct Wrapped {
 /// `fetch` is a row count Flint chose, not one a caller typed — the handler
 /// asks for one row more than the page it will serve, which is what makes
 /// "there is more behind this" a fact rather than a guess.
+///
+/// `None` asks for no `LIMIT` at all, and there is exactly one caller for it:
+/// a published *document*, which is wrapped once to become a statement and
+/// then wrapped again by the endpoint's own shape layer. A page belongs to the
+/// outer wrap. An inner `LIMIT` there would not be a page size, it would be a
+/// ceiling on the whole answer — and a caller paging past it would be handed
+/// nothing with nothing to say why.
 pub fn wrap(
     inner: &str,
     shape: &Shape,
     columns: &[ColumnMeta],
-    fetch: u64,
+    fetch: Option<u64>,
     prefix: &str,
 ) -> Result<Wrapped, String> {
     let mut binder = Binder {
@@ -1583,8 +1590,18 @@ pub fn wrap(
         sql.push_str(&format!("\nORDER BY {}", terms.join(", ")));
     }
 
-    sql.push_str(&format!("\nLIMIT {fetch}"));
+    if let Some(fetch) = fetch {
+        sql.push_str(&format!("\nLIMIT {fetch}"));
+    }
     if shape.offset > 0 {
+        // `OFFSET` with no `LIMIT` is not ClickHouse syntax, so an unpaged wrap
+        // that had been given an offset would render a statement the server
+        // refuses. Nothing sends one today — a document's offset is the
+        // caller's and lands on the outer wrap — and this says so rather than
+        // waiting to be discovered as a parse error.
+        if fetch.is_none() {
+            return Err("a wrap with no page cannot carry an offset".into());
+        }
         sql.push_str(&format!(" OFFSET {}", shape.offset));
     }
 
@@ -2052,7 +2069,7 @@ mod tests {
         // The old rule ignored anything it did not recognise, so `citty=Oslo`
         // returned the unfiltered table and looked exactly like an answer.
         let shape = parse(&q(&[("citty", "eq.Oslo")]), &[], 1000).unwrap();
-        let err = wrap("SELECT 1", &shape, &columns(), 10, "p").unwrap_err();
+        let err = wrap("SELECT 1", &shape, &columns(), Some(10), "p").unwrap_err();
         assert!(err.contains("citty"), "{err}");
         assert!(err.contains("city"), "{err}");
     }
@@ -2077,7 +2094,7 @@ mod tests {
     #[test]
     fn a_value_never_reaches_the_sql() {
         let shape = parse(&q(&[("city", "eq.O'Hare'); DROP")]), &[], 1000).unwrap();
-        let wrapped = wrap("SELECT * FROM t", &shape, &columns(), 10, "flint_f").unwrap();
+        let wrapped = wrap("SELECT * FROM t", &shape, &columns(), Some(10), "flint_f").unwrap();
         assert!(
             wrapped.sql.contains("`city` = {flint_f0:String}"),
             "{}",
@@ -2093,7 +2110,7 @@ mod tests {
     #[test]
     fn a_number_binds_in_its_own_type_and_a_date_through_a_parser() {
         let shape = parse(&q(&[("n", "gte.10"), ("ts", "lt.2024-01-01")]), &[], 1000).unwrap();
-        let wrapped = wrap("SELECT 1", &shape, &columns(), 10, "p").unwrap();
+        let wrapped = wrap("SELECT 1", &shape, &columns(), Some(10), "p").unwrap();
         assert!(
             wrapped.sql.contains("`n` >= {p0:UInt32}"),
             "{}",
@@ -2135,7 +2152,7 @@ mod tests {
     #[test]
     fn a_list_becomes_one_bound_parameter_per_value() {
         let shape = parse(&q(&[("city", "in.Oslo,Lyon")]), &[], 1000).unwrap();
-        let wrapped = wrap("SELECT 1", &shape, &columns(), 10, "p").unwrap();
+        let wrapped = wrap("SELECT 1", &shape, &columns(), Some(10), "p").unwrap();
         assert!(
             wrapped.sql.contains("`city` IN ({p0:String}, {p1:String})"),
             "{}",
@@ -2148,13 +2165,13 @@ mod tests {
     #[test]
     fn a_null_test_is_only_offered_where_a_null_can_be() {
         let shape = parse(&q(&[("note", "isnull")]), &[], 1000).unwrap();
-        let wrapped = wrap("SELECT 1", &shape, &columns(), 10, "p").unwrap();
+        let wrapped = wrap("SELECT 1", &shape, &columns(), Some(10), "p").unwrap();
         assert!(wrapped.sql.contains("`note` IS NULL"), "{}", wrapped.sql);
 
         // On a column that cannot hold one, the filter would match nothing —
         // an empty answer that looks exactly like a true one.
         let shape = parse(&q(&[("city", "isnull")]), &[], 1000).unwrap();
-        let err = wrap("SELECT 1", &shape, &columns(), 10, "p").unwrap_err();
+        let err = wrap("SELECT 1", &shape, &columns(), Some(10), "p").unwrap_err();
         assert!(err.contains("never be null"), "{err}");
         assert!(!ops_for("String").contains(&"isnull"));
         assert!(ops_for("Nullable(String)").contains(&"isnull"));
@@ -2163,7 +2180,7 @@ mod tests {
     #[test]
     fn text_operators_are_refused_on_things_that_are_not_text() {
         let shape = parse(&q(&[("n", "like.%1%")]), &[], 1000).unwrap();
-        let err = wrap("SELECT 1", &shape, &columns(), 10, "p").unwrap_err();
+        let err = wrap("SELECT 1", &shape, &columns(), Some(10), "p").unwrap_err();
         assert!(err.contains("compares text"), "{err}");
     }
 
@@ -2171,7 +2188,7 @@ mod tests {
     fn a_collection_is_returned_but_not_filtered_on() {
         assert!(ops_for("Array(String)").is_empty());
         let shape = parse(&q(&[("tags", "eq.a")]), &[], 1000).unwrap();
-        let err = wrap("SELECT 1", &shape, &columns(), 10, "p").unwrap_err();
+        let err = wrap("SELECT 1", &shape, &columns(), Some(10), "p").unwrap_err();
         assert!(err.contains("not collections"), "{err}");
     }
 
@@ -2200,7 +2217,7 @@ mod tests {
                 desc: false
             }]
         );
-        let wrapped = wrap("SELECT 1", &shape, &columns(), 10, "p").unwrap();
+        let wrapped = wrap("SELECT 1", &shape, &columns(), Some(10), "p").unwrap();
         assert!(wrapped.sql.contains("ORDER BY `a.b`"), "{}", wrapped.sql);
     }
 
@@ -2234,7 +2251,7 @@ mod tests {
     #[test]
     fn a_projection_names_columns_the_statement_returns() {
         let shape = parse(&q(&[("select", "city,n")]), &[], 1000).unwrap();
-        let wrapped = wrap("SELECT * FROM t", &shape, &columns(), 10, "p").unwrap();
+        let wrapped = wrap("SELECT * FROM t", &shape, &columns(), Some(10), "p").unwrap();
         // `FROM t`, not `FROM (SELECT * FROM t)` — see `from_clause`.
         assert!(
             wrapped.sql.starts_with("SELECT `city`, `n`\nFROM t\n"),
@@ -2242,7 +2259,7 @@ mod tests {
             wrapped.sql
         );
         let shape = parse(&q(&[("select", "nope")]), &[], 1000).unwrap();
-        assert!(wrap("SELECT 1", &shape, &columns(), 10, "p").is_err());
+        assert!(wrap("SELECT 1", &shape, &columns(), Some(10), "p").is_err());
     }
 
     /// A wrapper over nothing but a table says so, and a wrapper over anything
@@ -2291,13 +2308,13 @@ mod tests {
         // and a trailing line comment would swallow the one that closes it —
         // which is why the paren goes on its own line.
         let shape = parse(&q(&[("limit", "10")]), &[], 1000).unwrap();
-        let wrapped = wrap("SELECT 1 -- why\n;  ", &shape, &columns(), 11, "p").unwrap();
+        let wrapped = wrap("SELECT 1 -- why\n;  ", &shape, &columns(), Some(11), "p").unwrap();
         assert_eq!(
             wrapped.sql,
             "SELECT *\nFROM (\nSELECT 1 -- why\n)\nLIMIT 11"
         );
         let shape = parse(&q(&[("offset", "20")]), &[], 1000).unwrap();
-        let wrapped = wrap("SELECT 1", &shape, &columns(), 11, "p").unwrap();
+        let wrapped = wrap("SELECT 1", &shape, &columns(), Some(11), "p").unwrap();
         assert!(
             wrapped.sql.ends_with("LIMIT 11 OFFSET 20"),
             "{}",
@@ -2356,7 +2373,7 @@ mod tests {
             1000,
         )
         .unwrap();
-        let wrapped = wrap("SELECT 1", &shape, &columns(), 11, "p").unwrap();
+        let wrapped = wrap("SELECT 1", &shape, &columns(), Some(11), "p").unwrap();
         // Written out rather than as `(n, city) < (498, 'Oslo')`, which would
         // be the wrong claim the moment one column runs the other way.
         assert!(
@@ -2448,7 +2465,7 @@ mod tests {
             1000,
         )
         .unwrap();
-        let err = wrap("SELECT 1", &shape, &columns(), 11, "p").unwrap_err();
+        let err = wrap("SELECT 1", &shape, &columns(), Some(11), "p").unwrap_err();
         assert!(err.contains("`note` can be null"), "{err}");
     }
 
@@ -2458,7 +2475,7 @@ mod tests {
         // have to be in the row — and then dropped again, because `select=city`
         // that also returned `n` would answer a question nobody asked.
         let shape = parse(&q(&[("select", "city"), ("order", "n.desc")]), &[], 1000).unwrap();
-        let wrapped = wrap("SELECT 1", &shape, &columns(), 11, "p").unwrap();
+        let wrapped = wrap("SELECT 1", &shape, &columns(), Some(11), "p").unwrap();
         assert!(
             wrapped.sql.starts_with("SELECT `city`, `n`"),
             "{}",
@@ -2468,7 +2485,7 @@ mod tests {
 
         // Asked for explicitly, it is not an extra.
         let shape = parse(&q(&[("select", "city,n"), ("order", "n.desc")]), &[], 1000).unwrap();
-        let wrapped = wrap("SELECT 1", &shape, &columns(), 11, "p").unwrap();
+        let wrapped = wrap("SELECT 1", &shape, &columns(), Some(11), "p").unwrap();
         assert!(wrapped.extra_columns.is_empty());
     }
 
@@ -2504,7 +2521,7 @@ mod tests {
         assert_eq!(datetime64_precision("DateTime"), None);
         let cols = vec![col("t", "DateTime64(3)")];
         let shape = parse(&q(&[("t", "gte.2024-01-01")]), &[], 1000).unwrap();
-        let wrapped = wrap("SELECT 1", &shape, &cols, 10, "p").unwrap();
+        let wrapped = wrap("SELECT 1", &shape, &cols, Some(10), "p").unwrap();
         assert!(
             wrapped
                 .sql

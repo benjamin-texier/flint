@@ -16,6 +16,7 @@
 pub mod cache;
 pub mod contract;
 pub mod cursor;
+pub mod document;
 pub mod log;
 pub mod openapi;
 pub mod shape;
@@ -178,6 +179,30 @@ impl Format {
     }
 }
 
+/// The parameters a *caller* may supply.
+///
+/// What the statement declares, less what the endpoint has already settled. The
+/// difference is a document-backed endpoint: its statement is generated and its
+/// placeholders are the renderer's, so listing them as parameters would publish
+/// `flint_f0` in the OpenAPI document as though somebody were meant to fill it
+/// in. They are not parameters, they are the question.
+pub fn caller_params(endpoint: &crate::workspace::Published) -> Vec<String> {
+    let fixed = document::from_json(&endpoint.bindings);
+    declared_params(&endpoint.sql)
+        .into_iter()
+        .filter(|name| !fixed.iter().any(|(k, _)| k == name))
+        .collect()
+}
+
+/// The same list, with each parameter's declared ClickHouse type.
+pub fn caller_params_typed(endpoint: &crate::workspace::Published) -> Vec<(String, String)> {
+    let fixed = document::from_json(&endpoint.bindings);
+    declared_params_typed(&endpoint.sql)
+        .into_iter()
+        .filter(|(name, _)| !fixed.iter().any(|(k, _)| k == name))
+        .collect()
+}
+
 /// A missing parameter, named. The caller gets to know which one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Missing(pub Vec<String>);
@@ -189,20 +214,34 @@ pub struct Missing(pub Vec<String>);
 /// rather than passed on: ClickHouse's HTTP interface takes settings as query
 /// parameters too, and forwarding an unknown one would let a caller change how
 /// their query runs.
+///
+/// `fixed` is the half a caller has no say in. A published document renders to
+/// a statement whose values are bound rather than written into it, and those
+/// bindings are the *question*: `?flint_f0=Lyon` on an endpoint published as
+/// "orders in Oslo" would be a caller editing the question through its own
+/// address. So a fixed name wins over anything supplied, and it wins silently —
+/// there is no arrangement under which the query string was right about one.
 pub fn bind(
     sql: &str,
     supplied: &[(String, String)],
     defaults: &[(String, String)],
+    fixed: &[(String, String)],
 ) -> std::result::Result<Vec<(String, String)>, Missing> {
     let declared = declared_params(sql);
     let mut out = Vec::with_capacity(declared.len());
     let mut missing = Vec::new();
 
     for name in declared {
-        let given = supplied
+        let given = fixed
             .iter()
             .find(|(k, _)| *k == name)
             .map(|(_, v)| v.clone())
+            .or_else(|| {
+                supplied
+                    .iter()
+                    .find(|(k, _)| *k == name)
+                    .map(|(_, v)| v.clone())
+            })
             .or_else(|| {
                 defaults
                     .iter()
@@ -474,7 +513,7 @@ mod tests {
             ("max_execution_time".to_string(), "9999".to_string()),
             ("readonly".to_string(), "0".to_string()),
         ];
-        let bound = bind(sql, &supplied, &[]).expect("city was supplied");
+        let bound = bind(sql, &supplied, &[], &[]).expect("city was supplied");
         // Bare names: the client adds the `param_` prefix.
         assert_eq!(bound, vec![("city".to_string(), "Oslo".to_string())]);
     }
@@ -482,7 +521,7 @@ mod tests {
     #[test]
     fn a_missing_parameter_is_named() {
         let sql = "SELECT {a:UInt8}, {b:UInt8}";
-        match bind(sql, &[("a".into(), "1".into())], &[]) {
+        match bind(sql, &[("a".into(), "1".into())], &[], &[]) {
             Err(Missing(names)) => assert_eq!(names, vec!["b".to_string()]),
             Ok(_) => panic!("b was not supplied"),
         }
@@ -491,16 +530,33 @@ mod tests {
     #[test]
     fn a_default_stands_in_for_what_the_caller_omitted() {
         let sql = "SELECT {days:UInt8}";
-        let bound = bind(sql, &[], &[("days".into(), "7".into())]).expect("default applies");
+        let bound = bind(sql, &[], &[("days".into(), "7".into())], &[]).expect("default applies");
         assert_eq!(bound, vec![("days".to_string(), "7".to_string())]);
         // And the caller still wins.
         let bound = bind(
             sql,
             &[("days".into(), "1".into())],
             &[("days".into(), "7".into())],
+            &[],
         )
         .expect("supplied wins");
         assert_eq!(bound, vec![("days".to_string(), "1".to_string())]);
+    }
+
+    #[test]
+    fn a_fixed_value_outranks_the_query_string() {
+        // The question a published document asks is carried in its bindings, so
+        // a caller who could set one would be editing the question through its
+        // own address.
+        let sql = "SELECT * FROM t WHERE city = {flint_f0:String}";
+        let bound = bind(
+            sql,
+            &[("flint_f0".into(), "Lyon".into())],
+            &[("flint_f0".into(), "Bergen".into())],
+            &[("flint_f0".into(), "Oslo".into())],
+        )
+        .expect("the endpoint settled this one");
+        assert_eq!(bound, vec![("flint_f0".to_string(), "Oslo".to_string())]);
     }
 
     #[test]

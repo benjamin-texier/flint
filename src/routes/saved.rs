@@ -397,6 +397,43 @@ pub async fn save_published(
         ));
     }
     let slug = input.slug.trim().to_lowercase();
+
+    // A question published from the Builder becomes a statement here, once,
+    // and that statement is what the address runs from then on — see
+    // `published::document` for why it is not re-rendered on every call.
+    //
+    // Rendered on the way in rather than trusted from the browser: the page
+    // posts a document, and a page that posted the SQL beside it could post a
+    // statement that reads one thing and a document that reopens as another.
+    // The two would then disagree with nothing on either screen saying so.
+    let mut input = input;
+    let document = input.document.clone().unwrap_or_default();
+    if !document.trim().is_empty() {
+        // The zone the endpoint will *end up* with, which on an edit that says
+        // nothing about it is the one it already has. A document is described
+        // under the settings its endpoint runs under, and a bucket described in
+        // the wrong zone comes back with the wrong type on it.
+        let timezone = match (&input.timezone, &input.id) {
+            (Some(given), _) => given.trim().to_string(),
+            (None, Some(id)) => workspace(&state)?
+                .published()
+                .await?
+                .into_iter()
+                .find(|p| &p.id == id)
+                .map(|p| p.timezone)
+                .unwrap_or_default(),
+            (None, None) => String::new(),
+        };
+        let rendered = crate::published::document::render(
+            &state.ch,
+            &document,
+            &crate::published::document::Runs::of(&input.database, input.run_as.trim(), &timezone),
+        )
+        .await?;
+        input.sql = rendered.sql;
+        input.bindings = Some(crate::published::document::to_json(&rendered.bindings));
+    }
+
     let saved = workspace(&state)?.save_published(&state.ch, input).await?;
     // The seconds after a change are the one moment somebody is definitely
     // watching, and they are exactly when a cache filled by the version before
@@ -644,7 +681,7 @@ pub async fn endpoint_columns(
     }
     .ok_or_else(|| Error::NotFound(format!("no endpoint at `{slug}`")))?;
 
-    let declared = crate::published::declared_params_typed(&endpoint.sql);
+    let declared = crate::published::caller_params_typed(endpoint);
     let defaults = super::data::defaults_of(endpoint);
     // `None` where Flint could not describe it without running it. Absent
     // rather than empty: "it returns nothing" and "nobody could find out" are
