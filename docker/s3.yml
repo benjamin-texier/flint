@@ -5,7 +5,7 @@
 # byte. This is the fixture that removes the excuse: a MinIO on the same network
 # as the development ClickHouse, with a bucket already made.
 #
-#     docker compose -f docker-compose.dev.yml -f docker-compose.s3.yml up -d
+#     docker compose -f docker/dev.yml -f docker/s3.yml up -d
 #
 # The credentials are worthless on purpose — they are in a file in the
 # repository, like every other development password here.
@@ -13,13 +13,13 @@ services:
   # The S3 disk configuration belongs to this overlay and not to the base
   # compose, because ClickHouse **refuses to start** without the endpoint it
   # names: `Code: 499 … Not found address of host: s3 (DNS_ERROR)`, and the
-  # server exits. Mounting it in `docker-compose.dev.yml` made the development
+  # server exits. Mounting it in `docker/dev.yml` made the development
   # ClickHouse unbootable unless MinIO happened to be up, which is a fine way to
   # lose a morning. A service and the configuration that depends on it belong in
   # one file.
   clickhouse:
     volumes:
-      - ./contrib/dev-s3-backups.xml:/etc/clickhouse-server/config.d/flint-s3-backups.xml:ro
+      - ../contrib/dev-s3-backups.xml:/etc/clickhouse-server/config.d/flint-s3-backups.xml:ro
     depends_on:
       s3:
         condition: service_healthy

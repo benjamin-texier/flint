@@ -6,7 +6,7 @@
 # ClickHouse, a topic with rows in it, and — deliberately — one message that
 # cannot be parsed.
 #
-#     docker compose -f docker-compose.dev.yml -f docker-compose.kafka.yml up -d
+#     docker compose -f docker/dev.yml -f docker/kafka.yml up -d
 #
 # Unlike the S3 overlay this one adds services and changes nothing about the
 # ClickHouse service: a Kafka table whose broker is missing does not stop the
@@ -77,7 +77,7 @@ services:
       kafka-init:
         condition: service_completed_successfully
     volumes:
-      - ./contrib/dev-kafka.sql:/dev-kafka.sql:ro
+      - ../contrib/dev-kafka.sql:/dev-kafka.sql:ro
     # Every line break here falls after an `&&`, and that is not a style
     # choice. A YAML folded scalar keeps the newline on any line indented
     # further than the first, so a command split across two lines for

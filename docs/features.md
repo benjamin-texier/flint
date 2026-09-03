@@ -3254,7 +3254,7 @@ because there is nothing to base a recommendation on — which is the honest ans
 and not a schema-shaped guess. That correct answer is also indistinguishable from
 a broken advisor, so the dev stack seeds a workload
 (`contrib/dev-workload.sql`): on a fresh `docker compose -f
-docker-compose.dev.yml up`, `analytics.events` opens on seven shapes over
+docker/dev.yml up`, `analytics.events` opens on seven shapes over
 nineteen runs, two proposals, one shape that the sorting key already serves, one
 that a projection already answers, one folded as thin and one listed as unread.
 
@@ -3337,14 +3337,14 @@ answer appears in Operations on the Health page, recorded against whoever asked.
 replica's state from Keeper is what you do when something is already wrong.
 
 To develop or verify any of this you need more than one node.
-`docker-compose.cluster.yml` brings up one Keeper and two replicas of one shard,
+`docker/cluster.yml` brings up one Keeper and two replicas of one shard,
 separately from the ordinary development environment:
 
 ```bash
-docker compose -f docker-compose.cluster.yml up -d
+docker compose -f docker/cluster.yml up -d
 FLINT_CLICKHOUSE_URL=http://localhost:8232 FLINT_CLICKHOUSE_PASSWORD=flint \
   FLINT_TIER=admin FLINT_WORKSPACE_DATABASE=flint cargo run
-docker compose -f docker-compose.cluster.yml down -v
+docker compose -f docker/cluster.yml down -v
 ```
 
 A populated `system.replicas`, a replication queue with entries in it, a

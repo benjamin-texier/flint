@@ -16,7 +16,7 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
-# ── Dev: rebuild and restart on save. Used by docker-compose.dev.yml ─────────
+# ── Dev: rebuild and restart on save. Used by docker/dev.yml ────────────────
 FROM rust-base AS dev
 RUN cargo install cargo-watch --locked
 # The source, the target directory and the registry all arrive as mounts.

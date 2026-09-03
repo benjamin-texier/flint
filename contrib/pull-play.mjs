@@ -156,7 +156,7 @@ function main(rows) {
   say('--');
   say(`-- ClickHouse's own example schemas, taken from ${PLAY} as user`);
   say(`-- '${USER}', with an extract of the data behind each one. Applied by the`);
-  say('-- ClickHouse container in docker-compose.dev.yml, which needs the network on');
+  say('-- ClickHouse container in docker/dev.yml, which needs the network on');
   say('-- its first boot to fetch the rows — the DDL is here, the data is not.');
   say('--');
   say(`-- ${tables.length} tables, ${views.length} views.`);

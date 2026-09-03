@@ -43,7 +43,7 @@ If your ClickHouse is bound to the host's **loopback only** — which is what
 whatever address you use. Add the host-network overlay:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.host.yml up --build
+docker compose -f docker-compose.yml -f docker/host.yml up --build
 ```
 
 Without compose:
@@ -184,7 +184,7 @@ Everything in containers, hot reload on both sides, against a throwaway
 ClickHouse seeded from [play.clickhouse.com](https://play.clickhouse.com):
 
 ```bash
-docker compose -f docker-compose.dev.yml up --build
+docker compose -f docker/dev.yml up --build
 ```
 
 Open <http://localhost:5173>.
@@ -210,8 +210,8 @@ including the seed schema and the check scripts, are in
 | [docs/design.md](docs/design.md)               | The two spaces, the tiers, the visual language, and the design decisions behind the code |
 | [docs/development.md](docs/development.md)     | The dev stack, the seed schema, the check scripts                                        |
 | [docs/limitations.md](docs/limitations.md)     | What is missing inside the features that exist                                           |
+| [docs/roadmap.md](docs/roadmap.md)             | Where this is going                                                                      |
 | [CLAUDE.md](CLAUDE.md)                         | Conventions for working in this repository                                               |
-| [ROADMAP.md](ROADMAP.md)                       | Where this is going                                                                      |
 
 ## Status
 

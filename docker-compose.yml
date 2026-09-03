@@ -6,7 +6,7 @@
 # Defaults point at a ClickHouse on the host machine.
 #
 # For the development setup — hot reload, plus a throwaway ClickHouse with a
-# seeded schema — use docker-compose.dev.yml instead.
+# seeded schema — use docker/dev.yml instead.
 
 name: flint
 

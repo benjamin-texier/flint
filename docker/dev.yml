@@ -1,7 +1,7 @@
 # Development: hot reload on both sides, against a throwaway ClickHouse seeded
 # with ClickHouse's own example schemas from contrib/play-schema.sql.
 #
-#   docker compose -f docker-compose.dev.yml up --build
+#   docker compose -f docker/dev.yml up --build
 #
 # Then open http://localhost:5173 — the Vite dev server, which proxies /api to
 # the backend. The backend is also on http://localhost:8080 if you want to hit
@@ -38,49 +38,49 @@ services:
       # not — about 150 MiB of them, fetched by the server itself over the
       # playground's native port. A first `up` with no route to it comes up with
       # the schema and no data, which the pages will say rather than hide.
-      - ./contrib/play-schema.sql:/docker-entrypoint-initdb.d/10-play-schema.sql:ro
+      - ../contrib/play-schema.sql:/docker-entrypoint-initdb.d/10-play-schema.sql:ro
       # A second user, granted almost nothing. Flint has a lot of behaviour that
       # only appears when it is refused — `Reach` telling a missing table from a
       # missing grant, every diagnostic naming the grant it needs — and none of
       # it is reachable while signed in as an account allowed everything.
-      - ./contrib/dev-users.xml:/etc/clickhouse-server/users.d/flint-probe.xml:ro
+      - ../contrib/dev-users.xml:/etc/clickhouse-server/users.d/flint-probe.xml:ro
       # A cluster on paper: `system.clusters` is configuration, so this gives the
       # Clusters page a real ring — two shards, a local replica, and one endpoint
       # that is not there — without needing a Keeper or a second server.
-      - ./contrib/dev-cluster.xml:/etc/clickhouse-server/config.d/flint-cluster.xml:ro
+      - ../contrib/dev-cluster.xml:/etc/clickhouse-server/config.d/flint-cluster.xml:ro
       # A destination for BACKUP. Without one the server refuses the statement
       # outright, `system.backups` stays empty, and a backup screen developed
       # against that has never seen a backup.
-      - ./contrib/dev-backups.xml:/etc/clickhouse-server/config.d/flint-backups.xml:ro
+      - ../contrib/dev-backups.xml:/etc/clickhouse-server/config.d/flint-backups.xml:ro
       # A second volume, so tiering can be seen at all. `MOVE PARTITION TO
       # VOLUME` was left out of Flint on the grounds that this server had one
       # disk; this is the fixture that removed the excuse.
-      - ./contrib/dev-storage.xml:/etc/clickhouse-server/config.d/flint-storage.xml:ro
+      - ../contrib/dev-storage.xml:/etc/clickhouse-server/config.d/flint-storage.xml:ro
       # SQL-driven access control, which a stock server does not allow: without
       # it `CREATE USER` is code 497 and no quota, profile or row policy can
       # exist to look at. `contrib/dev-access.sql` then creates one of each.
-      - ./contrib/dev-access.xml:/etc/clickhouse-server/users.d/flint-access.xml:ro
-      - ./contrib/dev-access.sql:/docker-entrypoint-initdb.d/20-dev-access.sql:ro
+      - ../contrib/dev-access.xml:/etc/clickhouse-server/users.d/flint-access.xml:ro
+      - ../contrib/dev-access.sql:/docker-entrypoint-initdb.d/20-dev-access.sql:ro
       # Three dictionaries in the three states worth looking at. A stock server
       # has none, so the page that reads them shows an empty table whether it
       # works or not — and the state it exists for cannot be reasoned about
       # without producing it.
-      - ./contrib/dev-dictionaries.sql:/docker-entrypoint-initdb.d/30-dev-dictionaries.sql:ro
+      - ../contrib/dev-dictionaries.sql:/docker-entrypoint-initdb.d/30-dev-dictionaries.sql:ro
       # A workload, so the projection advisor has a query log to read. It reads
       # `system.query_log` and nothing else, so on a server nobody has queried
       # its correct answer — "nothing has touched this table" — is the same
       # empty panel a broken advisor would show. Numbered last: every statement
       # in it queries the tables the schema script creates and fills.
-      - ./contrib/dev-workload.sql:/docker-entrypoint-initdb.d/40-dev-workload.sql:ro
+      - ../contrib/dev-workload.sql:/docker-entrypoint-initdb.d/40-dev-workload.sql:ro
       # Two years of monthly partitions, for every reading about time. The
       # playground's own tables have none — see the file.
-      - ./contrib/dev-events.sql:/docker-entrypoint-initdb.d/45-dev-events.sql:ro
+      - ../contrib/dev-events.sql:/docker-entrypoint-initdb.d/45-dev-events.sql:ro
       # One table per kind of "somewhere else": a bucket, a URL, a file, three
       # databases, a Redis and a Kafka topic. None of their hosts resolves and
       # none of them needs to — the address is metadata, and reading it back is
       # the whole of what the object page has to say about a table whose rows
       # are not here.
-      - ./contrib/dev-external.sql:/docker-entrypoint-initdb.d/50-dev-external.sql:ro
+      - ../contrib/dev-external.sql:/docker-entrypoint-initdb.d/50-dev-external.sql:ro
       - clickhouse-data:/var/lib/clickhouse
     ports:
       - '${FLINT_DEV_CLICKHOUSE_PORT:-8125}:8123'
@@ -101,7 +101,7 @@ services:
 
   api:
     build:
-      context: .
+      context: ..
       target: dev
     working_dir: /app
     command: cargo watch --why -w src -w Cargo.toml -x run
@@ -125,12 +125,12 @@ services:
       FLINT_LOG: flint=debug,tower_http=warn
       CARGO_TARGET_DIR: /target
     volumes:
-      - ./src:/app/src:ro
-      - ./build.rs:/app/build.rs:ro
-      - ./Cargo.toml:/app/Cargo.toml:ro
+      - ../src:/app/src:ro
+      - ../build.rs:/app/build.rs:ro
+      - ../Cargo.toml:/app/Cargo.toml:ro
       # Writable so cargo can refresh it if a dependency moves; Cargo.toml
       # stays read-only, so nothing changes it from inside by accident.
-      - ./Cargo.lock:/app/Cargo.lock
+      - ../Cargo.lock:/app/Cargo.lock
       # rust-embed needs this to exist at compile time; build.rs writes a
       # placeholder into it, and the real UI is served by Vite in this setup.
       - flint-dist:/app/frontend/dist
@@ -152,7 +152,7 @@ services:
       # Inside compose the API is a sibling service, not localhost.
       FLINT_API_PROXY: http://api:8080
     volumes:
-      - ./frontend:/app/frontend
+      - ../frontend:/app/frontend
       - frontend-modules:/app/frontend/node_modules
     ports:
       - '${FLINT_DEV_WEB_PORT:-5173}:5173'
