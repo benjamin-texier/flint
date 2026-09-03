@@ -1521,6 +1521,45 @@ A published statement always runs read-only, with the endpoint's own row cap, an
 says when it hit it — in the JSON envelope and in an `X-Flint-Truncated` header,
 so a CSV consumer that cannot read the envelope still has a way to notice.
 
+**An address for a question, not only for a statement.** An endpoint can be
+backed by the Builder's own document instead of SQL somebody typed. Ask the
+question in the form, *Send to… an API*, and the address answers it — and the
+endpoint page offers the way back: **open it in the form that wrote it**. That
+reversibility is the point of publishing a question rather than a statement.
+"This URL returns exactly what you were looking at" is only believable if
+pasting it back proves it.
+
+The question is rendered to a statement **once, when it is published**, and that
+statement is what runs from then on. A revision's promises are frozen the moment
+it goes live, and a question re-rendered on every call would slip out from under
+the callers pinned to it the first time somebody added a column. The statement is
+shown on the endpoint page for the same reason it is stored: a draft nobody can
+read is a draft nobody can review.
+
+Its values are bound rather than written in, so what is stored is a statement
+with placeholders beside the values that fill them — and **a caller cannot set
+one**. `?flint_f0=Lyon` on an endpoint published as "orders in Oslo" would be a
+caller editing the question through its own address, so a settled value outranks
+the query string silently. Those names are not parameters either: the schema, the
+OpenAPI document and the endpoint page all list none, because there is nothing
+anybody is meant to fill in.
+
+What a question may not carry is the other half of the rule. A `limit` is a page
+size and belongs to the address, which has its own row cap; a `timezone` belongs
+to the endpoint, which states it in its OpenAPI document so that every caller is
+shown the same days; and `offset`, `cursor`, `count`, `format`, `explain` and
+`query_id` belong to a call. Each is refused **by name** rather than dropped,
+because a question carrying one was written by somebody who believed it would
+take effect.
+
+A question the form cannot hold is still a real endpoint. An `any` in a filter —
+an OR, which the form's flat list of filters cannot show — publishes, answers and
+pages like any other address; the page says the form cannot show that one, and
+why, rather than offering a link that would open a different question. And
+taking the statement over is a button rather than a side effect: it keeps the SQL
+and drops the question, after which the address can no longer be reopened, which
+is exactly why the form does not do it on anybody's behalf.
+
 **A published token is hashed, and readable once.** It is minted, handed back
 in the save that created it, and stored as a SHA-256 digest — so a workspace
 somebody can read (a backup, a replica, a colleague with `SELECT` on
