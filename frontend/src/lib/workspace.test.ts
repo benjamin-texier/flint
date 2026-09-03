@@ -31,6 +31,7 @@ const endpoint = (slug: string, sql: string, enabled = true): Published => ({
   cache_ttl: 0,
   contract: '',
   published_by: '',
+  document: '',
   id: slug,
   name: slug,
   slug,

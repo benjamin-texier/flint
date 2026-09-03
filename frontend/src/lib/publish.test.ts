@@ -32,6 +32,9 @@ import {
   snippet,
   opsFor,
   endpointPath,
+  callerParams,
+  callerParamsTyped,
+  isQuestion,
   parseDefaults,
   problemWithPublished,
   requiredParams,
@@ -50,6 +53,7 @@ const endpoint = (over: Partial<Published> = {}): Published => ({
   cache_ttl: 0,
   contract: '',
   published_by: '',
+  document: '',
   id: 'i',
   name: 'By city',
   slug: 'by-city',
@@ -126,6 +130,30 @@ describe('defaults', () => {
     expect(parseDefaults('nonsense')).toEqual({})
     expect(parseDefaults('[1,2]')).toEqual({})
     expect(parseDefaults('null')).toEqual({})
+  })
+})
+
+describe('what a caller may supply', () => {
+  const question = `{"dataset":"default.t","select":["a"],"filter":{"column":"n","op":"eq","value":"1"}}`
+
+  it('is nothing at all where the endpoint answers a question', () => {
+    // The statement of a question is generated and its placeholders are the
+    // renderer's: they carry the values the question was published with, and
+    // the server refuses to let a caller set one. Offering a box for
+    // `flint_f0` would invite somebody to fill in the question's own filter.
+    const asks = endpoint({
+      sql: 'SELECT a FROM t WHERE n = {flint_f0:Int32}',
+      document: question,
+    })
+    expect(isQuestion(asks)).toBe(true)
+    expect(callerParams(asks)).toEqual([])
+    expect(callerParamsTyped(asks)).toEqual([])
+  })
+
+  it('and is what the statement declares where somebody typed it', () => {
+    const typed = endpoint({ sql: 'SELECT a FROM t WHERE n = {n:Int32}' })
+    expect(isQuestion(typed)).toBe(false)
+    expect(callerParams(typed)).toEqual(['n'])
   })
 })
 

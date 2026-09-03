@@ -46,6 +46,12 @@ export interface Published {
    *  itself. Absent where reading it does not say — a join, a table function —
    *  and absent is dropped rather than dashed. */
   source?: string
+  /** The question this endpoint answers, as the dataset API's document, for
+   *  one published from the Builder. Empty is a statement somebody typed.
+   *
+   *  What it buys is the reason publishing a question is worth having at all:
+   *  the address can be reopened as the form that wrote it. See `dslToSpec`. */
+  document: string
 }
 
 /** Where a revision sits in its life. One way, and the order is the order. */
@@ -252,6 +258,36 @@ export function nextRevision(address: Address): number {
  *  pinned to it pinned to a shape, and changing it under them without changing
  *  the number is worse than no versioning at all. The server enforces this;
  *  the page says it before somebody types. */
+/** Whether this endpoint answers a question rather than a statement.
+ *
+ *  Read off the document and never off the SQL, because both have one: a
+ *  document-backed endpoint stores the statement its question rendered to, so
+ *  that a reader can see what will run. */
+export function isQuestion(endpoint: Published): boolean {
+  return endpoint.document.trim() !== ''
+}
+
+/** The parameters a *caller* may supply.
+ *
+ *  What the statement declares, unless the endpoint answers a question — in
+ *  which case none, whatever the statement says. A question's statement is
+ *  generated and its placeholders belong to the renderer: they carry the
+ *  filter values the question was published with, and the server refuses to
+ *  let a caller set one. Listing them here would offer somebody a box for
+ *  `flint_f0` and call it required.
+ *
+ *  The same rule as `published::caller_params` on the server, and it has to
+ *  stay the same rule: this page and the OpenAPI document describe one
+ *  endpoint, and a caller reading two different parameter lists for it would
+ *  believe the shorter one at the worst moment. */
+export function callerParams(endpoint: Published): string[] {
+  return isQuestion(endpoint) ? [] : declaredParams(endpoint.sql)
+}
+
+export function callerParamsTyped(endpoint: Published): { name: string; type: string }[] {
+  return isQuestion(endpoint) ? [] : declaredParamsTyped(endpoint.sql)
+}
+
 export function contractIsFrozen(endpoint: Published): boolean {
   return answers(endpoint.state)
 }

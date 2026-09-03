@@ -89,6 +89,14 @@ interface TabsApi {
   open: (sql?: string, database?: string) => void
   /** A new tab that opens on the form rather than on an empty statement. */
   openBuild: (database?: string) => void
+  /** The same, on a form that is already filled in.
+   *
+   *  What reopening a published question lands on: the address stored the
+   *  document, `dslToSpec` turned it back into a form, and this is where that
+   *  form arrives. A tab of its own always — never the untouched one
+   *  `openBuild` recycles — because arriving here means arriving *from*
+   *  somewhere, and whatever was on screen is what somebody will want back. */
+  openQuestion: (spec: QuerySpec, database?: string) => void
   /** Reuse an untouched tab if there is one, so "Open in editor" twice in a
    *  row does not litter the strip. */
   openWith: (sql: string, database?: string) => void
@@ -228,6 +236,14 @@ export function TabsProvider({ children }: { children: ReactNode }) {
       }
       return { tabs: [...s.tabs, tab], activeId: tab.id }
     })
+  }, [])
+
+  const openQuestion = useCallback((spec: QuerySpec, database?: string) => {
+    const tab = blank('', database ?? spec.database, 'build')
+    setState((s) => ({
+      tabs: [...s.tabs, { ...tab, spec, title: spec.table }],
+      activeId: tab.id,
+    }))
   }, [])
 
   const openWith = useCallback((sql: string, database?: string) => {
@@ -400,6 +416,7 @@ export function TabsProvider({ children }: { children: ReactNode }) {
       active: activeTab,
       open,
       openBuild,
+      openQuestion,
       openWith,
       close,
       select,
@@ -415,6 +432,7 @@ export function TabsProvider({ children }: { children: ReactNode }) {
       activeTab,
       open,
       openBuild,
+      openQuestion,
       openWith,
       close,
       select,

@@ -1201,7 +1201,9 @@ export const api = {
     id?: string
     name: string
     slug: string
-    sql: string
+    /** Left out when `document` is sent: the server writes this field from the
+     *  question rather than taking it from the browser. */
+    sql?: string
     database: string
     defaults: string
     token?: string
@@ -1228,6 +1230,14 @@ export const api = {
     /** Where a *new* endpoint starts its life. Ignored on an edit: a state is
      *  moved by its own button and nothing else. */
     state?: 'draft' | 'live'
+    /** The question this endpoint answers, as the dataset API's document.
+     *
+     *  Sent instead of writing `sql`, not beside it: the server renders the
+     *  document into the statement it stores, so a body that carried both would
+     *  be one statement and a question that reads as another, with nothing on
+     *  either screen saying which one runs. Absent keeps what was there; `''`
+     *  hands the statement back to whoever is typing it. */
+    document?: string
   }) =>
     request<{ endpoints: import('./publish').Published[]; minted?: string }>('/published', {
       method: 'POST',
