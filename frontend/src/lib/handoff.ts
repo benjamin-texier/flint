@@ -17,6 +17,15 @@ export interface Handoff {
   sql: string
   database: string
   name: string
+  /** The question behind the statement, as the dataset API's document, for a
+   *  statement the Builder generated.
+   *
+   *  Carried only to the API page, and only because that page can keep it: an
+   *  endpoint published from a question stores the question, so the form it was
+   *  built in can be reopened from the address. An alert and a report keep a
+   *  statement and nothing else, so handing them one would be handing them
+   *  something to drop. */
+  document?: string
 }
 
 /** The path to navigate to, with the statement attached. */
@@ -27,6 +36,7 @@ export function handoffPath(destination: Destination, handoff: Handoff): string 
   params.set('sql', handoff.sql)
   if (handoff.database) params.set('database', handoff.database)
   if (handoff.name) params.set('name', handoff.name)
+  if (handoff.document) params.set('document', handoff.document)
   return `${target.path}?${params.toString()}`
 }
 
@@ -41,6 +51,7 @@ export function readHandoff(params: URLSearchParams): Handoff | null {
     sql,
     database: params.get('database') ?? '',
     name: params.get('name') ?? '',
+    document: params.get('document') ?? undefined,
   }
 }
 

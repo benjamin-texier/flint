@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
@@ -8,15 +8,16 @@ import {
   byAddress,
   callerName,
   contractIsEmpty,
-  declaredParamsTyped,
+  callerParams,
+  callerParamsTyped,
   endpointPath,
+  isQuestion,
   nextRevision,
   openapiPath,
   parseContract,
   parseDefaults,
   quotaFilled,
   quotaNote,
-  requiredParams,
   quoted,
   toolPath,
   unkeepablePromises,
@@ -33,6 +34,7 @@ import { EmptyNote, ErrorNote, Loading } from '../components/Note'
 import { PublishForm } from '../components/PublishForm'
 import { CallBuilder } from '../components/CallBuilder'
 import { count, relativeTime } from '../lib/format'
+import { dslToSpec, type DslQuery } from '../lib/dsl'
 
 const WINDOW_HOURS = 24
 
@@ -108,9 +110,9 @@ export function PublishEndpointPage() {
   }
 
   const contract = parseContract(revision.contract)
-  const declared = declaredParamsTyped(revision.sql)
+  const declared = callerParamsTyped(revision)
   const defaults = parseDefaults(revision.defaults)
-  const required = requiredParams(revision.sql, defaults)
+  const required = callerParams(revision).filter((p) => !(p in defaults))
   const origin = typeof window === 'undefined' ? '' : window.location.origin
   const hasDraft = address.revisions.some((r) => r.state === 'draft')
 
@@ -462,6 +464,7 @@ function ContractPanel({
 }
 
 function StatementPanel({ revision }: { revision: Published }) {
+  const asks = isQuestion(revision)
   return (
     <section className="ep__panel">
       <h2 className="ep__paneltitle">
@@ -479,7 +482,54 @@ function StatementPanel({ revision }: { revision: Published }) {
           </>
         ) : null}
       </p>
+      {asks ? <ReopenQuestion revision={revision} /> : null}
     </section>
+  )
+}
+
+/** The way back to the form that wrote this address.
+ *
+ *  The reason publishing a question is worth having: "this URL returns exactly
+ *  what you were looking at" is only believable if pasting it back proves it.
+ *  So the link is offered here, next to the statement, and it is offered
+ *  *disabled with a reason* where the form cannot hold the question — a
+ *  question hand-written past what the form can show is still a real endpoint,
+ *  and a button that silently opened a different one would be worse than none.
+ */
+function ReopenQuestion({ revision }: { revision: Published }) {
+  const back = useMemo(() => {
+    let document: DslQuery
+    try {
+      document = JSON.parse(revision.document) as DslQuery
+    } catch {
+      return { blocked: 'Its question is not one this page can read.' }
+    }
+    return dslToSpec(document, revision.database)
+  }, [revision.document, revision.database])
+
+  /* `ep__prose` and not `ep__panelfoot`: the foot is a flex row of label-and-
+     figure pairs, and a sentence dropped into it comes apart into three
+     items with a gap between each. */
+  if ('blocked' in back) {
+    return (
+      <p className="ep__prose ep__reopen">
+        This address answers a question rather than a statement somebody typed, and the form
+        cannot show this one: {back.blocked}
+      </p>
+    )
+  }
+  const to = `/query?question=${encodeURIComponent(revision.document)}${
+    revision.database ? `&database=${encodeURIComponent(revision.database)}` : ''
+  }`
+  return (
+    <p className="ep__prose ep__reopen">
+      This address answers a question rather than a statement somebody typed, and the statement
+      above is what that question renders to.{' '}
+      <Link className="link" to={to}>
+        Open it in the form
+      </Link>
+      {'.'}
+    </p>
   )
 }
 

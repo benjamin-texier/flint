@@ -22,7 +22,7 @@ import { clickhouseSql, flintHighlighting, flintTheme } from '../editor/setup'
 import { flintCompletion } from '../editor/complete'
 import { BuildPane } from '../editor/BuildPane'
 import { canSwitch, useTabs, type Switchable, type TabMode, type QueryTab } from '../editor/tabs'
-import { asResult, specToDsl } from '../lib/dsl'
+import { asResult, dslToSpec, specToDsl, type DslQuery } from '../lib/dsl'
 import { builtDownloadNote } from '../lib/export'
 import {
   clearSpecOrder,
@@ -106,9 +106,12 @@ export function Editor() {
    *  has said, and irrelevant in SQL — an editor's own content height is a line
    *  count, which this side can work out for itself. */
   const [formHeight, setFormHeight] = useState<number | null>(null)
-  /** Why a gesture on the grid could not be carried into the form — the
-   *  bucketed column that cannot be filtered, the total that cannot be matched
-   *  with `contains`. Cleared as soon as anything else happens. */
+  /** Why something the page was asked to do could not be done — a gesture on
+   *  the grid that the form has no control for (the bucketed column that cannot
+   *  be filtered, the total that cannot be matched with `contains`), or a
+   *  published question the form cannot hold. One line for both, because they
+   *  are the same sentence to a reader: this page could not show you that, and
+   *  here is why. Cleared as soon as anything else happens. */
   const [refused, setRefused] = useState<string | null>(null)
   /* What the last read of a statement into this tab's form could not carry.
      
@@ -184,6 +187,37 @@ export function Editor() {
     setPanel('saved')
     setParams(new URLSearchParams(), { replace: true })
   }, [params, setParams])
+
+  /* Arriving from a published address — `/query?question=<document>`.
+     
+     The other half of publishing a question: the endpoint stored the document,
+     and this turns it back into the form that wrote it. Where the form cannot
+     hold what the document says, the reason is shown rather than a form that
+     quietly asks something else — see `dslToSpec` for why that one case refuses
+     instead of doing its usual best.
+     
+     Dropped from the URL once honoured, like every other seed here, so a
+     refresh does not open a second copy of the same question. */
+  const seededQuestion = useRef(false)
+  useEffect(() => {
+    const raw = params.get('question')
+    if (!raw || seededQuestion.current) return
+    seededQuestion.current = true
+    setParams(new URLSearchParams(), { replace: true })
+    let document: DslQuery
+    try {
+      document = JSON.parse(raw) as DslQuery
+    } catch {
+      setRefused('That address carries a question this page could not read.')
+      return
+    }
+    const back = dslToSpec(document, params.get('database') ?? '')
+    if ('blocked' in back) {
+      setRefused(back.blocked)
+      return
+    }
+    tabs.openQuestion(back.spec)
+  }, [params, setParams, tabs])
 
   /* Arriving on the form rather than on the editor — `/query?mode=build`, which
      is where the old `/build` path now leads and what the palette's "Build"
@@ -861,6 +895,11 @@ export function Editor() {
                   sql: currentStatement()?.sql ?? active.sql,
                   database: database ?? '',
                   name: active.title || '',
+                  // Only to the API page, and only from the form. An endpoint
+                  // can keep the question and be reopened as this form; an
+                  // alert and a report keep a statement, so handing them the
+                  // question would be handing them something to drop.
+                  document: to === 'api' && dsl ? JSON.stringify(dsl) : undefined,
                 }),
               )
             }}

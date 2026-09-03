@@ -9,6 +9,7 @@ import {
   endpointPath,
   hiddenNote,
   hitRate,
+  isQuestion,
   listedRevisions,
   unreachedCalls,
   usageBySlug,
@@ -287,6 +288,10 @@ function Row({
         </Link>
         {!revision.enabled ? <span className="flag flag--idle">Paused</span> : null}
         {revision.public ? <span className="flag flag--error">Public</span> : null}
+        {/* Which of these can be reopened as the form that wrote it. Said on
+            the list rather than only on the page, because "where did that one
+            come from" is asked while looking at all of them. */}
+        {isQuestion(revision) ? <span className="flag">Question</span> : null}
       </th>
       <td className="eps__from">
         {/* An absent source is dropped, not dashed: a join has no single table

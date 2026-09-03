@@ -12800,6 +12800,13 @@ button.acol__val:hover {
   color: var(--chalk-dim);
 }
 
+/* The sentence under a generated statement, saying where it came from. Its
+   own rule only for the space above it: it follows a paragraph rather than a
+   heading, and without one the two read as one run-on. */
+.ep__reopen {
+  margin-top: var(--s3);
+}
+
 .ep__contract th {
   font-family: var(--font-data);
   font-size: var(--size-data);

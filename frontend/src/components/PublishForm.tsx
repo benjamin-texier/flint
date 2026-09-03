@@ -77,6 +77,16 @@ export function PublishForm({
   const [description, setDescription] = useState(existing?.description ?? '')
   const [cacheTtl, setCacheTtl] = useState(existing?.cache_ttl ?? 0)
   const [contract, setContract] = useState(existing?.contract ?? '')
+  /* The question behind the statement, where there is one.
+     
+     An endpoint published from the Builder answers a question, and the
+     statement below it is what that question rendered to on the server. It is
+     shown, because a reviewer reading a draft needs to see what will run, and
+     it is not editable, because a statement typed over its question would
+     leave the address running one thing and reopening as another. Taking it
+     over is a deliberate act with its own button, and it is one-way. */
+  const [document, setDocument] = useState(existing?.document ?? handoff?.document ?? '')
+  const asks = document.trim() !== ''
   /* What the statement turned out to return, learned from the check below the
      first time somebody runs it. Empty until then, and the editor says so
      rather than presenting an empty list as "this returns nothing". */
@@ -85,10 +95,14 @@ export function PublishForm({
      call arrives. Fetched only while the form is open. */
   const zones = useQuery({ queryKey: ['timezones'], queryFn: () => api.timezones() })
 
-  const params = declaredParams(sql)
+  // A question declares no parameters: its values were settled when it was
+  // published, and the placeholders in the statement it rendered to are the
+  // renderer's own. Reading them off the SQL would offer a default for
+  // `flint_f0`, which is not a thing anybody can fill in.
+  const params = asks ? [] : declaredParams(sql)
   /* Testable here only when every placeholder has a value to stand in for the
      caller's. A made-up value would answer a question nobody asked. */
-  const missingDefaults = requiredParams(sql, defaults)
+  const missingDefaults = asks ? [] : requiredParams(sql, defaults)
   const problem = problemWithPublished({ name, slug, sql })
 
   const save = useMutation({
@@ -97,7 +111,12 @@ export function PublishForm({
         id: existing?.id,
         name,
         slug: slug.trim(),
-        sql,
+        // One or the other, never both: the server renders the question into
+        // the statement it stores, so a body carrying a statement *and* a
+        // question would be one that runs and one that reopens, with nothing
+        // on either screen saying which. `''` is how taking the statement over
+        // says the question is gone.
+        ...(asks ? { document } : { sql, document: existing?.document ? '' : undefined }),
         database,
         defaults: serialiseDefaults(defaults),
         public: isPublic,
@@ -159,18 +178,41 @@ export function PublishForm({
       </p>
 
       <label className="aform__field">
-        <span className="label">STATEMENT</span>
+        <span className="label">{asks ? 'STATEMENT, FROM THE QUESTION' : 'STATEMENT'}</span>
         <textarea
           className="input input--area"
           value={sql}
           onChange={(e) => setSql(e.target.value)}
           rows={4}
           spellCheck={false}
-          disabled={frozen}
-          aria-describedby={frozen ? 'pub-frozen' : undefined}
+          disabled={frozen || asks}
+          aria-describedby={frozen ? 'pub-frozen' : asks ? 'pub-asks' : undefined}
           placeholder="SELECT city, count() AS n FROM events WHERE city = {city:String} GROUP BY city"
         />
       </label>
+
+      {asks && !frozen ? (
+        <>
+          <p className="aform__hint" id="pub-asks">
+            This address answers a question built in the form, so it can be reopened as the form
+            that wrote it and the statement above is written for it. Saving writes that statement
+            again from the question, so anything typed here would be written over. Taking it over
+            keeps what is above and drops the question — after which the address can no longer be
+            reopened in the form, which is why it is a button rather than something the form does
+            on your behalf.
+          </p>
+          <div className="aform__actions">
+            <button
+              type="button"
+              className="btn btn--soft"
+              onClick={() => setDocument('')}
+              title="Keep the statement and drop the question"
+            >
+              Take over the statement
+            </button>
+          </div>
+        </>
+      ) : null}
 
       {frozen ? (
         <p className="says says--watch says--wide" id="pub-frozen">
@@ -199,7 +241,7 @@ export function PublishForm({
       <ContractEditor
         raw={contract}
         onChange={setContract}
-        params={declaredParamsTyped(sql)}
+        params={asks ? [] : declaredParamsTyped(sql)}
         columns={columns}
         disabled={frozen}
       />
@@ -311,19 +353,34 @@ export function PublishForm({
 
       {/* With the defaults filled in, this is what a caller will get. A
           statement with a parameter that has no default cannot be run here,
-          and the check says so rather than pretending. */}
-      <CheckPanel
-        sql={sql}
-        database={database}
-        params={params.map((p) => [p, defaults[p] ?? ''] as [string, string])}
-        blocked={
-          missingDefaults.length
-            ? `Give ${missingDefaults.map((p) => `\`${p}\``).join(', ')} a default above to test it here — a caller would supply ${missingDefaults.length === 1 ? 'it' : 'them'}.`
-            : undefined
-        }
-        label="What will a caller get?"
-        onColumns={setColumns}
-      />
+          and the check says so rather than pretending.
+
+          Not offered for a question, and not because it would be awkward: the
+          statement a question renders to binds its values rather than writing
+          them in, and this panel has no way to supply one — it would offer a
+          box for `flint_f0` and refuse to run until somebody typed something
+          into it. The question was answered in the form it was built in, and
+          the server checks it again against the dataset when it is saved. */}
+      {asks ? (
+        <p className="aform__hint">
+          This question was answered in the form it was built in. Saving it here checks it once
+          more against the dataset — a column that has since gone is refused now rather than on
+          somebody's first call.
+        </p>
+      ) : (
+        <CheckPanel
+          sql={sql}
+          database={database}
+          params={params.map((p) => [p, defaults[p] ?? ''] as [string, string])}
+          blocked={
+            missingDefaults.length
+              ? `Give ${missingDefaults.map((p) => `\`${p}\``).join(', ')} a default above to test it here — a caller would supply ${missingDefaults.length === 1 ? 'it' : 'them'}.`
+              : undefined
+          }
+          label="What will a caller get?"
+          onColumns={setColumns}
+        />
+      )}
 
       <p className="aform__hint" id="pub-cache">
         {cacheTtl > 0
