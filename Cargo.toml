@@ -8,9 +8,19 @@ license = "Apache-2.0"
 
 [dependencies]
 axum = { version = "0.8", features = ["macros", "http2"] }
+# Already in the tree through reqwest. A direct dependency because the thing it
+# replaced was a hand-written decoder, and a decoder is not the half of base64
+# anyone gets right: the one here refused padding bits that the hand-written one
+# silently accepted, which is how a cursor Flint never issued gets read as one
+# it did.
+base64 = "0.22"
 clap = { version = "4.5", features = ["derive", "env"] }
 dashmap = "6.2"
 mime_guess = "2.0"
+# Already in the tree four ways over — axum, url, reqwest, tower-http. The
+# escaping of a filename somebody else named is exactly the kind of table this
+# codebase's own rule says not to keep a second copy of.
+percent-encoding = "2.3"
 # `stream` is for exports and nothing else. Every other read is a bounded page
 # that Flint parses; a download is a file whose whole point is being larger than
 # a page, and buffering it here would put the user's table in Flint's memory on
