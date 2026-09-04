@@ -278,6 +278,14 @@
   --line: var(--border);
   --line-strong: var(--border-strong);
 
+  /* Flint's own: the shadow a sideways-scrolling strip casts over the part of
+     itself that is off screen — see `.wide`. A shade rather than a fade to a
+     named background, because the same tables sit on the page, on a slab and on
+     a raised card, and a fade has to know which of the three it is over. Same
+     ink as --shadow-card in both themes, for the same reason: it is the same
+     light. */
+  --fade-edge: rgb(55 45 32 / 22%);
+
   --chalk: var(--text-primary);
   --chalk-dim: var(--text-secondary);
   --chalk-faint: var(--text-muted);
@@ -391,4 +399,11 @@
      of Dashfile's loops on purpose: it is the one thing on the page that moves
      without being asked, and at a loop's pace it would nag. */
   --flow-speed: 9;
+}
+
+/* Flint's own vocabulary, on the dark ground. A shadow at 12% of a warm ink is
+   invisible over #0e1620 — the shade has to be black and it has to be nearly
+   four times as strong before it reads as depth at all. */
+:root[data-theme='dark'] {
+  --fade-edge: rgb(0 0 0 / 60%);
 }

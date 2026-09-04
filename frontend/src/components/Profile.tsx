@@ -17,6 +17,7 @@ import {
 import { bytes as _bytes, count, exact } from '../lib/format'
 import { TypeIcon } from './TypeIcon'
 import { EmptyNote, ErrorNote, Loading } from './Note'
+import { Wide } from './Wide'
 
 /** What is in this table.
  *
@@ -91,7 +92,7 @@ export function Profile({ database, table }: { database: string; table: string }
           <span className="panel__spacer" />
           <span className="panel__hint">distinct counts are approximate</span>
         </div>
-        <div className="panel__scroll">
+        <Wide label="Columns">
           <table className="tbl">
             <thead>
               <tr>
@@ -164,7 +165,7 @@ export function Profile({ database, table }: { database: string; table: string }
               })}
             </tbody>
           </table>
-        </div>
+        </Wide>
       </div>
     </div>
   )

@@ -12,6 +12,7 @@ import { ShareBar } from '../components/StratumBar'
 import { MyGrants } from '../components/MyGrants'
 import { Outside } from '../components/Outside'
 import { EmptyNote, ErrorNote, Loading } from '../components/Note'
+import { Wide } from '../components/Wide'
 
 /** Every database on the server. Reached deliberately — Flint opens on a
  *  database, not on a server inventory. */
@@ -87,7 +88,7 @@ export function ServerPage() {
                 {list.length} {list.length === 1 ? 'database' : 'databases'}
               </span>
             </div>
-            <div className="panel__scroll">
+            <Wide label="Databases">
           <table className="tbl">
             <thead>
               <tr>
@@ -123,7 +124,7 @@ export function ServerPage() {
               ))}
             </tbody>
           </table>
-            </div>
+            </Wide>
           </div>
         )}
       </section>

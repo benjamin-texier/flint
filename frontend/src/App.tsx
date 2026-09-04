@@ -131,6 +131,14 @@ export function App() {
   const infrastructure = config.data ? spacesFor(config.data).length > 1 : undefined
   const { pathname } = useLocation()
 
+  /* Whether this page carries a rail — asked once, because two things need the
+     answer and they were disagreeing. The rail is 264px of the left edge; the
+     console launcher is fixed to the bottom-left corner and was sitting on top
+     of the rail's last object and half of its "All databases" link on every
+     Data page that has one. The launcher is not the rail's furniture, so it
+     steps past it rather than the rail making room. */
+  const railed = spaceOf(pathname) === 'data' && pathname !== '/home' && pathname !== '/'
+
   /* Nothing renders until both answers are in. A flash of the app followed by
      a sign-in screen would show a moment of somebody else's data — and worse, a
      flash of the sign-in screen on a deployment that requires no sign-in makes
@@ -146,7 +154,7 @@ export function App() {
 
   return (
     <TabsProvider>
-      <div className="shell">
+      <div className={`shell${railed ? ' shell--railed' : ''}`}>
         {/* The rail lists every object in the database — 162 focusable things on
             a real schema, which is 170 Tab presses between the top of the page
             and the content. WCAG calls a way past a repeated block a level A
@@ -185,7 +193,7 @@ export function App() {
               objects on it, and a list of 162 tables beside a verdict is a rail
               on which nothing answers the question the reader has. It ends with
               its own way into the schema. */}
-          {spaceOf(pathname) === 'data' && pathname !== '/home' && pathname !== '/' ? (
+          {railed ? (
             pathname.startsWith('/alerts') ? (
               <AlertsRail />
             ) : (

@@ -2508,6 +2508,64 @@
   overflow-x: auto;
 }
 
+/* ── The side that continues ────────────────────────────────────────────────
+ * A wide table scrolling inside its own box is the right layout and a silent
+ * one. The object list on `/db/default` wants 1287px in a 1078px column, so
+ * three of its ten columns — On disk's unit, Ratio, Share — were simply not
+ * there, with nothing on the page admitting it and no way to reach them
+ * without a trackpad. This is the same rule as "155 of 164 objects", turned
+ * ninety degrees: the fold says it is a fold.
+ *
+ * A shade rather than a fade-to-ground, because these tables sit on three
+ * different surfaces — the page, a slab, a raised card — and a fade has to
+ * know which one it is over. A shade is the shadow the overhanging content
+ * casts, and that is true on any of them. `--fade-edge` carries the same ink as
+ * `--shadow-card` in each theme, since it is the same light.
+ *
+ * The focus ring belongs to the scroller and the shade to its wrapper, so
+ * `.wide` is a plain positioned box with no ink of its own. */
+.wide {
+  position: relative;
+  min-width: 0;
+}
+
+.wide::before,
+.wide::after {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  width: 26px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--motion-base) var(--ease-out);
+  z-index: 1;
+}
+
+.wide::before {
+  left: 0;
+  background: linear-gradient(to right, var(--fade-edge), transparent 72%);
+}
+
+.wide::after {
+  right: 0;
+  background: linear-gradient(to left, var(--fade-edge), transparent 72%);
+}
+
+.wide.is-more-left::before,
+.wide.is-more-right::after {
+  opacity: 1;
+}
+
+/* Focusable only while something is off screen — see `Wide` — so the ring is
+   never on a table that had nothing to reveal. Inset, because the scroller's
+   own edge is flush against the panel's border and an outset ring there is
+   half a ring. */
+.wide .panel__scroll:focus-visible {
+  outline: 2px solid var(--spark);
+  outline-offset: -2px;
+  border-radius: var(--radius-sm);
+}
+
 /* ── The peek: what is inside the object you selected in the diagram ────── */
 
 /* It stands where the object list stood, so it borrows the list's frame
@@ -2909,11 +2967,32 @@ tr:hover .stratum__fill {
 
 /* ═══ Tabs ═══════════════════════════════════════════════════════════════ */
 
+/* Thirteen tabs need about 1080px, and the column they sit in is 1078px at
+   1440 and 820px at 1100. Left as a plain flex row they did the two worst
+   things a tab strip can do at once: the labels that hold two words broke
+   across two lines — "Write / rows", "Schema / review" — giving a strip with a
+   ragged baseline and half again the height, and once the words stopped
+   shrinking the row simply overflowed its container with `overflow: visible`,
+   putting Projections and DDL past the right edge of the *document*. Below
+   1440px the DDL tab could not be reached at all, by pointer or by scroll, and
+   nothing on the page said it was there. So: the strip scrolls sideways, the
+   labels never wrap, and the `.wide` wrapper shades whichever side has more on
+   it — the same treatment the wide tables get, for the same reason. */
 .tabs {
+  position: relative;
   display: flex;
   gap: var(--s1);
   margin-top: var(--s7);
   border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+  /* The strip's own scrollbar would sit on the rule that separates it from the
+     panel below, which reads as a broken border rather than as a control. The
+     shade at the edge is what says there is more, and it says it without
+     taking a pixel of the border. */
+  scrollbar-width: none;
+}
+.tabs::-webkit-scrollbar {
+  display: none;
 }
 
 /* Thirteen tabs in the muted tier read as thirteen disabled controls — the row
@@ -2922,8 +3001,10 @@ tr:hover .stratum__fill {
    underline arrives under the pointer before the click rather than after. */
 .tabs__tab {
   display: flex;
+  flex: none;
   align-items: center;
   gap: 6px;
+  white-space: nowrap;
   padding: var(--s3) var(--s3);
   font-size: var(--size-body);
   color: var(--chalk-dim);
@@ -13394,11 +13475,20 @@ button.acol__val:hover {
   gap: var(--s1) var(--s3);
   font-family: var(--font-data);
 }
+/* `--chalk-faint`, not `--chalk-ghost` — the third and fourth site of the same
+ * mistake, and the same reasoning as `.clause__key` and `.strip__share`: the
+ * ghost tier is 3.3:1 and the token file says in as many words that it is for
+ * marks nobody reads. A table's name is the one thing on this row somebody has
+ * to read, since it is what they click, and "past the cap" is the sentence that
+ * explains why the row is quiet in the first place. Quiet is the right register
+ * for both; illegible is not the same as quiet. The repo's own browser check
+ * caught them at 3.22:1, as it caught `.clause__key` and `.strip__share` before
+ * them. */
 .sweep__names li.is-past {
-  color: var(--chalk-ghost);
+  color: var(--chalk-faint);
 }
 .sweep__past {
-  color: var(--chalk-ghost);
+  color: var(--chalk-faint);
 }
 
 .sweep__progress,
@@ -13582,12 +13672,18 @@ button.acol__val:hover {
 }
 
 /* Sample or verdict, on every row, because it is the one thing about a member
- * that a grouped page could most easily let disappear. */
+ * that a grouped page could most easily let disappear.
+ *
+ * And the fifth site of the ghost-tier mistake, this one caught by reading
+ * rather than by the check: 11px uppercase is the hardest thing in the product
+ * to read, and the sentence above argues that this is the one thing about a
+ * member that must not disappear. Setting it in the tier meant for hairlines
+ * was arguing the other way. */
 .sweep__mclaim {
   font-size: var(--size-label);
   letter-spacing: var(--track-label);
   text-transform: uppercase;
-  color: var(--chalk-ghost);
+  color: var(--chalk-faint);
 }
 .sweep__mclaim.is-verified {
   color: var(--spark);
@@ -14074,6 +14170,14 @@ button.acol__val:hover {
    and the key that saves the click. Bottom left, out of the way of everything
    this product puts on the right. */
 
+/* Fixed to the corner of the window, which on a page with a rail is the corner
+   of the *rail* — the launcher was covering the rail's last object and half of
+   the "All databases" link under it, on every Data page. It steps past the rail
+   instead of the rail giving up 38px of list for it: the console belongs to the
+   session rather than to the page, and a control that reserves space in
+   somebody's navigator has stopped being a floating one. `--rail-w` rather than
+   a measured offset, so the two cannot drift; `.shell--railed` is set in `App`
+   from the same expression that decides whether the rail renders at all. */
 .cfab {
   position: fixed;
   bottom: var(--s5);
@@ -14096,7 +14200,15 @@ button.acol__val:hover {
     transform var(--motion-panel) var(--ease),
     opacity var(--motion-base) var(--ease),
     border-color var(--motion-fast) var(--ease),
-    color var(--motion-fast) var(--ease);
+    color var(--motion-fast) var(--ease),
+    /* Crossing from a Data page to an Infrastructure one moves it by the width
+       of the rail that just left. A jump reads as a second button appearing;
+       a slide reads as the same one following you. */
+    left var(--motion-panel) var(--ease);
+}
+
+.shell--railed .cfab {
+  left: calc(var(--rail-w) + var(--s5));
 }
 
 .cfab:hover,

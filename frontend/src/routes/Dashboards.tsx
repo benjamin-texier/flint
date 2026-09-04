@@ -34,6 +34,7 @@ import { ResultsGrid } from '../components/ResultsGrid'
 import { EmptyNote, ErrorNote, Loading, Sentence } from '../components/Note'
 import { NeedsWorkspace } from '../components/NeedsWorkspace'
 import { keeps } from '../lib/spaces'
+import { Wide } from '../components/Wide'
 
 /** How tall a tile's plot may be. Matches `.tile__body`'s own floor: a board is
  *  read as a set of tiles at a glance, and one tile four times the height of its
@@ -124,7 +125,7 @@ export function DashboardList() {
         ) : null}
         {dashboards.data && dashboards.data.length > 0 ? (
           <div className="panel">
-            <div className="panel__scroll">
+            <Wide label="Dashboards">
               <table className="tbl">
                 <thead>
                   <tr>
@@ -157,7 +158,7 @@ export function DashboardList() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </Wide>
           </div>
         ) : null}
         {remove.error ? <ErrorNote error={remove.error} /> : null}

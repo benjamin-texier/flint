@@ -59,14 +59,53 @@ pub struct ServerInfo {
 }
 
 pub async fn server_info(ch: &Client) -> Result<ServerInfo> {
+    /* Both counts skip the upper-case `INFORMATION_SCHEMA`, for the reason
+    `collapse_information_schema` and `collapse_case_aliases` already give
+    twice: ClickHouse publishes the SQL-standard metadata database under two
+    spellings holding the same views, so a raw `count()` over
+    `system.databases` and `system.tables` counts one database and thirty
+    views that do not exist.
+
+    That is not an abstract worry — it was on screen. Infrastructure's board
+    read "8 databases, 496 objects" off this row while `/server`, which lists
+    them, read 7 and 466 off `databases()`, which has applied the rule since
+    it was written. Two pages disagreeing about how many databases a server
+    has is worse than either figure being off, and the one that can be
+    reconciled against a list is the one that has to be right.
+
+    The rule in both cases is "keep the lower-case spelling", which is the
+    one ClickHouse's own documentation uses. What is easy to get wrong — and
+    what two attempts at this got wrong — is that the doubling happens on
+    *both* axes and independently: two database spellings, and inside each of
+    them two rows per view (`tables` and `TABLES`). Forty rows on this
+    server for ten views. So the database count filters the database's name
+    and the table count has to filter both, or it lands on 476 (database
+    alone, twenty views kept) or 476 again (view name alone, kept under both
+    databases) where the list says 466.
+
+    `databases()` needs only half of it in SQL because the other half is
+    `collapse_information_schema`, in Rust, after the group-by. A scalar
+    subquery has nowhere to put that step, which is why the condition here is
+    written out rather than shared.
+
+    A server publishing only the upper-case name would lose it, which is the
+    same trade `collapse_information_schema` makes deliberately — except
+    there it can check first and a scalar subquery cannot. No such ClickHouse
+    exists: the lower-case spelling has been there since the database was
+    introduced. */
     ch.row(
         "SELECT version()                                   AS version, \
                 uptime()                                    AS uptime_seconds, \
                 timezone()                                  AS timezone, \
                 currentUser()                               AS current_user, \
                 currentDatabase()                           AS current_database, \
-                (SELECT count() FROM system.databases)      AS databases, \
-                (SELECT count() FROM system.tables)         AS tables",
+                (SELECT count() FROM system.databases \
+                  WHERE lower(name) != 'information_schema' \
+                     OR name = lower(name))                 AS databases, \
+                (SELECT count() FROM system.tables \
+                  WHERE lower(database) != 'information_schema' \
+                     OR (database = lower(database) \
+                         AND name = lower(name)))           AS tables",
     )
     .await?
     .ok_or_else(|| Error::Decode("ClickHouse returned no server info".into()))

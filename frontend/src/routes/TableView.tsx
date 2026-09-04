@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
@@ -31,6 +31,8 @@ import { shortType } from '../lib/chType'
 import { analyseDefinition, columnUsage, type ColumnOrigin, type Definition } from '../lib/lineage'
 import { barScale } from '../lib/scale'
 import { Download } from '../components/Download'
+import { Wide, useEdges } from '../components/Wide'
+import { edgeClass } from '../lib/edges'
 import { ResultsGrid } from '../components/ResultsGrid'
 import { tableDownloadNote } from '../lib/export'
 import { Changes } from '../components/Changes'
@@ -116,6 +118,26 @@ export function TableView({ database, table }: { database: string; table: string
 
   const asSelect = detail.data?.as_select ?? ''
   const definition = useMemo(() => analyseDefinition(asSelect), [asSelect])
+
+  /* Above the early returns, with the rest of the hooks: the strip these two
+     watch is rendered a hundred lines below, and the reflex to declare them
+     beside it costs a "rendered more hooks than during the previous render"
+     the first time the table's own request is still in flight. */
+  const { edges: tabEdges, ref: tabStripRef, node: tabStrip } = useEdges()
+
+  /* Arrowing along the strip scrolls the focused tab into view on its own —
+     that is the browser's doing, and it is why the keyboard contract survived
+     the strip becoming a scroller. Nothing else does: a click on the tab half
+     under the shade, and above all an address that names a tab (`?tab=ddl`,
+     which is what every link into a particular tab of this page produces), both
+     leave the selected tab off screen with the strip still parked at its left
+     end. So the selection scrolls itself into view. */
+  useEffect(() => {
+    tabStrip?.querySelector<HTMLElement>(`#tab-${tab}`)?.scrollIntoView({
+      block: 'nearest',
+      inline: 'nearest',
+    })
+  }, [tab, tabStrip])
 
   if (detail.error) return <ErrorNote error={detail.error} retry={() => detail.refetch()} />
   if (!detail.data) return <Loading label={`Reading ${database}.${table}`} />
@@ -266,23 +288,34 @@ export function TableView({ database, table }: { database: string; table: string
 
       <ShapeStrip detail={t} database={database} definition={definition} />
 
-      <nav className="tabs" role="tablist" aria-label={`${table} details`} onKeyDown={onTabKeys}>
-        {tabs.map(([id, label, n]) => (
-          <button
-            key={id}
-            id={`tab-${id}`}
-            role="tab"
-            aria-selected={tab === id}
-            aria-controls="tabpanel"
-            tabIndex={tab === id ? 0 : -1}
-            className={`tabs__tab${tab === id ? ' is-active' : ''}`}
-            onClick={() => setTab(id)}
-          >
-            {label}
-            {n !== null ? <span className="tabs__n">{n}</span> : null}
-          </button>
-        ))}
-      </nav>
+      {/* The strip scrolls sideways below about 1440px — see `.tabs`. The
+          wrapper is what carries the shade, since a pseudo-element on the
+          scroller would scroll away with the tabs it is meant to be covering. */}
+      <div className={`wide${edgeClass(tabEdges)}`}>
+        <nav
+          ref={tabStripRef}
+          className="tabs"
+          role="tablist"
+          aria-label={`${table} details`}
+          onKeyDown={onTabKeys}
+        >
+          {tabs.map(([id, label, n]) => (
+            <button
+              key={id}
+              id={`tab-${id}`}
+              role="tab"
+              aria-selected={tab === id}
+              aria-controls="tabpanel"
+              tabIndex={tab === id ? 0 : -1}
+              className={`tabs__tab${tab === id ? ' is-active' : ''}`}
+              onClick={() => setTab(id)}
+            >
+              {label}
+              {n !== null ? <span className="tabs__n">{n}</span> : null}
+            </button>
+          ))}
+        </nav>
+      </div>
 
       <div className="tabpanel" id="tabpanel" role="tabpanel" aria-labelledby={`tab-${tab}`}>
         {tab === 'columns' ? (
@@ -633,7 +666,7 @@ function Columns({
           <span className="panel__hint">from · read out of the definition</span>
         ) : null}
       </div>
-      <div className="panel__scroll">
+      <Wide label="Columns">
     <table className="tbl tbl--cols">
       <thead>
         <tr>
@@ -752,7 +785,7 @@ function Columns({
         })}
       </tbody>
     </table>
-      </div>
+      </Wide>
     </div>
     </div>
   )
@@ -884,7 +917,7 @@ function Sources({
             ) : null}
 
             {used.length > 0 ? (
-              <div className="panel__scroll">
+              <Wide label="Columns and what they feed">
                 <table className="tbl">
                   <thead>
                     <tr>
@@ -935,7 +968,7 @@ function Sources({
                     })}
                   </tbody>
                 </table>
-              </div>
+              </Wide>
             ) : null}
 
             {unmatched.length > 0 ? (
@@ -1090,7 +1123,7 @@ function ReadBy({
           <header className="card__head">
             <h3 className="card__title">Columns something depends on</h3>
           </header>
-          <div className="panel__scroll">
+          <Wide label="Columns and what reads them">
             <table className="tbl">
               <thead>
                 <tr>
@@ -1134,7 +1167,7 @@ function ReadBy({
                 ))}
               </tbody>
             </table>
-          </div>
+          </Wide>
         </section>
       ) : null}
 
@@ -1175,7 +1208,7 @@ function Partitions({ detail }: { detail: TableDetailResponse }) {
         <span className="panel__spacer" />
         <span className="panel__hint">a partition can be detached or dropped on its own</span>
       </div>
-      <div className="panel__scroll">
+      <Wide label="Partitions">
     <table className="tbl">
       <thead>
         <tr>
@@ -1204,7 +1237,7 @@ function Partitions({ detail }: { detail: TableDetailResponse }) {
         ))}
       </tbody>
     </table>
-      </div>
+      </Wide>
     </div>
   )
 }

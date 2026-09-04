@@ -50,7 +50,17 @@ export function sparkline(
 ): Spark {
   const present = values.filter((v): v is number => v !== undefined && Number.isFinite(v))
   const peak = present.reduce((max, v) => Math.max(max, v), 0)
-  if (values.length === 0 || present.length === 0 || peak <= 0 || width <= 0 || height <= 0) {
+  /* Nothing *known* is what draws nothing. A peak of zero used to be in this
+     guard too, and it is a different thing entirely: a series measured as zero
+     in every period is a measurement, and the most consequential one this
+     figure ever carries — a table that took no rows in any period is a dead
+     pipeline, which is the reading the whole page exists for. Sent away with
+     the holes, it drew a labelled empty box with a peak of `0` printed beside
+     it, on rows `Shape` had already decided to keep because something *was*
+     known. The repo's own browser check had been reporting six of them on
+     `default.apis_queries`. So zeros draw, flat along the floor, and the only
+     series that draws nothing is the one nobody measured. */
+  if (values.length === 0 || present.length === 0 || width <= 0 || height <= 0) {
     return { segments: [], dots: [], peak: 0 }
   }
 
@@ -60,7 +70,9 @@ export function sparkline(
   // A single column sits in the middle rather than at the left edge, where it
   // would read as the start of a line that is not there.
   const at = (i: number) => (values.length === 1 ? width / 2 : (i / (values.length - 1)) * width)
-  const level = (v: number) => bottom - (v / peak) * span
+  // Guarded rather than divided: an all-zero series has no peak to scale
+  // against, and every one of its points belongs on the floor anyway.
+  const level = (v: number) => (peak > 0 ? bottom - (v / peak) * span : bottom)
 
   const segments: string[] = []
   const dots: SparkPoint[] = []

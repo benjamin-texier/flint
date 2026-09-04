@@ -1120,12 +1120,12 @@ mod tests {
     #[test]
     fn a_bare_name_is_a_statefulset() {
         assert_eq!(
-            parse_target("clickhouse-clickhouse").unwrap(),
-            (Kind::StatefulSet, "clickhouse-clickhouse".to_owned())
+            parse_target("clickhouse").unwrap(),
+            (Kind::StatefulSet, "clickhouse".to_owned())
         );
         assert_eq!(
-            parse_target("sts/clickhouse-clickhouse").unwrap(),
-            (Kind::StatefulSet, "clickhouse-clickhouse".to_owned())
+            parse_target("sts/clickhouse").unwrap(),
+            (Kind::StatefulSet, "clickhouse".to_owned())
         );
         assert_eq!(
             parse_target("chi/clickhouse").unwrap(),
