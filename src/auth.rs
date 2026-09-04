@@ -251,9 +251,21 @@ fn bearer(headers: &HeaderMap) -> Option<String> {
 }
 
 /// The session id out of the cookie a browser sends.
+///
+/// `get_all` rather than `get`, and that is the whole of what a cookie library
+/// would have been brought in for. HTTP/1.1 sends one `Cookie` field holding
+/// every pair; HTTP/2 explicitly permits splitting them across several fields
+/// so the compressor can keep the stable ones in its table, and hyper decodes
+/// each field as its own entry. Flint is built with HTTP/2 on. So a browser
+/// with a few cookies could put `flint_session` in the second field and be told
+/// it was not signed in — intermittently, on the deployments most likely to be
+/// behind a modern ingress, and never in a way a test of one header would show.
 fn cookie_id(headers: &HeaderMap) -> Option<String> {
-    let raw = headers.get(axum::http::header::COOKIE)?.to_str().ok()?;
-    raw.split(';')
+    headers
+        .get_all(axum::http::header::COOKIE)
+        .iter()
+        .filter_map(|raw| raw.to_str().ok())
+        .flat_map(|raw| raw.split(';'))
         .filter_map(|pair| pair.split_once('='))
         .find(|(name, _)| name.trim() == COOKIE)
         .map(|(_, value)| value.trim().to_string())
@@ -411,6 +423,23 @@ mod tests {
     #[test]
     fn the_cookie_is_read_out_of_a_crowded_header() {
         let h = headers(&[("cookie", "theme=dark; flint_session=abc123; other=x")]);
+        assert_eq!(session_id(&h).as_deref(), Some("abc123"));
+    }
+
+    #[test]
+    fn the_cookie_is_found_however_many_fields_it_took_to_send() {
+        // What HTTP/2 is allowed to do, and what `get` would have missed: the
+        // pairs arrive as separate header fields, and the session is not in the
+        // first one.
+        let mut h = HeaderMap::new();
+        h.append(
+            axum::http::header::COOKIE,
+            HeaderValue::from_static("theme=dark"),
+        );
+        h.append(
+            axum::http::header::COOKIE,
+            HeaderValue::from_static("flint_session=abc123"),
+        );
         assert_eq!(session_id(&h).as_deref(), Some("abc123"));
     }
 
