@@ -20,6 +20,7 @@
 //! are about to ask for. A truncated download that looked whole is the exact
 //! failure this codebase drops figures rather than dashing them to avoid.
 
+use percent_encoding::{utf8_percent_encode, AsciiSet, NON_ALPHANUMERIC};
 use serde::{Deserialize, Serialize};
 
 /// What comes back, and what the file is called.
@@ -134,21 +135,22 @@ pub fn disposition(name: &str) -> String {
         .collect();
     format!(
         "attachment; filename=\"{ascii}\"; filename*=UTF-8''{}",
-        percent(name)
+        utf8_percent_encode(name, ATTR_CHAR)
     )
 }
 
-fn percent(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for b in s.as_bytes() {
-        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~') {
-            out.push(*b as char);
-        } else {
-            out.push_str(&format!("%{b:02X}"));
-        }
-    }
-    out
-}
+/// What may stand unescaped in the extended form.
+///
+/// RFC 8187's `attr-char` permits a handful of symbols beyond these — `!#$&+^`
+/// and friends — and this deliberately escapes them too. The extended form is
+/// read by a parser that has just been told the value is percent-encoded, so an
+/// over-escaped name decodes to exactly the same string; an under-escaped one
+/// is a header field somebody else's table name gets to write into.
+const ATTR_CHAR: &AsciiSet = &NON_ALPHANUMERIC
+    .remove(b'-')
+    .remove(b'_')
+    .remove(b'.')
+    .remove(b'~');
 
 #[cfg(test)]
 mod tests {

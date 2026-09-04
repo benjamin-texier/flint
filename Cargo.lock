@@ -486,9 +486,11 @@ name = "flint"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "base64",
  "clap",
  "dashmap",
  "mime_guess",
+ "percent-encoding",
  "reqwest",
  "rust-embed",
  "rustls",

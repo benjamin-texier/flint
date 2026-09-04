@@ -48,50 +48,41 @@ pub fn decode(raw: &str) -> Result<Cursor, String> {
     Ok(cursor)
 }
 
-// ── base64url, which is 30 lines and not a dependency ───────────────────
+// ── base64url ───────────────────────────────────────────────────────────
 
-const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+/// The URL alphabet, because this lands in a query string where `+`, `/` and
+/// `=` all mean something else — and *indifferent* to padding, because Flint
+/// emits none but a caller may have round-tripped the cursor through something
+/// that adds it back.
+///
+/// This was thirty hand-written lines until it wasn't, and the thirty lines
+/// were not wrong in the direction anyone worries about: they encoded
+/// correctly. What they did was *decode* generously — trailing bits that no
+/// encoder could have produced were shifted off and ignored, so a string that
+/// is not base64 at all had a good chance of decoding to something, and the
+/// only thing standing between that and a page of rows was whether the bytes
+/// happened to parse as the JSON below. `base64` rejects them, which is the
+/// half of the job worth taking a dependency for. It is already in the tree
+/// through `reqwest`.
+const ENGINE: base64::engine::GeneralPurpose = base64::engine::GeneralPurpose::new(
+    &base64::alphabet::URL_SAFE,
+    base64::engine::GeneralPurposeConfig::new()
+        .with_encode_padding(false)
+        .with_decode_padding_mode(base64::engine::DecodePaddingMode::Indifferent),
+);
 
-/// Unpadded, and with the URL alphabet: this lands in a query string, where
-/// `+`, `/` and `=` all mean something else.
 fn base64url(bytes: &[u8]) -> String {
-    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
-    for chunk in bytes.chunks(3) {
-        let b = [
-            chunk[0],
-            *chunk.get(1).unwrap_or(&0),
-            *chunk.get(2).unwrap_or(&0),
-        ];
-        let n = (u32::from(b[0]) << 16) | (u32::from(b[1]) << 8) | u32::from(b[2]);
-        for i in 0..=chunk.len() {
-            out.push(ALPHABET[((n >> (18 - 6 * i)) & 0x3F) as usize] as char);
-        }
-    }
-    out
+    base64::Engine::encode(&ENGINE, bytes)
 }
 
 fn unbase64url(text: &str) -> Option<Vec<u8>> {
+    // A cursor carries one row's ordering values. Anything of this size is not
+    // one, and decoding it before finding that out is work done for whoever
+    // sent it.
     if text.is_empty() || text.len() > 8192 {
         return None;
     }
-    let mut bits = 0u32;
-    let mut held = 0u8;
-    let mut out = Vec::with_capacity(text.len() * 3 / 4);
-    for ch in text.bytes() {
-        // Padding is not emitted, but a caller may have round-tripped this
-        // through something that adds it back.
-        if ch == b'=' {
-            break;
-        }
-        let value = ALPHABET.iter().position(|c| *c == ch)? as u32;
-        bits = (bits << 6) | value;
-        held += 6;
-        if held >= 8 {
-            held -= 8;
-            out.push(((bits >> held) & 0xFF) as u8);
-        }
-    }
-    Some(out)
+    base64::Engine::decode(&ENGINE, text).ok()
 }
 
 #[cfg(test)]
@@ -136,5 +127,19 @@ mod tests {
         }
         // Well-formed base64 of something that is not a cursor.
         assert!(decode(&base64url(b"{\"o\":\"\",\"v\":[]}")).is_err());
+    }
+
+    #[test]
+    fn bits_no_encoder_could_have_written_are_refused() {
+        // `AA` is one byte with four zero bits left over, which is what
+        // encoding one byte produces. `AB` is the same byte with those four
+        // bits set — a string no encoder emits, and the shape of every
+        // hand-typed or truncated cursor. Accepting it silently is how a
+        // string that is not base64 gets a chance at being read as one.
+        assert_eq!(unbase64url("AA"), Some(vec![0]));
+        assert_eq!(unbase64url("AB"), None);
+        // Padding is not emitted, but survives a round trip through something
+        // that adds it.
+        assert_eq!(unbase64url("AA=="), Some(vec![0]));
     }
 }
