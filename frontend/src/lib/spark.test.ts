@@ -32,12 +32,28 @@ describe('sparkline', () => {
     expect(dots).toEqual([{ x: 50, y: 0 }])
   })
 
-  it('is nothing at all when there is nothing to draw', () => {
+  it('is nothing at all when nothing is known', () => {
     // Dropped rather than drawn as a flat line on the floor, which would say the
     // table held nothing rather than that nothing is known.
     expect(sparkline([], BOX)).toEqual({ segments: [], dots: [], peak: 0 })
     expect(sparkline([undefined, undefined], BOX)).toEqual({ segments: [], dots: [], peak: 0 })
-    expect(sparkline([0, 0], BOX)).toEqual({ segments: [], dots: [], peak: 0 })
+  })
+
+  it('draws a measured zero on the floor, because zero is a measurement', () => {
+    // The other half of the rule above, and the half that was missing: a series
+    // that is zero in every period is not an unmeasured one. It is a table that
+    // took nothing all week, which is the single most consequential shape this
+    // figure draws — and it was rendering as a labelled empty box.
+    const { segments, dots, peak } = sparkline([0, 0, 0], BOX)
+    expect(peak).toBe(0)
+    expect(dots).toHaveLength(0)
+    expect(segments).toEqual(['0,20 50,20 100,20'])
+  })
+
+  it('still breaks a floor line where the measurement stops', () => {
+    const { segments, dots } = sparkline([0, 0, undefined, 0], BOX)
+    expect(segments).toEqual(['0,20 33.33,20'])
+    expect(dots).toEqual([{ x: 100, y: 20 }])
   })
 
   it('centres a single column instead of pinning it to the left edge', () => {

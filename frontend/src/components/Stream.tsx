@@ -19,6 +19,7 @@ import {
   type QueueState,
 } from '../lib/stream'
 import { EmptyNote, ErrorNote, Loading } from './Note'
+import { Wide } from './Wide'
 
 /** Whether a streaming table is moving anything.
  *
@@ -123,7 +124,7 @@ function Consumers({ state }: { state: KafkaState }) {
           <span className="panel__spacer" />
           <span className="panel__hint">from system.kafka_consumers</span>
         </div>
-        <div className="panel__scroll">
+        <Wide label="Consumers">
           <table className="tbl">
             <thead>
               <tr>
@@ -140,7 +141,7 @@ function Consumers({ state }: { state: KafkaState }) {
               ))}
             </tbody>
           </table>
-        </div>
+        </Wide>
       </div>
     </div>
   )
@@ -270,7 +271,7 @@ function Queue({ state }: { state: QueueState }) {
               {state.since ? `, back to ${state.since}` : ''}
             </span>
           </div>
-          <div className="panel__scroll">
+          <Wide label="Attempts">
             <table className="tbl">
               <thead>
                 <tr>
@@ -311,7 +312,7 @@ function Queue({ state }: { state: QueueState }) {
                 ))}
               </tbody>
             </table>
-          </div>
+          </Wide>
         </div>
       )}
     </div>

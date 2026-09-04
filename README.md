@@ -155,7 +155,7 @@ speaks one and knows what `system.parts` means.
 Where ClickHouse only exists inside a cluster, `flint k8s` is the whole start:
 
 ```bash
-flint k8s -n play-clickhouse sts/clickhouse-clickhouse
+flint k8s -n play-clickhouse sts/clickhouse
 ```
 
 It resolves the workload to one pod, opens a `kubectl port-forward` to it, reads

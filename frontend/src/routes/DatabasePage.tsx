@@ -39,6 +39,7 @@ import { KindGlyph } from '../components/TypeBadge'
 import { Dash } from '../components/Dash'
 import { EmptyNote, ErrorNote, Loading } from '../components/Note'
 import { ExternalPanel } from '../components/ExternalSource'
+import { Wide } from '../components/Wide'
 
 /** The window the diagram's traffic overlay asks for. A week is long enough
  *  that a weekly report still counts as read and short enough to be current. */
@@ -1031,7 +1032,7 @@ function ObjectTable({
               : 'Every object in this database is a materialized view’s own storage.'}
           </p>
         ) : (
-        <div className="panel__scroll">
+        <Wide label="Objects">
       <table className="tbl">
         <thead>
           <tr>
@@ -1107,7 +1108,7 @@ function ObjectTable({
           ))}
         </tbody>
       </table>
-        </div>
+        </Wide>
         )}
       </div>
     </section>

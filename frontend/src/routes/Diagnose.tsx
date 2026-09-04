@@ -34,6 +34,7 @@ import { MetricLine } from '../components/MetricLine'
 import { EmptyNote } from '../components/Note'
 import { ShareBar } from '../components/StratumBar'
 import { ShutOut } from './Health'
+import { Wide } from '../components/Wide'
 
 const WINDOWS = [1, 7, 30] as const
 /** What the route returns by default. Stated in the UI, because a list cut off
@@ -228,7 +229,7 @@ function Spend({ report }: { report: Q<SpendReport> }) {
         <p className="says says--wide">{saysCaveat(data!)}</p>
       ) : null}
       {data?.spenders.length ? (
-        <div className="panel__scroll">
+        <Wide label="Accounts">
           <table className="tbl">
             <thead>
               <tr>
@@ -271,7 +272,7 @@ function Spend({ report }: { report: Q<SpendReport> }) {
               ))}
             </tbody>
           </table>
-        </div>
+        </Wide>
       ) : data ? (
         <EmptyNote title="Nothing ran in this window">
           The log covers the span above and holds no finished statement from it.
