@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
@@ -34,6 +34,12 @@ import { CheckPanel } from '../components/CheckPanel'
 import { NeedsWorkspace } from '../components/NeedsWorkspace'
 import { readHandoff, suggestName, type Handoff } from '../lib/handoff'
 
+type ReportDraft = {
+  existing?: Report
+  handoff?: Handoff
+  seeded?: { name: string; sections: Section[] }
+}
+
 /** Reports: what the numbers were, kept.
  *
  *  The page is built around the distinction that justifies the feature — a
@@ -61,16 +67,24 @@ export function ReportsPage() {
     retry: false,
     refetchInterval: 30_000,
   })
-  const [editing, setEditing] = useState<Report | null>(null)
-  const [adding, setAdding] = useState(false)
+  /* The fields and the id they will be saved under belong to one editing
+     session. React must remount the form when another is opened: changing its
+     props alone keeps the previous report's fields and saves them into the
+     new id. A revision also distinguishes two successive new reports. */
+  const [editor, setEditor] = useState<{ revision: number; draft: ReportDraft | null }>({
+    revision: 0,
+    draft: null,
+  })
+  const openEditor = useCallback((draft: ReportDraft) => {
+    setEditor((current) => ({ revision: current.revision + 1, draft }))
+  }, [])
   const [openRun, setOpenRun] = useState<string | null>(null)
   const [params, setParams] = useSearchParams()
-  const [handoff, setHandoff] = useState<Handoff | null>(() => readHandoff(params))
   /* A whole dashboard, offered as a report. Held by id rather than carried in
-     the URL: the spec is the dashboard's own and can be read where it lives. */
-  const [fromDashboard, setFromDashboard] = useState<string | null>(() =>
-    params.get('from_dashboard'),
-  )
+     the URL: the spec is the dashboard's own and can be read where it lives.
+     Keep the request in the URL until it can be used, so a failed read can be
+     retried and navigation to another handoff on this page is still honoured. */
+  const fromDashboard = readHandoff(params) ? null : params.get('from_dashboard')
   const dashboards = useQuery({
     queryKey: ['dashboards'],
     queryFn: () => api.dashboards(),
@@ -86,21 +100,27 @@ export function ReportsPage() {
     return { name: source.name, sections: sectionsFromDashboard(spec.tiles) }
   }, [source])
 
-  /* A plain handoff can open at once — it is already in hand. A dashboard has
-     to be fetched first: opening the form before it arrives gives an empty one
-     whose save button is disabled, which is what navigating straight to the
-     link used to do. */
-  useEffect(() => {
-    if (readHandoff(params)) {
-      setAdding(true)
-      setParams(new URLSearchParams(), { replace: true })
-    }
+  const clearHandoff = useCallback(() => {
+    const next = new URLSearchParams(params)
+    for (const key of ['sql', 'database', 'name', 'document', 'from_dashboard']) next.delete(key)
+    setParams(next, { replace: true })
   }, [params, setParams])
+
+  /* Copy the source into a draft once it is in hand. A missing dashboard must
+     not open an empty form, and a later refresh of the dashboard must not
+     replace anything already being edited. */
   useEffect(() => {
-    if (!params.get('from_dashboard') || !dashboards.isSuccess) return
-    setAdding(true)
-    setParams(new URLSearchParams(), { replace: true })
-  }, [params, setParams, dashboards.isSuccess])
+    if (!stateful) return
+    const handoff = readHandoff(params)
+    if (handoff) {
+      openEditor({ handoff })
+    } else if (seeded?.sections.length) {
+      openEditor({ seeded })
+    } else {
+      return
+    }
+    clearHandoff()
+  }, [stateful, params, seeded, openEditor, clearHandoff])
 
   const stateless = config.data?.workspace === null
   const timezone = server.data?.timezone
@@ -116,8 +136,8 @@ export function ReportsPage() {
               <button
                 className="btn btn--spark"
                 onClick={() => {
-                  setEditing(null)
-                  setAdding(true)
+                  clearHandoff()
+                  openEditor({})
                 }}
               >
                 New report
@@ -139,26 +159,39 @@ export function ReportsPage() {
       {reports.isPending && !stateless ? <Loading label="Reading reports" /> : null}
       {reports.error ? <ErrorNote error={reports.error} retry={() => reports.refetch()} /> : null}
 
-      {adding || editing ? (
+      {editor.draft ? (
         <ReportForm
-          existing={editing}
-          handoff={editing ? null : handoff}
-          seeded={editing ? null : seeded}
+          key={editor.revision}
+          existing={editor.draft.existing ?? null}
+          handoff={editor.draft.handoff ?? null}
+          seeded={editor.draft.seeded ?? null}
           timezone={timezone}
           defaultDatabase={config.data?.default_database ?? ''}
           webhooksAllowed={config.data?.alert_webhooks ?? true}
           onDone={() => {
-            setAdding(false)
-            setEditing(null)
-            setHandoff(null)
-            setFromDashboard(null)
+            // A save may finish after another draft has opened. Its completion
+            // closes only the form that submitted it, never the new draft.
+            setEditor((current) => current.revision === editor.revision
+              ? { ...current, draft: null }
+              : current)
           }}
         />
       ) : null}
 
-      {fromDashboard && dashboards.data && !source ? (
+      {fromDashboard && stateful && dashboards.isPending ? (
+        <Loading label="Reading the dashboard" />
+      ) : null}
+      {fromDashboard && dashboards.error ? (
+        <ErrorNote error={dashboards.error} retry={() => dashboards.refetch()} />
+      ) : null}
+      {fromDashboard && dashboards.isSuccess && !source ? (
         <EmptyNote title="That dashboard is gone">
           Nothing here has that id any more, so there is nothing to build a report from.
+        </EmptyNote>
+      ) : null}
+      {seeded && !seeded.sections.length ? (
+        <EmptyNote title="That dashboard has no sections">
+          Add a tile with a statement to the dashboard before making a report from it.
         </EmptyNote>
       ) : null}
 
@@ -170,13 +203,13 @@ export function ReportsPage() {
               report={report}
               timezone={timezone}
               onEdit={() => {
-                setAdding(false)
-                setEditing(report)
+                clearHandoff()
+                openEditor({ existing: report })
               }}
             />
           ))}
         </ul>
-      ) : reports.data && !adding ? (
+      ) : reports.data && !editor.draft ? (
         <EmptyNote title="Nothing is being kept">
           Write the statements you would want a record of — last week's totals, the month's
           errors — and Flint will run them on a schedule and keep each answer.
