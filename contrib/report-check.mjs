@@ -1,4 +1,4 @@
-/** Report editing in a real browser, with an isolated workspace supplied at the
+/** Report and alert editing in a real browser, with a workspace supplied at the
  *  HTTP boundary. No ClickHouse is needed and no report is actually saved.
  *
  *    cd frontend && pnpm dev
@@ -45,6 +45,21 @@ const dashboard = {
     chart: null, w: 6, h: 1,
   }] }),
 }
+const alerts = [
+  {
+    id: 'alert-first', name: 'Sales stopped', sql: 'SELECT 1 AS sales', database: 'sales',
+    condition: JSON.stringify({ metric: 'rows', op: '<', threshold: 1 }),
+    interval_seconds: 300, webhook: 'https://example.com/sales', enabled: true,
+  },
+  {
+    id: 'alert-second', name: 'Errors rising', sql: 'SELECT 2 AS errors', database: 'logs',
+    condition: JSON.stringify({ metric: 'value', op: '>=', threshold: 42 }),
+    interval_seconds: 900, webhook: 'https://example.com/errors', enabled: false,
+  },
+].map((alert) => ({
+  ...alert, created_at: '', updated_at: '', state: '', last_event: '', last_message: '',
+  last_delivered: false, last_delivery_error: '', space: 'data', space_note: '',
+}))
 
 const browser = await chromium.launch({ executablePath, args: ['--no-sandbox', '--disable-gpu'] })
 try {
@@ -76,12 +91,12 @@ try {
       }
       if (path === '/jobs') data = { available: true, jobs: [] }
       if (path === '/timezones') data = ['UTC', 'Europe/Paris']
-      if (path === '/reports') {
+      if (path === '/reports' || path === '/alerts') {
         if (request.method() === 'POST') {
           posted.push(request.postDataJSON())
           if (holdSave) await new Promise((resolve) => { releaseSave = resolve })
         }
-        data = reports
+        data = path === '/reports' ? reports : alerts
       }
       if (path === '/dashboards') {
         if (holdDashboards) await new Promise((resolve) => { releaseDashboards = resolve })
@@ -205,9 +220,60 @@ try {
     await name.waitFor()
     await waitValue(name, 'Kept dashboard')
 
+    const alertForm = page.locator('.page--alerts .aform')
+    const alertName = alertForm.getByLabel('NAME', { exact: true })
+    await page.goto(`${base}/alerts`)
+    await edit('Sales stopped').click()
+    await alertName.fill('Unsaved sales alert')
+    await edit('Errors rising').click()
+    await waitValue(alertName, 'Errors rising')
+    await waitValue(alertForm.locator('textarea'), 'SELECT 2 AS errors')
+    await waitValue(alertForm.getByLabel('DATABASE', { exact: true }), 'logs')
+    await waitValue(alertForm.getByLabel(/^NOTIFY WHEN/), 'value')
+    await waitValue(alertForm.getByLabel(/^IS/), '>=')
+    await waitValue(alertForm.getByLabel('THRESHOLD', { exact: true }), '42')
+    await waitValue(alertForm.getByLabel(/^CHECK EVERY/), '900')
+    await alertForm.getByRole('button', { name: 'Save changes' }).click()
+    await alertForm.waitFor({ state: 'hidden' })
+    const expectedAlert = Object.fromEntries(Object.entries(alerts[1]).filter(([key]) =>
+      ['id', 'name', 'sql', 'database', 'condition', 'interval_seconds', 'webhook', 'enabled'].includes(key)))
+    assert.deepEqual(posted.at(-1), expectedAlert)
+
+    await edit('Errors rising').click()
+    await page.getByRole('button', { name: 'New alert', exact: true }).click()
+    await waitValue(alertName, '')
+    await waitValue(alertForm.locator('textarea'), '')
+    await waitValue(alertForm.getByLabel(/^NOTIFY WHEN/), 'rows')
+    await waitValue(alertForm.getByLabel('THRESHOLD', { exact: true }), '0')
+    await waitValue(alertForm.getByLabel(/^CHECK EVERY/), '300')
+
+    holdSave = true
+    await edit('Sales stopped').click()
+    await alertForm.getByRole('button', { name: 'Save changes' }).click()
+    await page.waitForFunction(() => document.querySelector('.aform button.btn--spark')?.disabled)
+    await edit('Errors rising').click()
+    await alertName.fill('Alert draft still being edited')
+    const alertsRefreshed = page.waitForResponse((r) => r.url().endsWith('/api/alerts') && r.request().method() === 'GET')
+    releaseSave()
+    await (await alertsRefreshed).finished()
+    holdSave = false
+    await waitValue(alertName, 'Alert draft still being edited')
+
+    // Only the handoff is consumed; the alert rail's active filter survives.
+    await navigate('/alerts?sql=SELECT+5&database=analytics&name=Sent+alert&state=paused')
+    await page.waitForURL('**/alerts?state=paused')
+    await waitValue(alertName, 'Sent alert')
+    await waitValue(alertForm.locator('textarea'), 'SELECT 5')
+    await waitValue(alertForm.getByLabel('DATABASE', { exact: true }), 'analytics')
+    await page.getByRole('button', { name: 'New alert', exact: true }).click()
+    await waitValue(alertName, '')
+    await alertName.fill('Another unfinished draft')
+    await page.getByRole('button', { name: 'New alert', exact: true }).click()
+    await waitValue(alertName, '')
+
     assert.deepEqual(errors, [], `Browser errors in ${colorScheme}`)
     await page.close()
-    console.log(`${colorScheme}: report identity, fresh drafts, late saves and dashboard handoffs passed`)
+    console.log(`${colorScheme}: report and alert identity, fresh drafts, late saves and handoffs passed`)
   }
 } finally {
   await browser.close()
