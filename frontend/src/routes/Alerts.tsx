@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
@@ -29,6 +29,8 @@ import { CheckPanel } from '../components/CheckPanel'
 import { NeedsWorkspace } from '../components/NeedsWorkspace'
 import { readHandoff, suggestName, type Handoff } from '../lib/handoff'
 import { keeps } from '../lib/spaces'
+
+type AlertDraft = { existing?: Alert; handoff?: Handoff }
 
 /** Alerts: a question asked on a schedule.
  *
@@ -74,17 +76,30 @@ export function AlertsPage() {
     setParams(next, { replace: true })
   }
   const elsewhere = saysElsewhere(alerts.data ?? [], 'data')
-  const [editing, setEditing] = useState<Alert | null>(null)
-  const [adding, setAdding] = useState(false)
-  /* A statement handed over by the editor. Consumed once and cleared from the
-     URL, so a reload does not reopen a form the reader already dismissed. */
-  const [handoff, setHandoff] = useState<Handoff | null>(() => readHandoff(params))
-  useEffect(() => {
-    if (readHandoff(params)) {
-      setAdding(true)
-      setParams(new URLSearchParams(), { replace: true })
-    }
+  /* Each opening owns both the fields and the id they will be saved under.
+     Changing only `existing` keeps the mounted form's old condition, statement
+     and schedule, and saves all three into the newly selected alert. */
+  const [editor, setEditor] = useState<{ revision: number; draft: AlertDraft | null }>({
+    revision: 0,
+    draft: null,
+  })
+  const openEditor = useCallback((draft: AlertDraft) => {
+    setEditor((current) => ({ revision: current.revision + 1, draft }))
+  }, [])
+  const clearHandoff = useCallback(() => {
+    const next = new URLSearchParams(params)
+    for (const key of ['sql', 'database', 'name', 'document']) next.delete(key)
+    setParams(next, { replace: true })
   }, [params, setParams])
+  /* A statement handed over by the editor. Consumed once and cleared from the
+     URL, so a reload does not reopen a form the reader already dismissed.
+     Read on navigation too, and leave the rail's filter in the URL. */
+  useEffect(() => {
+    const handoff = readHandoff(params)
+    if (!stateful || !handoff) return
+    openEditor({ handoff })
+    clearHandoff()
+  }, [stateful, params, openEditor, clearHandoff])
 
   const stateless = config.data?.workspace === null
 
@@ -99,8 +114,8 @@ export function AlertsPage() {
               <button
                 className="btn btn--spark"
                 onClick={() => {
-                  setEditing(null)
-                  setAdding(true)
+                  clearHandoff()
+                  openEditor({})
                 }}
               >
                 New alert
@@ -122,15 +137,18 @@ export function AlertsPage() {
       {alerts.isPending && !stateless ? <Loading label="Reading alerts" /> : null}
       {alerts.error ? <ErrorNote error={alerts.error} retry={() => alerts.refetch()} /> : null}
 
-      {adding || editing ? (
+      {editor.draft ? (
         <AlertForm
+          key={editor.revision}
           config={config.data}
-          existing={editing}
-          handoff={editing ? null : handoff}
+          existing={editor.draft.existing ?? null}
+          handoff={editor.draft.handoff ?? null}
           onDone={() => {
-            setAdding(false)
-            setEditing(null)
-            setHandoff(null)
+            // A save finishing after another form opened must leave its draft
+            // alone, including when both forms were creating a new alert.
+            setEditor((current) => current.revision === editor.revision
+              ? { ...current, draft: null }
+              : current)
           }}
         />
       ) : null}
@@ -160,8 +178,8 @@ export function AlertsPage() {
                 alert={alert}
                 webhooksAllowed={config.data?.alert_webhooks ?? true}
                 onEdit={() => {
-                  setAdding(false)
-                  setEditing(alert)
+                  clearHandoff()
+                  openEditor({ existing: alert })
                 }}
               />
             ))}
@@ -177,7 +195,7 @@ export function AlertsPage() {
             Show all {here.length}
           </button>
         </EmptyNote>
-      ) : alerts.data && !adding ? (
+      ) : alerts.data && !editor.draft ? (
         <EmptyNote title="Nothing is being watched">
           Write a statement that finds the thing you would want to hear about — errors in the
           last hour, a queue that stopped moving — and Flint will keep asking.

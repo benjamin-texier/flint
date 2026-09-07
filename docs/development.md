@@ -57,16 +57,17 @@ The statement splitter has the most tests, because "run the statement under the
 caret" silently running the *wrong* statement is the worst failure this editor
 could have.
 
-Report editing also has a browser regression check that needs only the frontend
+Report and alert editing have a browser regression check that needs only the frontend
 (`cd frontend && pnpm dev`), with API responses supplied by the check:
 
 ```bash
 node contrib/report-check.mjs http://localhost:5173
 ```
 
-It checks switching between reports, starting a fresh draft, a save finishing
-after another report has opened, and handoffs from SQL or a dashboard — including
-loading, missing, empty and refused dashboards. Both themes run in Chrome or
+It checks switching between reports or alerts, starting a fresh draft, a save
+finishing after another form has opened, and handoffs from SQL or a dashboard —
+including loading, missing, empty and refused dashboards. Alert handoffs also
+preserve the rail's active filter. Both themes run in Chrome or
 Chromium (`FLINT_BROWSER` can name the binary). No ClickHouse is needed and no
 workspace data is written.
 
