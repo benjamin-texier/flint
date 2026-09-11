@@ -47,6 +47,11 @@ export function Operations({ space }: { space: SpaceId }) {
      editions, and a reader on the Reports page has no business being shown a
      merge they cannot act on. */
   const jobs = (report.data?.jobs ?? []).filter((j) => spaceOfKind(j.kind) === space)
+  /* Whether the table needs its actions column at all. Asked of the table
+     rather than of the row: the heading has to be able to stand over the whole
+     column, and a per-row test would leave a ragged right edge on a list where
+     one job in ten is still running. */
+  const anyStoppable = jobs.some(stoppable)
 
   /* Nothing at all, and no reason to say so: on a Flint where nobody has ever
      started one, an empty panel headed "Operations" is furniture. */
@@ -79,7 +84,13 @@ export function Operations({ space }: { space: SpaceId }) {
               <th>Asked by</th>
               <th className="tbl--n">Took</th>
               <th>What happened</th>
-              <th />
+              {/* Only a job still running can be stopped, and most lists are
+                  entirely finished ones — this page's own history above all. An
+                  unconditional column was a strip of ruled nothing on the right
+                  of every such table, which is the rule `took` states directly
+                  below for its own cells, one level up: a column nothing
+                  answered says Flint asked the wrong question of every row. */}
+              {anyStoppable ? <th /> : null}
             </tr>
           </thead>
           <tbody>
@@ -94,18 +105,20 @@ export function Operations({ space }: { space: SpaceId }) {
                   <td className="mono-dim">{job.submitted_by}</td>
                   <td className="tbl--n mono-dim">{took(job, now)}</td>
                   <td className="mono-dim">{job.detail}</td>
-                  <td className="tbl--n">
-                    {stoppable(job) ? (
-                      <button
-                        className="btn"
-                        onClick={() => stop.mutate(job.id)}
-                        disabled={stop.isPending}
-                        title="Ask the server to stop it. Work already begun may still finish."
-                      >
-                        Stop
-                      </button>
-                    ) : null}
-                  </td>
+                  {anyStoppable ? (
+                    <td className="tbl--n">
+                      {stoppable(job) ? (
+                        <button
+                          className="btn"
+                          onClick={() => stop.mutate(job.id)}
+                          disabled={stop.isPending}
+                          title="Ask the server to stop it. Work already begun may still finish."
+                        >
+                          Stop
+                        </button>
+                      ) : null}
+                    </td>
+                  ) : null}
                 </tr>
               )
             })}
