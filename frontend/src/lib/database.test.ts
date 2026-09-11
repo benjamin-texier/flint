@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { objectCount, orderDatabases, resolveDatabase } from './database'
+import { arrowTo, objectCount, orderDatabases, resolveDatabase } from './database'
 
 /** A database with a size, as the API hands them over. */
 function db(name: string, tables = 0, views = 0) {
@@ -107,5 +107,40 @@ describe('orderDatabases', () => {
     const input = [db('system'), db('analytics')]
     orderDatabases(input)
     expect(input.map((d) => d.name)).toEqual(['system', 'analytics'])
+  })
+})
+
+describe('arrowTo', () => {
+  it('steps down and up', () => {
+    expect(arrowTo('ArrowDown', 0, 4)).toBe(1)
+    expect(arrowTo('ArrowUp', 2, 4)).toBe(1)
+  })
+
+  it('wraps at both ends, like the menu and the revisions do', () => {
+    expect(arrowTo('ArrowDown', 3, 4)).toBe(0)
+    expect(arrowTo('ArrowUp', 0, 4)).toBe(3)
+  })
+
+  it('jumps to the ends', () => {
+    expect(arrowTo('Home', 2, 4)).toBe(0)
+    expect(arrowTo('End', 2, 4)).toBe(3)
+  })
+
+  // What an open list reports when the database in view is not one of its
+  // options. Answering a keypress with nothing reads as a broken control.
+  it('enters the list from outside it', () => {
+    expect(arrowTo('ArrowDown', -1, 4)).toBe(0)
+    expect(arrowTo('ArrowUp', -1, 4)).toBe(3)
+  })
+
+  it('leaves every other key alone', () => {
+    expect(arrowTo('Enter', 1, 4)).toBeNull()
+    expect(arrowTo('a', 1, 4)).toBeNull()
+    expect(arrowTo('Escape', 1, 4)).toBeNull()
+  })
+
+  it('has nowhere to go in an empty list', () => {
+    expect(arrowTo('ArrowDown', -1, 0)).toBeNull()
+    expect(arrowTo('Home', -1, 0)).toBeNull()
   })
 })

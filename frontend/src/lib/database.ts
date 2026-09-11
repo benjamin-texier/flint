@@ -75,3 +75,34 @@ export function orderDatabases<T extends { name: string } & DatabaseCounts>(
     return ai - bi || objectCount(b) - objectCount(a) || a.name.localeCompare(b.name)
   })
 }
+
+/** Where an arrow key lands in an open list.
+ *
+ *  Here rather than in the component for the reason every other index sum in
+ *  this repo is: the interesting part is the arithmetic at the ends, and it is
+ *  worth being able to test that without a browser.
+ *
+ *  Two decisions are baked in. It **wraps**, matching the two composite widgets
+ *  Flint already has — the node menu and an endpoint's revisions both walk off
+ *  one end onto the other. And an `at` of -1, which is what a list whose
+ *  current item is not in it reports, lands on the first option for `ArrowDown`
+ *  and the last for `ArrowUp` rather than refusing to move: the reader pressed
+ *  a key, and a control that answers a key with nothing reads as broken.
+ *
+ *  Returns `null` for a key that is not navigation, so the caller can tell
+ *  "leave this event alone" from "move to 0". */
+export function arrowTo(key: string, at: number, length: number): number | null {
+  if (length === 0) return null
+  switch (key) {
+    case 'ArrowDown':
+      return at < 0 ? 0 : (at + 1) % length
+    case 'ArrowUp':
+      return at < 0 ? length - 1 : (at - 1 + length) % length
+    case 'Home':
+      return 0
+    case 'End':
+      return length - 1
+    default:
+      return null
+  }
+}
