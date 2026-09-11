@@ -25,7 +25,7 @@ use tokio::sync::RwLock;
 
 use crate::clickhouse::{Client, QueryOptions};
 use crate::error::Result;
-use crate::reports::{self, Schedule, SectionResult, Spec, SECTION_ROW_CAP};
+use crate::reports::{self, Schedule, SectionResult, Spec};
 use crate::workspace::{Alert, Report, Workspace};
 
 /// What the condition measures.
@@ -473,36 +473,19 @@ impl Scheduler {
         };
 
         let mut results: Vec<SectionResult> = Vec::with_capacity(spec.sections.len());
+        let windows = spec.windows(&self.ch).await;
         for section in &spec.sections {
-            let opts = QueryOptions {
-                database: (!section.database.is_empty()).then(|| section.database.clone()),
-                // Same rule as an alert: a scheduled statement is a question.
-                force_readonly: true,
-                max_rows: Some(SECTION_ROW_CAP as u64),
-                quote_64bit_integers: true,
-                ..Default::default()
-            };
-            match self.ch.table(&section.sql, opts).await {
-                Ok(table) => results.push(SectionResult {
-                    title: section.title.clone(),
-                    sql: section.sql.clone(),
-                    columns: table.columns.clone(),
-                    rows: table.rows,
-                    truncated: table.truncated,
-                    error: String::new(),
-                    chart: section.chart.clone(),
-                }),
-                // One broken statement costs that section, not the report.
-                Err(e) => results.push(SectionResult {
-                    title: section.title.clone(),
-                    sql: section.sql.clone(),
-                    columns: Vec::new(),
-                    rows: Vec::new(),
-                    truncated: false,
-                    error: e.to_string().lines().next().unwrap_or("failed").to_string(),
-                    chart: None,
-                }),
-            }
+            results.push(
+                section
+                    .run(
+                        &self.ch,
+                        windows
+                            .as_ref()
+                            .map(Vec::as_slice)
+                            .map_err(|e| e.to_string()),
+                    )
+                    .await,
+            );
         }
 
         let broken = results.iter().filter(|r| !r.error.is_empty()).count();

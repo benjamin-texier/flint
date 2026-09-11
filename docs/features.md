@@ -1401,6 +1401,18 @@ databases and chart forms intact. The two are nearly the same thing said about
 different moments: a tile is a statement and a chart shown now, a section is the
 same statement and chart kept.
 
+The filters travel too: each section copies the dashboard variables its SQL
+declares, and a rolling range such as “Last 7 days” stays relative. Every edition
+recalculates its windows from one ClickHouse clock reading. Variables can be
+edited in the report form, and the section's test button sends those values with
+a freshly calculated preview window. Explicit `from` or `to` variables override
+the rolling defaults, just as on the dashboard. The copy is independent: later
+changes to the dashboard do not change an existing report.
+
+Each kept section also records and displays the exact parameters used for that
+edition, including its resolved window. Older reports and snapshots, saved
+without parameters, continue to work.
+
 **Or out of the queries you already named.** A report is mostly a handful of
 questions somebody has asked before, so saved queries can be added as sections
 one at a time — appended rather than replacing what is there, because the point

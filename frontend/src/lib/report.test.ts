@@ -7,6 +7,7 @@ import {
   parseSchedule,
   parseSections,
   problemWithReport,
+  reportBindings,
   sectionsFromDashboard,
   sectionsFromSaved,
   serialiseSchedule,
@@ -195,6 +196,40 @@ describe('sectionsFromDashboard', () => {
 
   it('is empty for an empty dashboard', () => {
     expect(sectionsFromDashboard([])).toEqual([])
+  })
+
+  it('copies only each tile’s variables and keeps a relative window', () => {
+    const sections = sectionsFromDashboard([
+      tile({ sql: 'SELECT {city:String}, {from:DateTime}, {to:DateTime}' }),
+      tile({ sql: 'SELECT 1' }),
+      tile({ sql: 'SELECT {city:String}' }),
+    ], { rangeHours: 168, variables: { city: "O'Reilly & fils", unused: 'no' } })
+    expect(sections[0]!.params).toEqual({ city: "O'Reilly & fils" })
+    expect(sections[0]!.range_hours).toBe(168)
+    expect(sections[1]!.params).toBeUndefined()
+    expect(sections[1]!.range_hours).toBeUndefined()
+    expect(sections[2]!.params).toEqual({ city: "O'Reilly & fils" })
+    expect(sections[2]!.range_hours).toBeUndefined()
+  })
+
+  it('resolves preview windows at the time of testing and preserves overrides', () => {
+    const section = { ...tile(), range_hours: 24, params: { city: '', from: 'explicit' } }
+    for (const at of ['2026-09-07T10:00:00Z', '2026-09-08T10:00:00Z']) {
+      const values = Object.fromEntries(reportBindings(section, new Date(at)))
+      expect(values).toEqual({ from: 'explicit', to: at.slice(0, 19).replace('T', ' '), city: '' })
+    }
+    expect(Object.fromEntries(reportBindings({ ...tile(), range_hours: 24 },
+      new Date('2026-09-07T10:00:00Z')))).toEqual({
+      from: '2026-09-06 10:00:00', to: '2026-09-07 10:00:00',
+    })
+  })
+
+  it('reads the bindings actually kept with an edition, including old snapshots', () => {
+    const [old, kept] = parseSections(JSON.stringify([
+      { title: 'old' }, { title: 'kept', params: { city: 'Paris', from: 'then', bad: 5 } },
+    ]))
+    expect(old!.params).toEqual({})
+    expect(kept!.params).toEqual({ city: 'Paris', from: 'then' })
   })
 })
 

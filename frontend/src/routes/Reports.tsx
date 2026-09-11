@@ -16,6 +16,7 @@ import {
   parseSchedule,
   parseSections,
   problemWithReport,
+  reportBindings,
   sectionsFromDashboard,
   sectionsFromSaved,
   serialiseSchedule,
@@ -97,7 +98,7 @@ export function ReportsPage() {
   const seeded = useMemo(() => {
     if (!source) return null
     const spec = parseSpec(source.spec)
-    return { name: source.name, sections: sectionsFromDashboard(spec.tiles) }
+    return { name: source.name, sections: sectionsFromDashboard(spec.tiles, spec) }
   }, [source])
 
   const clearHandoff = useCallback(() => {
@@ -391,6 +392,7 @@ function ReportRow({
           <li key={i} className="rsections__item">
             <span className="rsections__title">{s.title || `Section ${i + 1}`}</span>
             <code className="rsections__sql">{s.sql.replace(/\s+/g, ' ').trim()}</code>
+            <SectionFilters section={s} />
           </li>
         ))}
       </ol>
@@ -448,6 +450,7 @@ function SnapshotView({ runId, onClose }: { runId: string; onClose: () => void }
             ) : null}
           </header>
 
+          <SectionFilters section={section} />
           {section.error ? (
             <EmptyNote title="This section could not run">{section.error}</EmptyNote>
           ) : (
@@ -482,6 +485,27 @@ function SnapshotView({ runId, onClose }: { runId: string; onClose: () => void }
         </article>
       ))}
     </section>
+  )
+}
+
+/** Definitions name the rolling window; editions name the exact bindings. */
+function SectionFilters({ section, values = true }: {
+  section: Pick<Section, 'params' | 'range_hours'>
+  values?: boolean
+}) {
+  return (
+    <>
+      {section.range_hours ? (
+        <p className="aform__hint">
+          Last {section.range_hours} hours, recalculated for each edition.
+          {section.params?.from !== undefined || section.params?.to !== undefined
+            ? ' Explicit from/to parameters override the rolling window.' : ''}
+        </p>
+      ) : null}
+      {values ? Object.entries(section.params ?? {}).map(([name, value]) => (
+        <p className="mono-dim" key={name}><code>{name}</code>: {value || '(empty string)'}</p>
+      )) : null}
+    </>
   )
 }
 
@@ -645,7 +669,16 @@ function ReportForm({
           />
           {/* Per section: each one is its own statement, and a report that runs
               with gaps is a report whose gaps were never tested. */}
-          <CheckPanel sql={section.sql} database={section.database} />
+          <SectionFilters section={section} values={false} />
+          {Object.entries(section.params ?? {}).map(([param, value]) => (
+            <label className="aform__field" key={param}>
+              <span className="label">PARAMETER {param}</span>
+              <input className="input" value={value}
+                onChange={(e) => patch(i, { params: { ...section.params, [param]: e.target.value } })} />
+            </label>
+          ))}
+          <CheckPanel sql={section.sql} database={section.database}
+            params={() => reportBindings(section)} />
         </div>
       ))}
 

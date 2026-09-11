@@ -67,6 +67,8 @@ try {
     const page = await browser.newPage({ colorScheme, viewport: { width: 1440, height: 1000 } })
     const errors = []
     const posted = []
+    const checked = []
+    let keptFilteredReport
     let dashboardFailure = false
     let holdDashboards = false
     let releaseDashboards
@@ -94,9 +96,16 @@ try {
       if (path === '/reports' || path === '/alerts') {
         if (request.method() === 'POST') {
           posted.push(request.postDataJSON())
+          if (path === '/reports' && request.postDataJSON().name === 'Filtered dashboard') {
+            keptFilteredReport = { ...reports[0], ...request.postDataJSON(), id: 'filtered-report' }
+          }
           if (holdSave) await new Promise((resolve) => { releaseSave = resolve })
         }
-        data = path === '/reports' ? reports : alerts
+        data = path === '/reports' ? [...reports, ...(keptFilteredReport ? [keptFilteredReport] : [])] : alerts
+      }
+      if (path === '/check') {
+        checked.push(request.postDataJSON())
+        data = { ok: true, columns: [], rows: [], truncated: false, elapsed_ms: 1 }
       }
       if (path === '/dashboards') {
         if (holdDashboards) await new Promise((resolve) => { releaseDashboards = resolve })
@@ -105,7 +114,12 @@ try {
             error: { message: 'Dashboard access refused', kind: 'http' },
           } })
         }
-        data = [dashboard, { ...dashboard, id: 'empty', spec: '{"tiles":[]}' }]
+        data = [dashboard, { ...dashboard, id: 'empty', spec: '{"tiles":[]}' }, {
+          ...dashboard, id: 'filtered', name: 'Filtered dashboard',
+          spec: JSON.stringify({ rangeHours: 168, variables: { city: "O'Reilly & fils", unused: 'omit' },
+            tiles: [{ ...JSON.parse(dashboard.spec).tiles[0],
+              sql: 'SELECT {city:String}, {from:DateTime}, {to:DateTime}' }] }),
+        }]
       }
       await route.fulfill({ json: data })
     })
@@ -219,6 +233,29 @@ try {
     await page.getByRole('button', { name: 'Try again', exact: true }).click()
     await name.waitFor()
     await waitValue(name, 'Kept dashboard')
+
+    await page.goto(`${base}/reports?from_dashboard=filtered`)
+    await name.waitFor()
+    await waitValue(name, 'Filtered dashboard')
+    await waitValue(form.getByLabel('PARAMETER city', { exact: true }), "O'Reilly & fils")
+    await form.getByText('Last 168 hours, recalculated for each edition.', { exact: false }).waitFor()
+    await form.getByLabel('PARAMETER city', { exact: true }).fill('Paris & Lyon')
+    const preview = page.waitForResponse('**/api/check')
+    await form.getByRole('button', { name: 'Test it', exact: true }).click()
+    await (await preview).finished()
+    const previewParams = Object.fromEntries(checked.at(-1).params)
+    assert.equal(previewParams.city, 'Paris & Lyon')
+    assert.equal(new Date(previewParams.to.replace(' ', 'T') + 'Z') -
+      new Date(previewParams.from.replace(' ', 'T') + 'Z'), 168 * 3600000)
+    await form.getByRole('button', { name: 'Start keeping it', exact: true }).click()
+    await form.waitFor({ state: 'hidden' })
+    const keptSection = JSON.parse(posted.at(-1).spec).sections[0]
+    assert.deepEqual(keptSection.params, { city: 'Paris & Lyon' })
+    assert.equal(keptSection.range_hours, 168)
+    await page.reload()
+    await edit('Filtered dashboard').click()
+    await waitValue(form.getByLabel('PARAMETER city', { exact: true }), 'Paris & Lyon')
+    await form.getByText('Last 168 hours, recalculated for each edition.', { exact: false }).waitFor()
 
     const alertForm = page.locator('.page--alerts .aform')
     const alertName = alertForm.getByLabel('NAME', { exact: true })

@@ -12,6 +12,9 @@
 //! server page, and no dependency that could disagree with it.
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+
+use crate::clickhouse::{Client, QueryOptions};
 
 /// What the server's clock says, in the server's timezone.
 #[derive(Debug, Clone, Copy, Deserialize)]
@@ -153,6 +156,92 @@ pub struct Section {
     /// dashboards use. Absent means the table is the answer.
     #[serde(default)]
     pub chart: Option<serde_json::Value>,
+    #[serde(default)]
+    pub params: BTreeMap<String, String>,
+    /// A rolling window, recalculated for each edition, never at save time.
+    #[serde(default)]
+    pub range_hours: u32,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Window {
+    pub hours: u32,
+    pub window_from: String,
+    pub window_to: String,
+}
+
+impl Section {
+    /// Used by both manual and scheduled editions. A failed window affects
+    /// only the sections that need one; every other statement still runs.
+    pub async fn run(&self, ch: &Client, windows: Result<&[Window], String>) -> SectionResult {
+        let mut result = SectionResult {
+            title: self.title.clone(),
+            sql: self.sql.clone(),
+            params: self.params.clone(),
+            columns: Vec::new(),
+            rows: Vec::new(),
+            truncated: false,
+            error: String::new(),
+            chart: None,
+        };
+        let params = if self.range_hours > 0 {
+            windows.and_then(|w| self.bindings(w))
+        } else {
+            self.bindings(&[])
+        };
+        match params {
+            Ok(params) => result.params = params,
+            Err(error) => {
+                result.error = error;
+                return result;
+            }
+        }
+        let opts = QueryOptions {
+            params: result
+                .params
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect(),
+            database: (!self.database.is_empty()).then(|| self.database.clone()),
+            force_readonly: true,
+            max_rows: Some(SECTION_ROW_CAP as u64),
+            quote_64bit_integers: true,
+            ..Default::default()
+        };
+        match ch.table(&self.sql, opts).await {
+            Ok(table) => {
+                result.columns = table.columns;
+                result.rows = table.rows;
+                result.truncated = table.truncated;
+                result.chart = self.chart.clone();
+            }
+            Err(error) => {
+                result.error = error
+                    .to_string()
+                    .lines()
+                    .next()
+                    .unwrap_or("failed")
+                    .to_string()
+            }
+        }
+        result
+    }
+
+    pub fn bindings(&self, windows: &[Window]) -> Result<BTreeMap<String, String>, String> {
+        let mut params = BTreeMap::new();
+        if self.range_hours > 0 {
+            let window = windows
+                .iter()
+                .find(|w| w.hours == self.range_hours)
+                .ok_or_else(|| "the report's time window could not be read".to_string())?;
+            params.insert("from".into(), window.window_from.clone());
+            params.insert("to".into(), window.window_to.clone());
+        }
+        // Dashboard variables override the range's defaults, including an
+        // explicitly supplied `from` or `to`. Preserve that precedence here.
+        params.extend(self.params.clone());
+        Ok(params)
+    }
 }
 
 /// What a report is made of. Stored as JSON for the same reason a dashboard's
@@ -176,7 +265,46 @@ impl Spec {
         if sections.is_empty() {
             return Err("a report needs at least one section with a statement".into());
         }
+        for section in &sections {
+            if section.range_hours > 2160 {
+                return Err("a report's rolling window is at most 2160 hours (90 days)".into());
+            }
+            if section.params.keys().any(|name| {
+                name.is_empty() || !name.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_')
+            }) {
+                return Err("report parameter names use letters, digits and underscores".into());
+            }
+        }
         Ok(Spec { sections })
+    }
+
+    /// One server clock reading for the entire edition, even if its sections
+    /// use different windows. UTC strings match dashboard range bindings; the
+    /// report's scheduling timezone does not change a query's parameters.
+    pub async fn windows(&self, ch: &Client) -> crate::error::Result<Vec<Window>> {
+        let hours: std::collections::BTreeSet<_> = self
+            .sections
+            .iter()
+            .map(|s| s.range_hours)
+            .filter(|h| *h > 0)
+            .collect();
+        if hours.is_empty() {
+            return Ok(Vec::new());
+        }
+        ch.rows_with(
+            "SELECT arrayJoin({hours:Array(UInt32)}) AS hours, \
+             toString(now('UTC') - toIntervalHour(hours)) AS window_from, \
+             toString(now('UTC')) AS window_to",
+            QueryOptions {
+                params: vec![(
+                    "hours".into(),
+                    serde_json::to_string(&hours).expect("integer hours"),
+                )],
+                force_readonly: true,
+                ..Default::default()
+            },
+        )
+        .await
     }
 }
 
@@ -185,6 +313,9 @@ impl Spec {
 pub struct SectionResult {
     pub title: String,
     pub sql: String,
+    /// The actual values used for this edition, including resolved windows.
+    #[serde(default)]
+    pub params: BTreeMap<String, String>,
     /// Names *and* types. A snapshot that kept only names would leave the
     /// reader unable to draw it: a chart needs to know which column is a time
     /// and which is a number, and by then the query is long gone.
@@ -204,6 +335,81 @@ pub struct SectionResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    #[ignore = "requires a ClickHouse configured through FLINT_CLICKHOUSE_*; reads only"]
+    async fn live_report_filters_reach_the_query_and_the_snapshot() {
+        use clap::Parser;
+        let config = crate::config::Config::parse_from(["flint"]);
+        let ch = Client::new(&config).unwrap();
+        let spec = Spec::parse(r#"{"sections":[{"title":"filtered","sql":"SELECT {city:String} AS city, {from:DateTime} AS start, {to:DateTime} AS end, dateDiff('hour', {from:DateTime}, {to:DateTime}) AS hours","params":{"city":"O'Reilly & fils"},"range_hours":168},{"title":"plain","sql":"SELECT 1"}]}"#).unwrap();
+        let windows = spec.windows(&ch).await.unwrap();
+        let result = spec.sections[0].run(&ch, Ok(&windows)).await;
+        assert!(result.error.is_empty(), "{}", result.error);
+        assert_eq!(result.rows[0][0], "O'Reilly & fils");
+        assert_eq!(result.rows[0][1], result.params["from"]);
+        assert_eq!(result.rows[0][2], result.params["to"]);
+        assert_eq!(result.rows[0][3].as_str(), Some("168"));
+        let kept: SectionResult =
+            serde_json::from_str(&serde_json::to_string(&result).unwrap()).unwrap();
+        assert_eq!(kept.params, result.params);
+        let failed = spec.sections[0]
+            .run(&ch, Err("clock unavailable".into()))
+            .await;
+        assert_eq!(failed.error, "clock unavailable");
+        let plain = spec.sections[1]
+            .run(&ch, Err("clock unavailable".into()))
+            .await;
+        assert!(plain.error.is_empty(), "{}", plain.error);
+        assert_eq!(plain.rows.len(), 1);
+    }
+
+    #[test]
+    fn filters_survive_storage_without_freezing_the_window() {
+        let raw = r#"{"sections":[{"title":"sales","sql":"SELECT {region:String}","params":{"region":"O'Reilly & fils","empty":""},"range_hours":168}]}"#;
+        let spec = Spec::parse(raw).unwrap();
+        let stored = serde_json::to_string(&spec).unwrap();
+        let section = &Spec::parse(&stored).unwrap().sections[0];
+        assert_eq!(section.range_hours, 168);
+        assert_eq!(section.params["region"], "O'Reilly & fils");
+        assert_eq!(section.params["empty"], "");
+        assert!(!section.params.contains_key("from"));
+    }
+
+    #[test]
+    fn editions_bind_their_own_window_and_keep_explicit_overrides() {
+        let spec = Spec::parse(r#"{"sections":[{"title":"a","sql":"SELECT 1","range_hours":24,"params":{"from":"explicit","city":"Paris"}}]}"#).unwrap();
+        let section = &spec.sections[0];
+        for day in ["2026-09-07 10:00:00", "2026-09-08 10:00:00"] {
+            let bindings = section
+                .bindings(&[Window {
+                    hours: 24,
+                    window_from: "calculated".into(),
+                    window_to: day.into(),
+                }])
+                .unwrap();
+            assert_eq!(bindings["from"], "explicit");
+            assert_eq!(bindings["to"], day);
+            assert_eq!(bindings["city"], "Paris");
+        }
+        assert!(section.bindings(&[]).is_err());
+    }
+
+    #[test]
+    fn old_reports_need_no_window_and_bad_filters_are_refused() {
+        let spec = Spec::parse(r#"{"sections":[{"title":"a","sql":"SELECT 1"}]}"#).unwrap();
+        assert!(spec.sections[0].bindings(&[]).unwrap().is_empty());
+        for extra in [
+            r#""range_hours":-1"#,
+            r#""range_hours":2161"#,
+            r#""range_hours":1.5"#,
+            r#""params":{"bad-key":"x"}"#,
+            r#""params":{"x":42}"#,
+        ] {
+            let raw = format!(r#"{{"sections":[{{"title":"a","sql":"SELECT 1",{extra}}}]}}"#);
+            assert!(Spec::parse(&raw).is_err(), "{raw}");
+        }
+    }
 
     #[test]
     fn only_a_time_of_day_has_a_zone_to_be_in() {
