@@ -406,15 +406,30 @@ function Group<T>({
   )
 }
 
+/** What a settings profile fixes.
+ *
+ *  The two right-hand columns are both for the exception rather than the rule —
+ *  most settings have no floor and no ceiling, and almost none is `CONST` — so
+ *  the comment below already dropped their *cells* rather than dashing them.
+ *  Dropping the cell and keeping the column only moves the problem: on this
+ *  server the table was `Setting | Value` followed by 400px of ruled nothing,
+ *  which says Flint asked the wrong question of every row just as loudly as a
+ *  column of em-dashes would.
+ *
+ *  So each column appears when some row in the table has something to put in
+ *  it. Asked of the table and not of the row, because a heading has to be able
+ *  to stand over the whole column. */
 function Settings({ settings }: { settings: ProfileSetting[] }) {
+  const bounded = settings.some((s) => s.min || s.max)
+  const fixed = settings.some((s) => s.writability === 'CONST')
   return (
     <table className="tbl acc__grants">
       <thead>
         <tr>
           <th>Setting</th>
           <th className="tbl--n">Value</th>
-          <th>Bounds</th>
-          <th />
+          {bounded ? <th>Bounds</th> : null}
+          {fixed ? <th /> : null}
         </tr>
       </thead>
       <tbody>
@@ -425,14 +440,18 @@ function Settings({ settings }: { settings: ProfileSetting[] }) {
             {/* Dropped rather than dashed: most settings have no floor and no
                 ceiling, and a column of em-dashes says Flint asked the wrong
                 question of every row. */}
-            <td className="mono-dim">
-              {s.min && s.max ? `${s.min} to ${s.max}` : s.min ? `at least ${s.min}` : s.max ? `at most ${s.max}` : ''}
-            </td>
-            <td>
-              {s.writability === 'CONST' ? (
-                <span className="flag flag--idle">fixed — cannot be changed</span>
-              ) : null}
-            </td>
+            {bounded ? (
+              <td className="mono-dim">
+                {s.min && s.max ? `${s.min} to ${s.max}` : s.min ? `at least ${s.min}` : s.max ? `at most ${s.max}` : ''}
+              </td>
+            ) : null}
+            {fixed ? (
+              <td>
+                {s.writability === 'CONST' ? (
+                  <span className="flag flag--idle">fixed — cannot be changed</span>
+                ) : null}
+              </td>
+            ) : null}
           </tr>
         ))}
       </tbody>

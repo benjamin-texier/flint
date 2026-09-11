@@ -10,6 +10,7 @@ import {
   rolesFor,
   scopeOf,
   type AccessReport,
+  type Grant,
   type Note,
 } from '../lib/access'
 import { Create, Manage } from '../components/AccessActions'
@@ -112,33 +113,7 @@ function Body({ report, may }: { report: AccessReport; may: boolean }) {
                   ))}
                 </p>
               ) : null}
-              {grants.length ? (
-                <table className="tbl acc__grants">
-                  <thead>
-                    <tr>
-                      <th>On</th>
-                      <th>May</th>
-                      <th />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {grants.map((g, i) => (
-                      <tr key={i}>
-                        <td className="tbl__key">{scopeOf(g)}</td>
-                        <td className="mono-dim">{accessOf(g)}</td>
-                        <td>
-                          {g.with_grant_option ? (
-                            <span className="flag flag--idle">and may grant it</span>
-                          ) : null}
-                          {/* Rare and invisible if you only read the positive
-                              rows, which is exactly why it is shown. */}
-                          {g.revoked ? <span className="flag flag--error">revoked</span> : null}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              ) : null}
+              <Grants grants={grants} />
             </li>
           )
         })}
@@ -169,36 +144,63 @@ function Body({ report, may }: { report: AccessReport; may: boolean }) {
               {may ? (
                 <Manage subject={granteeOfRole(role)} storage={role.storage} report={report} />
               ) : null}
-              {grants.length ? (
-                <table className="tbl acc__grants">
-                  <thead>
-                    <tr>
-                      <th>On</th>
-                      <th>May</th>
-                      <th />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {grants.map((g, i) => (
-                      <tr key={i}>
-                        <td className="tbl__key">{scopeOf(g)}</td>
-                        <td className="mono-dim">{accessOf(g)}</td>
-                        <td>
-                          {g.with_grant_option ? (
-                            <span className="flag flag--idle">and may grant it</span>
-                          ) : null}
-                          {g.revoked ? <span className="flag flag--error">revoked</span> : null}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              ) : null}
+              <Grants grants={grants} />
             </li>
           )
         })}
       </ul>
     </>
+  )
+}
+
+/** One grantee's grants.
+ *
+ *  Extracted because it was this markup twice over — once under the users and
+ *  once under the roles — and the fix below had to land on both or the two
+ *  lists would disagree about what a grant looks like.
+ *
+ *  The third column is the point. It carries the two things a grant can be
+ *  beyond its scope and its privileges — grantable, or revoked — and both are
+ *  rare, so on most servers every cell in it is empty. Rendered
+ *  unconditionally it was a 50px strip of ruled nothing on every card, which is
+ *  the house rule about a dashed absent figure one level up: a column nothing
+ *  answered says Flint asked the wrong question. So it appears when some grant
+ *  in *this* table has something to put in it.
+ *
+ *  Asked of the table rather than of the row, deliberately. Per row it would
+ *  give a ragged edge where one grant in twenty is grantable, and the column's
+ *  heading has to be able to stand over the whole of it. */
+function Grants({ grants }: { grants: Grant[] }) {
+  if (grants.length === 0) return null
+  const flagged = grants.some((g) => g.with_grant_option || g.revoked)
+  return (
+    <table className="tbl acc__grants">
+      <thead>
+        <tr>
+          <th>On</th>
+          <th>May</th>
+          {flagged ? <th /> : null}
+        </tr>
+      </thead>
+      <tbody>
+        {grants.map((g, i) => (
+          <tr key={i}>
+            <td className="tbl__key">{scopeOf(g)}</td>
+            <td className="mono-dim">{accessOf(g)}</td>
+            {flagged ? (
+              <td>
+                {g.with_grant_option ? (
+                  <span className="flag flag--idle">and may grant it</span>
+                ) : null}
+                {/* Rare and invisible if you only read the positive rows, which
+                    is exactly why it is shown. */}
+                {g.revoked ? <span className="flag flag--error">revoked</span> : null}
+              </td>
+            ) : null}
+          </tr>
+        ))}
+      </tbody>
+    </table>
   )
 }
 
