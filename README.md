@@ -129,7 +129,8 @@ rows; **Infrastructure** works on structure and on the server. See
   and long operations recorded as rows rather than spinners.
 
 Every cap, fold and filter states its own count, and a figure that cannot be had
-is dropped rather than dashed. The [full feature guide](docs/features.md) walks
+is dropped rather than dashed — as is the column it would have sat in, when no
+row in the table has one. The [full feature guide](docs/features.md) walks
 through all of it.
 
 ## Why another one

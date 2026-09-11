@@ -185,11 +185,22 @@ they stay where they were.
 
 **`INFORMATION_SCHEMA` is listed once.** ClickHouse publishes every view in it
 twice — lower case for PostgreSQL compatibility, upper case for MySQL's — and
-the database itself under both names. They are the same views in the same
-database, so Flint keeps the lower-case name at both levels, and the headline
-counts on the server page are taken off the list rather than from
-`system.databases`, so the two cannot disagree. Either spelling still opens: it
-is the listing that is collapsed, not the lookup.
+the database itself under both names. The doubling is on both axes at once and
+independently, which is the part that is easy to get wrong: forty rows of
+`system.tables` for ten views. They are the same views in the same database, so
+Flint keeps the lower-case name at both levels, and the headline counts on the
+server page are taken off the list rather than from `system.databases`, so the
+two cannot disagree. Either spelling still opens: it is the listing that is
+collapsed, not the lookup.
+
+Infrastructure's board counts the same things and has no list to take them off:
+it prints two scalars, read in the same row as the version and the uptime. So it
+carries the collapse in its own SQL — the table count filtering the view's name
+*and* the database's, the database count only the database's. Until it did, the
+board read "8 databases, 496 objects" beside a server page listing 7 and 466.
+Two pages disagreeing about how many databases a server has is worse than either
+figure being wrong on its own, and the one that can be reconciled against a list
+is the one that has to be right.
 
 **Bundled trust store.** The web PKI is compiled into the binary, so HTTPS to
 ClickHouse Cloud works from an image with no certificate store. Point
