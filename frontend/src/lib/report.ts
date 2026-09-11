@@ -6,6 +6,8 @@
 
 import type { ChartSpec } from './chart'
 import { splitStatements } from './sql'
+import { followsRange, rangeParams, type DashboardSpec } from './dashboard'
+import { declaredParams } from './publish'
 
 export type Schedule =
   | { kind: 'every'; hours: number }
@@ -17,6 +19,8 @@ export interface Section {
   sql: string
   database: string
   chart?: ChartSpec | null
+  params?: Record<string, string>
+  range_hours?: number
 }
 
 export interface Report {
@@ -52,6 +56,7 @@ export interface ReportRun {
 export interface SectionResult {
   title: string
   sql: string
+  params?: Record<string, string>
   columns: { name: string; type: string }[]
   rows: unknown[][]
   truncated: boolean
@@ -171,6 +176,7 @@ export function parseSections(raw: string): SectionResult[] {
       {
         title: typeof s.title === 'string' ? s.title : '',
         sql: typeof s.sql === 'string' ? s.sql : '',
+        params: readParams(s.params),
         columns: normaliseColumns(s.columns),
         rows,
         truncated: s.truncated === true,
@@ -239,15 +245,36 @@ export function sectionsFromDashboard(tiles: {
   sql: string
   database: string
   chart: ChartSpec | null
-}[]): Section[] {
+}[], filters?: Pick<DashboardSpec, 'variables' | 'rangeHours'>): Section[] {
   return tiles
     .filter((t) => t.sql.trim())
-    .map((t) => ({
+    .map((t) => {
+      const declared = new Set(declaredParams(t.sql))
+      const params = Object.fromEntries(Object.entries(filters?.variables ?? {})
+        .filter(([name]) => declared.has(name)))
+      const range = followsRange(t.sql) ? filters?.rangeHours ?? 0 : 0
+      return {
       title: t.title,
       sql: t.sql,
       database: t.database,
       chart: t.chart,
-    }))
+      ...(Object.keys(params).length ? { params } : {}),
+      ...(range > 0 ? { range_hours: range } : {}),
+    }})
+}
+
+function readParams(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  return Object.fromEntries(Object.entries(value).filter((entry): entry is [string, string] =>
+    typeof entry[1] === 'string'))
+}
+
+/** Resolve only for a preview. Saved reports keep the relative duration. */
+export function reportBindings(section: Section, now = new Date()): [string, string][] {
+  return Object.entries({
+    ...rangeParams(section.range_hours ?? 0, now),
+    ...section.params,
+  })
 }
 
 /** A saved query, as a report section.

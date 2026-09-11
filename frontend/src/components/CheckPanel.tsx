@@ -23,7 +23,7 @@ export function CheckPanel({
   condition?: string
   /** Values for the statement's placeholders, so a parameterised statement can
    *  be tested with what a caller would actually send. */
-  params?: [string, string][]
+  params?: [string, string][] | (() => [string, string][])
   /** Why this cannot be tested here, when it cannot. Said instead of letting
    *  ClickHouse answer with "Substitution `city` is not set", which is true and
    *  unhelpful. */
@@ -48,7 +48,8 @@ export function CheckPanel({
     setRunning(true)
     setFailed(null)
     try {
-      const answer = await api.check({ sql, database, condition, params })
+      const answer = await api.check({ sql, database, condition,
+        params: typeof params === 'function' ? params() : params })
       setResult(answer)
       // Only where it actually ran: a failed check knows nothing about the
       // columns, and handing up an empty list would read as "this statement

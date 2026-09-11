@@ -71,6 +71,17 @@ preserve the rail's active filter. Both themes run in Chrome or
 Chromium (`FLINT_BROWSER` can name the binary). No ClickHouse is needed and no
 workspace data is written.
 
+The same check covers dashboard filters through preview, save and reopening.
+The report execution path also has an optional read-only ClickHouse test:
+
+```bash
+cargo test live_report_filters_reach_the_query_and_the_snapshot -- --ignored
+```
+
+It uses the usual `FLINT_CLICKHOUSE_*` environment variables, executes a section
+with string and time parameters, and checks the bindings retained in its
+snapshot. No workspace database is needed.
+
 Neither suite can see the classes of bug that have actually shipped here, so
 there are three checks that run against something live — see [Checking a
 deployment](#checking-a-deployment):
