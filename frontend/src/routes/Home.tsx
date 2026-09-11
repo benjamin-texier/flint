@@ -13,6 +13,7 @@ import {
   describeReach,
   reachOf,
   recentlyTouched,
+  saysUnreached,
   trafficOf,
 } from '../lib/workspace'
 import { MetricLine, type Metric } from '../components/MetricLine'
@@ -241,6 +242,7 @@ function Touched({
   reach: Map<string, Reach>
   query: Fetching
 }) {
+  const aside = saysUnreached(total, unreached)
   return (
     <section className="section home__block">
       <div className="section__bar">
@@ -287,9 +289,15 @@ function Touched({
           <Link className="home__link" to="/query?panel=saved">
             All {exact(total)} {total === 1 ? 'statement' : 'statements'} ›
           </Link>
-          {unreached ? (
+          {/* The separator is the row's own, aria-hidden like the one in the
+              list above it: a screen reader was reading the middot out as part
+              of the sentence. */}
+          {aside ? (
             <span className="home__aside">
-              · {exact(unreached)} of them run nowhere else
+              <span className="home__dot" aria-hidden="true">
+                ·
+              </span>
+              {aside}
             </span>
           ) : null}
         </p>

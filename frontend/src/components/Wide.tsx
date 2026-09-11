@@ -58,6 +58,7 @@ export function useEdges() {
 export function Wide({
   label,
   className,
+  tall = false,
   children,
 }: {
   /** What is inside, for the screen reader — "Objects", "Columns", not
@@ -65,6 +66,13 @@ export function Wide({
   label: string
   /** Extra classes for the scroller, for the panels that style their own. */
   className?: string
+  /** For a list long enough to scroll its own column headings off the screen.
+   *  Takes a height so the headings can stick to it — see
+   *  `.panel__scroll--tall`, which is where the trade is argued. Opt-in rather
+   *  than the default: most of these tables are ten rows, and a panel that
+   *  scrolls inside a page that also scrolls is a cost worth paying only where
+   *  the headings would otherwise be lost. */
+  tall?: boolean
   children: ReactNode
 }) {
   const { edges, ref } = useEdges()
@@ -74,7 +82,9 @@ export function Wide({
     <div className={`wide${edgeClass(edges)}`}>
       <div
         ref={ref}
-        className={`panel__scroll${className ? ` ${className}` : ''}`}
+        className={`panel__scroll${tall ? ' panel__scroll--tall' : ''}${
+          className ? ` ${className}` : ''
+        }`}
         role={overflows ? 'region' : undefined}
         aria-label={overflows ? edgeLabel(label, edges) : undefined}
         tabIndex={overflows ? 0 : undefined}
