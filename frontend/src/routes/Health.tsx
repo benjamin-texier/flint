@@ -24,6 +24,7 @@ import { Operations } from '../components/Operations'
 import { OverTime } from '../components/OverTime'
 import { Dictionaries } from '../components/Dictionaries'
 import { Pressure } from '../components/Pressure'
+import { Wide } from '../components/Wide'
 import { Trace } from '../components/Trace'
 import { WatchedHere } from '../components/WatchedHere'
 import { Errors } from '../components/Errors'
@@ -453,7 +454,8 @@ function Storage({ report }: { report: Q<StorageReport> }) {
       q={report}
     >
       {rows.length ? (
-        <table className="tbl">
+        <Wide label="What it costs on disk" tall>
+          <table className="tbl">
           <thead>
             <tr>
               <th>Table</th>
@@ -495,7 +497,8 @@ function Storage({ report }: { report: Q<StorageReport> }) {
               )
             })}
           </tbody>
-        </table>
+          </table>
+        </Wide>
       ) : (
         <EmptyNote title="Nothing stored">No active parts in any user database.</EmptyNote>
       )}

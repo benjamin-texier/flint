@@ -2581,7 +2581,26 @@
  *
  * The floor is not decoration: on a 600px window `100vh` minus the chrome and
  * the panel's own bar leaves a peephole, and a list you read four rows at a
- * time is worse than one that has lost its header. */
+ * time is worse than one that has lost its header.
+ *
+ * ## Where this is worth the trade
+ *
+ * A threshold rather than a taste, so the next table does not need the argument
+ * had again: **about two viewports.** Past that the headings are absent for
+ * more of the scroll than they are present, and a nested scroller is the lesser
+ * cost. Under it they are gone only for the tail and the cure is worse — three
+ * sections of a page each becoming its own scroll region is harder to read than
+ * one long page.
+ *
+ * Measured at a 1440×950 window, that is: the object list on a database
+ * (4,684px), Infrastructure's schema (12,034px) and what it costs on disk
+ * (1,987px, and six numeric columns that are meaningless unlabelled) take it.
+ * Diagnostics' three ranked tables (~1,250px each, and three of them stacked),
+ * the partition pressure table (1,144px) and Config's two settings tables
+ * (~750px, which is under the height anyway and so would never engage) do not.
+ *
+ * The check is `contrib/browser-check.mjs`'s business to keep honest; the
+ * inventory above was taken by walking every page and measuring each table. */
 .panel__scroll--tall {
   max-height: max(18rem, calc(100vh - var(--chrome-h) - 5rem));
 }

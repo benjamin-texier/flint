@@ -11,6 +11,7 @@ import { Alter } from '../components/Alter'
 import { Create } from '../components/Create'
 import { Storage } from '../components/Storage'
 import { EmptyNote, ErrorNote, Loading } from '../components/Note'
+import { Wide } from '../components/Wide'
 
 /** Infrastructure — Schema: the objects on this server, and how to remove them.
  *
@@ -98,7 +99,8 @@ export function SchemaPage() {
                 ? `${count(data.total)} objects`
                 : `Showing ${objects.length} of ${count(data?.total ?? 0)} objects`}
             </p>
-            <table className="tbl">
+            <Wide label="Objects" tall>
+              <table className="tbl">
               <thead>
                 <tr>
                   <th>Object</th>
@@ -212,7 +214,8 @@ export function SchemaPage() {
                   ) : null,
                 ])}
               </tbody>
-            </table>
+              </table>
+            </Wide>
           </>
         ) : null}
       </section>
