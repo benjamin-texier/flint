@@ -167,6 +167,10 @@ function Nav({ config }: { config: AppConfig | undefined }) {
      answer for anything outside `/infra` is Data — would tell a reader they
      are somewhere they are not. */
   const outside = outsideSpaces(pathname)
+  /* Resolved once, because two pieces of the bar are furniture *for* it and
+     both were being drawn whether or not it had anything in it — see the rule
+     each of them carries below. */
+  const sections = outside ? [] : here.sections
 
   /* Only where Flint keeps anything, and cached: this rides along on every
      page, so it must not be a request per navigation. */
@@ -220,11 +224,21 @@ function Nav({ config }: { config: AppConfig | undefined }) {
               <Badge count={countIn(items, space.id)} />
             </Link>
           ))}
-          <span className="chrome__navsep" aria-hidden="true" />
+          {/* It separates the space names from the section row. On the
+              checkup there is no section row, and a rule with nothing on the
+              far side of it is a rule that says a row went missing. */}
+          {sections.length ? <span className="chrome__navsep" aria-hidden="true" /> : null}
         </nav>
       ) : null}
+      {/* Absent rather than empty. A labelled navigation landmark holding no
+          links announces a section row to a screen reader and then offers
+          nothing in it, and its own padding left a 6px orphan in the bar beside
+          the rule above. Guarded on the list rather than on `outside`, so a
+          deployment whose sections are all absent is covered by the same
+          test. */}
+      {sections.length ? (
       <nav className="chrome__sections" aria-label={`${here.label} sections`}>
-        {(outside ? [] : here.sections).map((item) => (
+        {sections.map((item) => (
           <NavLink
             key={item.id}
             to={item.to}
@@ -243,6 +257,7 @@ function Nav({ config }: { config: AppConfig | undefined }) {
           </NavLink>
         ))}
       </nav>
+      ) : null}
     </div>
   )
 }
