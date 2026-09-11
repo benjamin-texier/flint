@@ -2538,7 +2538,8 @@
   pointer-events: none;
   opacity: 0;
   transition: opacity var(--motion-base) var(--ease-out);
-  z-index: 1;
+  /* Over a sticky header too — see `.panel__scroll--tall thead th`. */
+  z-index: 3;
 }
 
 .wide::before {
@@ -2554,6 +2555,44 @@
 .wide.is-more-left::before,
 .wide.is-more-right::after {
   opacity: 1;
+}
+
+/* ── A list long enough to lose its own header ───────────────────────────────
+ * `default` holds 155 objects, so the list is 4,700px of rows under nine column
+ * headings that leave the screen after the first thirty. What is left is three
+ * unlabelled columns of integers: 17, 0, 0 tells you nothing about which is
+ * Cols, which is Rows and which is On disk, and the reader's only way back to
+ * the headings is to scroll four thousand pixels up and then down again.
+ *
+ * `position: sticky` cannot reach the page's scroller from in here, and that is
+ * not a guess — measured in a browser, the `th` leaves the viewport at exactly
+ * the same pixel its wrapper does. `overflow-x: auto` makes the wrapper the
+ * nearest scrollport on *both* axes (CSS Overflow 3: a `visible` paired with an
+ * `auto` computes to `auto`), and a scrollport with no vertical overflow of its
+ * own has nothing for a sticky child to stick within. Nothing but `clip` can
+ * pair with `auto`, and `clip` does not scroll.
+ *
+ * So the panel takes a height and becomes the scroller itself. That is a real
+ * trade — the page's scrollbar no longer measures the list — and it is paid
+ * only where the list is long enough to need it: `max-height` is inert until
+ * the rows exceed it, so a database with ten tables is untouched. The list is
+ * the last thing on the page, so scrolling down the page and then on into the
+ * list is one continuous gesture rather than two competing ones.
+ *
+ * The floor is not decoration: on a 600px window `100vh` minus the chrome and
+ * the panel's own bar leaves a peephole, and a list you read four rows at a
+ * time is worse than one that has lost its header. */
+.panel__scroll--tall {
+  max-height: max(18rem, calc(100vh - var(--chrome-h) - 5rem));
+}
+
+.panel__scroll--tall thead th {
+  position: sticky;
+  top: 0;
+  /* Above the rows, below the shade: `.wide`'s gradients are the one thing on
+     this panel that has to stay on top of the header, because the columns they
+     stand for are as hidden from the header as they are from the rows. */
+  z-index: 2;
 }
 
 /* Focusable only while something is off screen — see `Wide` — so the ring is
@@ -15996,11 +16035,23 @@ button.acol__val:hover {
 
 /* A dash, not a tick. Flint measured something and is printing the figure; it
  * is not awarding a pass. */
+/* One line box tall, with the rule centred inside it, rather than a 1px box the
+ * grid is asked to place. The row is baseline-aligned and an empty 1px span has
+ * no baseline to align, so `align-self: center` was the only thing that put the
+ * dash anywhere near its label — and it centres in the *row*, not on the row's
+ * first line. On the one row whose reading wrapped to two lines that dropped the
+ * dash 10px, into the gap between them, while every single-line row was exact to
+ * the pixel. Data-dependent, so it appears only once a reading is long enough to
+ * wrap and no test could have seen it.
+ *
+ * `1lh` is the line box, which is the thing being aligned to. Spelling it as
+ * `calc(var(--size-body) * 1.5)` would restate both the row's font size and its
+ * line-height, and would then be wrong the day either moved. */
 .cleared__mark {
   width: 9px;
-  height: 1px;
-  align-self: center;
-  background: var(--success);
+  height: 1lh;
+  align-self: start;
+  background: linear-gradient(var(--success), var(--success)) center / 9px 1px no-repeat;
 }
 
 .cleared__label {

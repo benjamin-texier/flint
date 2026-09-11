@@ -5,6 +5,7 @@ import {
   callsServed,
   countUnreached,
   describeReach,
+  saysUnreached,
   reachOf,
   recentlyTouched,
   statementKey,
@@ -117,6 +118,29 @@ describe('describeReach', () => {
   it('says so plainly when nothing does', () => {
     expect(describeReach({ endpoints: [], tiles: 0 })).toBe('nowhere else')
     expect(describeReach(undefined)).toBe('nowhere else')
+  })
+})
+
+describe('saysUnreached', () => {
+  it('adds nothing when every statement runs somewhere', () => {
+    expect(saysUnreached(4, 0)).toBeNull()
+    expect(saysUnreached(0, 0)).toBeNull()
+  })
+
+  // The state every new Flint is in for its first week, and the one the page
+  // was getting wrong: a plural verb on a singular subject, and "them" for a
+  // workspace holding one statement.
+  it('speaks of one statement as one', () => {
+    expect(saysUnreached(1, 1)).toBe('it runs nowhere else')
+  })
+
+  it('says none of them rather than counting all of them', () => {
+    expect(saysUnreached(4, 4)).toBe('none of them runs anywhere else')
+  })
+
+  it('agrees with its own count', () => {
+    expect(saysUnreached(4, 1)).toBe('1 of them runs nowhere else')
+    expect(saysUnreached(4, 3)).toBe('3 of them run nowhere else')
   })
 })
 

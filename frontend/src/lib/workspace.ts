@@ -113,6 +113,25 @@ export function countUnreached(
   }).length
 }
 
+/** That count, in words, beside the link to all of them.
+ *
+ *  Here rather than in the component because it is three sentences and not one,
+ *  and the page was printing the middle of the three for every case: "1 of them
+ *  run nowhere else" — a plural verb on a singular subject, and "them" for a
+ *  workspace holding exactly one statement, which is the state every new Flint
+ *  is in for its first week.
+ *
+ *  Returns `null` where there is nothing to add. A workspace whose every
+ *  statement runs nowhere is the ordinary case, not a finding, and "1 of them"
+ *  when the link beside it already says "All 1 statement" is a sentence that
+ *  restates its own subject. */
+export function saysUnreached(total: number, unreached: number): string | null {
+  if (unreached <= 0) return null
+  if (total === 1) return 'it runs nowhere else'
+  if (unreached === total) return 'none of them runs anywhere else'
+  return `${unreached} of them run${unreached === 1 ? 's' : ''} nowhere else`
+}
+
 /** The statements most recently worked on.
  *
  *  `updated_at` and not `created_at`: the list answers "what is being worked

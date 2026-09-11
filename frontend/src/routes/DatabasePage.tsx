@@ -1032,7 +1032,7 @@ function ObjectTable({
               : 'Every object in this database is a materialized view’s own storage.'}
           </p>
         ) : (
-        <Wide label="Objects">
+        <Wide label="Objects" tall>
       <table className="tbl">
         <thead>
           <tr>
