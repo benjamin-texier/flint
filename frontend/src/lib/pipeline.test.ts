@@ -51,6 +51,15 @@ describe('verdictOf', () => {
     expect(verdictOf(view({ runs: 0 }), false).health).toBe('unknown')
   })
 
+  it('leaves the unreadable log to the page that says it once', () => {
+    // The reason is server-wide, and both surfaces print it above their list.
+    // Repeating it per view put thirty identical sentences on one page and
+    // buried the one card that had something of its own to say.
+    const says = verdictOf(view({ runs: 0 }), false).says
+    expect(says).not.toContain('query_views_log')
+    expect(says).toContain('its target is there')
+  })
+
   it('does not blame a view for an idle source', () => {
     expect(verdictOf(view({ runs: 0 }), true).says).toContain('nothing to do')
   })

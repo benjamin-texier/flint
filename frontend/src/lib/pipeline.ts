@@ -87,11 +87,21 @@ export function verdictOf(view: View, logAvailable: boolean): Verdict {
       says: `${view.failures} of its ${view.runs} run${view.runs === 1 ? '' : 's'} failed`,
     }
   }
+  /* Why the log is unreadable belongs to the *page*, not to every card on it.
+     Both surfaces that draw these already say it once — Pipelines prints the
+     server's own `log_reason` above the list, and the diagram's legend counts
+     "N cannot be seen: without system.query_views_log …" — and this sentence
+     used to name the table a third time, on each affected view. On a server
+     with the log off that is every classic view: thirty identical rows of 118
+     characters, about 2,600px of a 9,251px page spent restating one fact, and
+     the one card that had something *different* to say (a view whose target
+     Flint could not read out of its definition) was buried among them.
+
+     So the card keeps the half that is about this view — its target exists,
+     which is what separates it from `broken` — and points at the reason rather
+     than reprinting it. The pill above it already reads "Unknown". */
   if (!logAvailable) {
-    return {
-      health: 'unknown',
-      says: 'its target is there, but without system.query_views_log there is no way to see whether anything has flowed through it',
-    }
+    return { health: 'unknown', says: 'its target is there; nothing beyond that can be seen' }
   }
   if (view.runs === 0) {
     return {
