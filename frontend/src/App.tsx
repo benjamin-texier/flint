@@ -5,7 +5,7 @@ import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-do
 import { api } from './lib/api'
 import { rememberedDatabase, resolveDatabase } from './lib/database'
 import { Chrome } from './components/Chrome'
-import { spaceOf, spacesFor } from './lib/spaces'
+import { outsideSpaces, spaceOf, spacesFor } from './lib/spaces'
 import { Palette, usePaletteShortcut } from './components/Palette'
 import { Console } from './components/Console'
 import { AlertsRail } from './components/AlertsRail'
@@ -137,7 +137,19 @@ export function App() {
      of the rail's last object and half of its "All databases" link on every
      Data page that has one. The launcher is not the rail's furniture, so it
      steps past it rather than the rail making room. */
-  const railed = spaceOf(pathname) === 'data' && pathname !== '/home' && pathname !== '/'
+  const railed =
+    spaceOf(pathname) === 'data' &&
+    /* `spaceOf` answers Data for everything outside `/infra`, which is the
+       prefix rule doing its job and the wrong answer for the one page that is
+       deliberately in neither space. The checkup was getting the object rail:
+       264px of Data's navigator beside a page of verdicts about *both* halves
+       of the product, on which — exactly as the comments below say of the
+       alerts and of the home — nothing answers a question its reader has. The
+       bar already knew; `railed` was re-deriving membership instead of asking
+       the rule that owns it. */
+    !outsideSpaces(pathname) &&
+    pathname !== '/home' &&
+    pathname !== '/'
 
   /* Nothing renders until both answers are in. A flash of the app followed by
      a sign-in screen would show a moment of somebody else's data — and worse, a
