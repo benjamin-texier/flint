@@ -297,6 +297,21 @@ export function ArrivalPage() {
         {covered ? <p className="arrival__covered">{covered}</p> : null}
       </header>
 
+      <nav className="arrival-actions" aria-label="Get started">
+        <Link className="arrival-actions__card" to="/explore">
+          <span className="arrival-actions__title">Explore your data <span aria-hidden="true">→</span></span>
+          <span>Browse databases, tables and their relationships.</span>
+        </Link>
+        <Link className="arrival-actions__card" to="/query">
+          <span className="arrival-actions__title">Run a query <span aria-hidden="true">→</span></span>
+          <span>Write SQL or start with a suggested question.</span>
+        </Link>
+        <Link className="arrival-actions__card" to="/checkup">
+          <span className="arrival-actions__title">Check server health <span aria-hidden="true">→</span></span>
+          <span>Review findings and opportunities to improve performance.</span>
+        </Link>
+      </nav>
+
       {/* The server's disk as one measured line, where a row of four large
           figures used to be. The figures were true and they were the template
           answer: four counts at one weight, none of them saying which part of
