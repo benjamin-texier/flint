@@ -43,7 +43,14 @@ import {
   saysSet,
   type TwinReport,
 } from './twins'
-import type { BackupReport } from './backups'
+import {
+  logReach,
+  saysElsewhere,
+  tooShortToBeQuiet,
+  tookACopy,
+  type BackupReport,
+  type Elsewhere,
+} from './backups'
 import type { QueryReport, StorageReport, TrafficReport } from './diagnose'
 import { partitionVerdict } from './diagnose'
 import type { DetachedReport } from './parts'
@@ -336,7 +343,7 @@ export function fromDetached(report: DetachedReport): Finding[] {
  *
  *  The strongest finding this page can make, and the quietest: a server with
  *  no backup is fine every day until the one day it is not. */
-export function fromBackups(report: BackupReport): Finding[] {
+export function fromBackups(report: BackupReport, elsewhere?: Elsewhere): Finding[] {
   /* Nothing, and that is the fix rather than an omission.
    *
    * `available: false` on this report means one thing only — Flint could not
@@ -351,26 +358,67 @@ export function fromBackups(report: BackupReport): Finding[] {
    * below: a Flint with no destination configured reads the log fine, finds it
    * empty, and says so with `Destination: none named`. */
   if (!report.available) return []
-  if (report.runs.length === 0) {
-    return [
-      {
-        id: 'risk:backups:none',
-        area: 'risk',
-        urgency: 'worth',
-        title: 'No backup has been taken',
-        /* Hedged on purpose, and the hedge is the finding's honesty:
-           `system.backups` is per-process and does not survive a restart, so
-           an empty list is not proof that nothing was ever backed up. */
-        why: report.persistent
+  if (report.runs.length > 0) return []
+  /* Something else took one, and this finding is not about it.
+   *
+   * These two tables record the server's own `BACKUP` statement and nothing
+   * else. Altinity's `clickhouse-backup` freezes the tables and copies the
+   * hardlinks out; a volume snapshot happens below the disk; a replica sits in
+   * another rack — none of them writes a row here, and all of them are backups.
+   * This finding used to read "No backup has been taken" over exactly that, to
+   * somebody whose backups were running nightly and fine, and the cost of it was
+   * not the wasted minute: it was that the page had shown itself willing to
+   * assert something it had not measured.
+   *
+   * So where the query log shows a freeze, the finding steps aside and
+   * `clearBackups` reports what was seen. The evidence is real and the archive
+   * is still invisible — that hedge lives in the sentence itself. */
+  if (tookACopy(elsewhere)) return []
+  return [
+    {
+      id: 'risk:backups:none',
+      area: 'risk',
+      urgency: 'worth',
+      /* The title claims only what was read. "No backup has been taken" is a
+         sentence about the server; this is a sentence about two tables, and the
+         difference is every deployment backed up by something else. */
+      title: 'Nothing has been backed up through this server',
+      /* Hedged twice over, and both hedges are the finding's honesty:
+         `system.backups` is per-process and does not survive a restart, and a
+         tool that freezes rather than issuing `BACKUP` leaves nothing in either
+         table. What the query log can add is the freeze — where it reaches far
+         enough back to have seen one. */
+      why:
+        (report.persistent
           ? 'The backup log goes back further than this server has been up, and there is nothing in it.'
-          : 'This server has only the in-memory list, which does not survive a restart — so a backup taken before the last restart would not appear here either way.',
-        evidence: `Destination: ${report.disk || 'none named'}.`,
-        gain: { kind: 'none' },
-        act: { to: '/infra/backups', label: 'Backups' },
-      },
-    ]
+          : 'This server has only the in-memory list, which does not survive a restart — so a backup taken before the last restart would not appear here either way.') +
+        ' ' +
+        whatTheLogAdds(elsewhere),
+      evidence: `Destination: ${report.disk || 'none named'}.`,
+      gain: { kind: 'none' },
+      act: { to: '/infra/backups', label: 'Backups' },
+    },
+  ]
+}
+
+/** What the query log contributes to a finding about an empty backup list.
+ *
+ *  Three different sentences, because three different things are true and only
+ *  one of them is "nothing backs this server up". The middle one — a log too
+ *  short to have seen last night — is the common case on a server whose
+ *  `query_log` is trimmed daily, and reporting it as silence would be the same
+ *  overreach in a smaller voice. */
+function whatTheLogAdds(elsewhere?: Elsewhere): string {
+  if (!elsewhere) {
+    return 'Flint has not read the query log here — a tool that freezes rather than issuing BACKUP, such as clickhouse-backup, leaves its mark there and nowhere else, and that reading is behind the workload button.'
   }
-  return []
+  if (!elsewhere.available) {
+    return `Flint could not read the query log either (${elsewhere.reason ?? 'no reason given'}), so it cannot tell whether something outside this server — clickhouse-backup, a volume snapshot — is taking copies another way.`
+  }
+  if (tooShortToBeQuiet(elsewhere)) {
+    return `Nothing froze a table in the ${logReach(elsewhere.covered_hours)} the query log covers, which is how a tool such as clickhouse-backup would show — but that is less than a day, so a copy taken nightly would not appear in it either.`
+  }
+  return `Nothing froze a table in the ${logReach(elsewhere.covered_hours)} the query log covers either, which is how a tool such as clickhouse-backup would show.`
 }
 
 /** The bytes nothing read.
@@ -741,18 +789,35 @@ export function clearDetached(report: DetachedReport): Cleared[] {
   ]
 }
 
-export function clearBackups(report: BackupReport): Cleared[] {
-  if (!report.available || report.runs.length === 0) return []
-  return [
-    {
-      id: 'clear:risk:backups',
-      area: 'risk',
-      label: 'Backups',
-      reading: `${report.runs.length} in the list${report.disk ? `, to ${report.disk}` : ''}${
-        report.persistent ? '' : ' — an in-memory list, which a restart empties'
-      }`,
-    },
-  ]
+export function clearBackups(report: BackupReport, elsewhere?: Elsewhere): Cleared[] {
+  if (report.available && report.runs.length > 0) {
+    return [
+      {
+        id: 'clear:risk:backups',
+        area: 'risk',
+        label: 'Backups',
+        reading: `${report.runs.length} in the list${report.disk ? `, to ${report.disk}` : ''}${
+          report.persistent ? '' : ' — an in-memory list, which a restart empties'
+        }`,
+      },
+    ]
+  }
+  /* Taken by something that is not this server, which is a clearance and not a
+     finding — and is worded as what was seen rather than as a promise. Flint
+     watched a copy being taken; it has never seen the archive, cannot list the
+     disk it went to, and says both in the same sentence. */
+  const said = saysElsewhere(elsewhere)
+  if (said) {
+    return [
+      {
+        id: 'clear:risk:backups',
+        area: 'risk',
+        label: 'Backups, taken elsewhere',
+        reading: `${said}. The archive itself is not visible from SQL, so this is the copy being taken and not a catalogue of what exists`,
+      },
+    ]
+  }
+  return []
 }
 
 export function clearTwins(report: TwinReport): Cleared[] {

@@ -1133,6 +1133,11 @@ export const api = {
   series: (hours: number) =>
     request<import('./health').SeriesReport>(`/health/series?hours=${hours}`),
   backups: () => request<import('./backups').BackupReport>('/backups'),
+  /* Its own call and not a field on the report above: the backups list refreshes
+     every five seconds while a backup runs, and this one scans a week of
+     `system.query_log`. */
+  backupsElsewhere: (days = 7) =>
+    request<import('./backups').Elsewhere>(`/backups/elsewhere?days=${days}`),
   backupAction: (database: string, table: string, file: string, action: string) =>
     request<import('./job').Job>('/backups/act', {
       method: 'POST',

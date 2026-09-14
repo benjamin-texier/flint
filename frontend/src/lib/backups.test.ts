@@ -1,12 +1,17 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  logReach,
   restorable,
   says,
+  saysElsewhere,
   suggestName,
   throughFlint,
+  tooShortToBeQuiet,
+  tookACopy,
   whyNotRestorable,
   type BackupRun,
+  type Elsewhere,
 } from './backups'
 
 const run = (over: Partial<BackupRun> = {}): BackupRun => ({
@@ -119,5 +124,93 @@ describe('suggestName', () => {
 
   it('replaces what a file name cannot carry', () => {
     expect(suggestName('a b', 'c/d', at)).toBe('a_b-c_d-2026-08-27.zip')
+  })
+})
+
+const elsewhere = (over: Partial<Elsewhere> = {}): Elsewhere => ({
+  available: true,
+  covered_hours: 168,
+  freezes: 0,
+  last_freeze: '',
+  users: [],
+  objects: [],
+  total_objects: 0,
+  frozen_now: 0,
+  ...over,
+})
+
+describe('logReach', () => {
+  it('names the window in a unit that does not overstate it', () => {
+    // Nine hours is the figure that matters most here — it is what a query log
+    // trimmed daily holds by mid-morning — and rounding it to "0 days" or
+    // dressing it as "9.72 hours" are both the reading lying about itself.
+    expect(logReach(9.72)).toBe('9.7 hours')
+    expect(logReach(168)).toBe('7 days')
+    expect(logReach(0.5)).toBe('30 minutes')
+    // Never zero of anything: a log holding two minutes holds two minutes.
+    expect(logReach(0.004)).toBe('1 minutes')
+  })
+})
+
+describe('tookACopy', () => {
+  it('counts a freeze in the window and a part frozen right now', () => {
+    /* Two marks, and the second one matters on a server whose query log was
+       trimmed a minute ago: a backup in flight is visible in `system.parts`
+       when the statement that started it is already gone from the log. */
+    expect(tookACopy(elsewhere({ freezes: 12 }))).toBe(true)
+    expect(tookACopy(elsewhere({ frozen_now: 3 }))).toBe(true)
+    expect(tookACopy(elsewhere())).toBe(false)
+  })
+
+  it('is not fooled by a log it could not read', () => {
+    // "Flint may not look" is not "something took a copy", and it is not
+    // "nothing did" either.
+    expect(tookACopy(elsewhere({ available: false, freezes: 12 }))).toBe(false)
+    expect(tookACopy(undefined)).toBe(false)
+  })
+})
+
+describe('tooShortToBeQuiet', () => {
+  it('treats a window under a day as unable to be silent', () => {
+    /* A backup that runs at 02:00 leaves nothing in a log reaching back nine
+       hours. Reporting that as "nothing froze anything" is a finding about the
+       log dressed as a finding about the backups. */
+    expect(tooShortToBeQuiet(elsewhere({ covered_hours: 9.7 }))).toBe(true)
+    expect(tooShortToBeQuiet(elsewhere({ covered_hours: 168 }))).toBe(false)
+    expect(tooShortToBeQuiet(undefined)).toBe(true)
+  })
+})
+
+describe('saysElsewhere', () => {
+  it('says a copy was taken, and never that an archive exists', () => {
+    const said = saysElsewhere(
+      elsewhere({
+        freezes: 12,
+        last_freeze: '2026-09-14 02:14:07',
+        users: ['backup'],
+        objects: ['analytics.events'],
+        total_objects: 41,
+        covered_hours: 168,
+      }),
+    )!
+    expect(said).toContain('12 freezes')
+    expect(said).toContain('41 objects')
+    expect(said).toContain('backup')
+    expect(said).toContain('2026-09-14 02:14:07')
+    // The window it rests on travels with the sentence.
+    expect(said).toContain('7 days')
+    // And the tool that leaves this mark is named, because "something froze
+    // your tables" is not a sentence anybody can go and check.
+    expect(said).toContain('clickhouse-backup')
+  })
+
+  it('reads a backup in flight as one, not as a past one', () => {
+    const said = saysElsewhere(elsewhere({ frozen_now: 3 }))!
+    expect(said).toContain('right now')
+  })
+
+  it('supports nothing where there is nothing', () => {
+    expect(saysElsewhere(elsewhere())).toBeNull()
+    expect(saysElsewhere(undefined)).toBeNull()
   })
 })

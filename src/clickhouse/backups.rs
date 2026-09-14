@@ -226,6 +226,162 @@ async fn from_log(
     })
 }
 
+/// What something *other than this server* left behind.
+///
+/// `system.backups` and `system.backup_log` record one thing, and it is narrower
+/// than a page built on them implies: the server's own `BACKUP` statement. A
+/// great deal of ClickHouse is backed up by a tool that never issues it —
+/// Altinity's `clickhouse-backup`, which freezes the tables and copies the
+/// hardlinks out to object storage; a volume snapshot taken underneath the disk;
+/// a replica in another rack. On such a server both tables are empty, every
+/// archive is fine, and "no backup has been taken" is not a cautious reading. It
+/// is a false one, and the expensive kind of false: it is read by the person who
+/// *does* have backups, who then knows this page cannot be trusted on the day it
+/// says something true.
+///
+/// Flint cannot see those archives. They are files on a disk it may not list, or
+/// objects in a bucket it has no credentials for — `filesystem()` is confined to
+/// `user_files` and answers code 291 for anything else. What it can see is the
+/// mark the copying leaves on its way past: freezing a table is a *statement*,
+/// and statements are logged. So this is evidence and deliberately not a
+/// catalogue. It says something took a copy, when, and of what — and says
+/// nothing at all about whether that copy can be read back, which is a question
+/// only the tool that wrote it can answer.
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct Elsewhere {
+    /// Whether the query log could be read at all. A `false` here is a fact
+    /// about the reader — a missing grant, or a log switched off — and it is
+    /// kept separate from the evidence so that it cannot be mistaken for one:
+    /// "Flint may not look" is not "nothing froze anything".
+    pub available: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    /// How far back the log actually reaches, in hours, and never further than
+    /// the window that was asked for. **The caller quotes this one.** A log
+    /// holding nine hours cannot support a sentence about a week, and on a
+    /// server whose backup runs at 02:00 it cannot support one about last night
+    /// either — which is exactly the case this figure exists to make visible.
+    pub covered_hours: f64,
+    /// Freeze statements seen in that window.
+    pub freezes: u64,
+    /// The most recent one, or empty where there was none.
+    pub last_freeze: String,
+    /// Whose credentials ran them. A backup tool connects as somebody, and
+    /// naming the account is what turns "something froze your tables" into
+    /// something the reader can go and check.
+    pub users: Vec<String>,
+    /// What was frozen, capped — `total_objects` carries the whole count,
+    /// because a list of eight standing silently for two hundred would be the
+    /// page under-reporting its own good news.
+    pub objects: Vec<String>,
+    pub total_objects: u64,
+    /// Parts frozen at this instant.
+    ///
+    /// `system.parts.is_frozen` is the flag a freeze sets and an unfreeze
+    /// clears, and `clickhouse-backup` clears it the moment it has its
+    /// hardlinks — so on a server backed up every night this is *zero* nearly
+    /// always, and a zero here is not the absence of a backup. Non-zero means
+    /// one is being taken right now, or that a shadow was left behind and is
+    /// quietly holding disk.
+    pub frozen_now: u64,
+}
+
+/// Read that evidence.
+///
+/// The match is on the statement's *shape* — it begins `ALTER TABLE` or `SYSTEM
+/// UNFREEZE` and mentions freezing — rather than on the word alone, because the
+/// word alone finds Flint. This very reading is a `SELECT` containing `freeze`,
+/// it lands in `system.query_log` like everything else, and a text search would
+/// have the page report Flint's own probe as a backup somebody took. Matching
+/// the shape also avoids resting on `query_kind`, whose value for a `SYSTEM`
+/// statement is not something this code should assume.
+pub async fn elsewhere(ch: &Client, days: u64) -> Result<Elsewhere> {
+    match ch.reach("query_log").await? {
+        super::Reach::Readable => {}
+        super::Reach::Denied => {
+            return Ok(Elsewhere {
+                reason: Some("this user is not granted SELECT on system.query_log".into()),
+                ..Default::default()
+            })
+        }
+        _ => {
+            return Ok(Elsewhere {
+                reason: Some("this server keeps no query log".into()),
+                ..Default::default()
+            })
+        }
+    }
+
+    let days = days.clamp(1, 90);
+    #[derive(Deserialize)]
+    struct Row {
+        covered_hours: f64,
+        freezes: u64,
+        last_freeze: String,
+        users: Vec<String>,
+        objects: Vec<String>,
+        total_objects: u64,
+    }
+    let sql = format!(
+        "WITH (startsWith(upper(trimLeft(query)), 'ALTER TABLE') \
+                OR startsWith(upper(trimLeft(query)), 'SYSTEM UNFREEZE')) \
+               AND positionCaseInsensitive(query, 'freeze') > 0 AS froze \
+         SELECT if(count() = 0, 0, \
+                   least(toFloat64(dateDiff('second', min(event_time), now())) / 3600, {days} * 24.0)) \
+                                                                  AS covered_hours, \
+                toUInt64(countIf(froze))                          AS freezes, \
+                if(countIf(froze) = 0, '', toString(maxIf(event_time, froze))) AS last_freeze, \
+                groupUniqArrayIf(8)(user, froze)                  AS users, \
+                arraySlice(arrayDistinct(arrayFlatten(groupArrayIf(500)(tables, froze))), 1, 8) \
+                                                                  AS objects, \
+                toUInt64(length(arrayDistinct(arrayFlatten(groupArrayIf(500)(tables, froze))))) \
+                                                                  AS total_objects \
+         FROM system.query_log \
+         WHERE type = 'QueryFinish' AND event_time > now() - toIntervalDay({days})"
+    );
+    let seen: Option<Row> = ch.row_with(&sql, QueryOptions::internal()).await?;
+    let seen = match seen {
+        Some(r) => r,
+        None => {
+            return Ok(Elsewhere {
+                available: true,
+                ..Default::default()
+            })
+        }
+    };
+
+    /* Asked separately and allowed to fail on its own: a role that may read the
+    query log and not `system.parts` still gets the half it is entitled to,
+    and a page that named neither because one was refused would be Flint
+    throwing away what it had. */
+    #[derive(Deserialize)]
+    struct Now {
+        n: u64,
+    }
+    let frozen_now = ch
+        .row_with::<Now>(
+            "SELECT count() AS n FROM system.parts WHERE active AND is_frozen",
+            QueryOptions::internal(),
+        )
+        .await
+        .ok()
+        .flatten()
+        .map(|r| r.n)
+        .unwrap_or(0);
+
+    Ok(Elsewhere {
+        available: true,
+        reason: None,
+        covered_hours: seen.covered_hours,
+        freezes: seen.freezes,
+        last_freeze: seen.last_freeze,
+        users: seen.users,
+        objects: seen.objects,
+        total_objects: seen.total_objects,
+        frozen_now,
+    })
+}
+
 /// What can be asked of a backup.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
