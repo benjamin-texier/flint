@@ -2845,6 +2845,45 @@ took names its table and, if that table is gone, offers a Restore. A backup take
 in a terminal keeps its file and gets no button: Flint would be guessing which
 table it held, and says so in the row rather than greying out in silence.
 
+### Backed up by something that is not this server
+
+Both those tables record one thing: this server's own `BACKUP` statement. A great
+deal of ClickHouse is backed up by a tool that never issues it — Altinity's
+`clickhouse-backup`, which freezes each table and copies the hardlinks out to
+object storage; a volume snapshot taken underneath the disk; a replica in another
+rack. On those servers `system.backups` is empty and every archive is fine, and
+the checkup used to read **No backup has been taken** over it. That finding was
+wrong in the most expensive way available: it was read by the person whose
+backups were working, who then knew the page was willing to assert something it
+had not measured.
+
+So the claim is now the size of the evidence — *Nothing has been backed up
+**through this server*** — and Flint goes looking for the rest. It cannot see
+those archives: a backup disk cannot be listed from SQL, and a bucket is not its
+to read. What it can see is the mark the copying leaves on its way past. Freezing
+is a **statement**, and statements are logged, so `system.query_log` is asked for
+the ones shaped like `ALTER TABLE … FREEZE` or `SYSTEM UNFREEZE` — matched on the
+statement's shape rather than on the word, because the word alone finds Flint's
+own probe and reports it as somebody's backup.
+
+The Backups page shows what that found: how many freezes, of how many objects,
+under whose account, and when the last one was. `system.parts.is_frozen` is read
+alongside it for a copy being taken *right now* — `clickhouse-backup` clears that
+flag as soon as it has its hardlinks, so a zero there is not the absence of a
+backup and is never reported as one.
+
+Every sentence of it is bounded by **how far back the log actually reaches**, and
+the short windows are the point: a query log trimmed daily holds nine hours by
+mid-morning, and a backup that runs at 02:00 leaves nothing in it. So under a
+day, the quiet reading says so in as many words rather than passing a finding
+about the log off as a finding about the backups.
+
+It is evidence and not a catalogue, and the wording never crosses that line: Flint
+watched a copy being taken, has never seen the archive, and cannot tell you it
+reads back. On the checkup this reading sits behind the workload button with the
+other `query_log` readings — until it is pressed, the finding says that the log
+has not been read rather than treating an unasked question as a negative answer.
+
 To develop against any of this you need a destination, which a default ClickHouse
 does not have: `contrib/dev-backups.xml` gives the compose fixture one.
 

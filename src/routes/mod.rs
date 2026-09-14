@@ -394,6 +394,7 @@ pub fn router(state: AppState) -> Router {
         .route("/schema/objects", get(diagnostics::schema_objects))
         .route("/schema/object", post(jobs::object))
         .route("/backups", get(diagnostics::backup_runs))
+        .route("/backups/elsewhere", get(diagnostics::backup_elsewhere))
         .route("/backups/act", post(jobs::backup))
         .route("/access/act", post(jobs::access))
         .route("/access/govern", post(jobs::govern))

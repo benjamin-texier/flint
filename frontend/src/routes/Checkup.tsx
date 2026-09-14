@@ -153,6 +153,18 @@ export function CheckupPage() {
     queryFn: () => api.spend(7),
     enabled: read !== null,
   })
+  /* Behind the same button, and it is the one that changes a *finding* rather
+     than adding one: `system.backups` records this server's own `BACKUP`
+     statement and nothing else, so a server backed up by clickhouse-backup — or
+     by a volume snapshot, or by a replica in another rack — reads as a server
+     with no backups. The freeze those tools leave in the query log is the only
+     trace SQL has of them. Until the button is pressed the finding says so in as
+     many words, rather than quietly asserting the larger claim. */
+  const elsewhere = useQuery({
+    queryKey: ['backups', 'elsewhere', 7],
+    queryFn: () => api.backupsElsewhere(7),
+    enabled: read !== null,
+  })
 
   /* Where the bytes are, per database. Metadata only — no sampling — which is
      what lets it run on open. It proposes nothing; the review does that, and
@@ -173,7 +185,7 @@ export function CheckupPage() {
     () => [
       ...(storage.data ? fromStorage(storage.data) : []),
       ...(detached.data ? fromDetached(detached.data) : []),
-      ...(backups.data ? fromBackups(backups.data) : []),
+      ...(backups.data ? fromBackups(backups.data, elsewhere.data) : []),
       ...(heavy.data ? fromHeavy(heavy.data) : []),
       ...(queries.data ? fromQueries(queries.data) : []),
       ...(traffic.data ? fromTraffic(traffic.data) : []),
@@ -185,6 +197,7 @@ export function CheckupPage() {
       storage.data,
       detached.data,
       backups.data,
+      elsewhere.data,
       heavy.data,
       queries.data,
       traffic.data,
@@ -202,7 +215,7 @@ export function CheckupPage() {
     () => [
       ...(storage.data ? clearStorage(storage.data) : []),
       ...(detached.data ? clearDetached(detached.data) : []),
-      ...(backups.data ? clearBackups(backups.data) : []),
+      ...(backups.data ? clearBackups(backups.data, elsewhere.data) : []),
       ...(twins.data ? clearTwins(twins.data) : []),
       ...(queries.data ? clearQueries(queries.data) : []),
       ...(traffic.data ? clearTraffic(traffic.data) : []),
@@ -213,6 +226,7 @@ export function CheckupPage() {
       storage.data,
       detached.data,
       backups.data,
+      elsewhere.data,
       twins.data,
       queries.data,
       traffic.data,

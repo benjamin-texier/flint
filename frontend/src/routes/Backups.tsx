@@ -3,7 +3,17 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import { bytes, count, relativeTime } from '../lib/format'
 import { withoutTrace } from '../lib/attention'
-import { restorable, says, throughFlint, whyNotRestorable, type BackupRun } from '../lib/backups'
+import {
+  logReach,
+  restorable,
+  says,
+  saysElsewhere,
+  throughFlint,
+  tookACopy,
+  tooShortToBeQuiet,
+  whyNotRestorable,
+  type BackupRun,
+} from '../lib/backups'
 import { allows } from '../lib/spaces'
 import { EmptyNote, ErrorNote, Loading } from '../components/Note'
 
@@ -36,6 +46,12 @@ export function BackupsPage() {
     // A backup in progress is a moving thing.
     refetchInterval: 5_000,
     placeholderData: (prev) => prev,
+  })
+  /* Asked separately, and not on the five-second refresh: it scans a week of
+     `system.query_log`, and what it is looking for happens once a night. */
+  const elsewhere = useQuery({
+    queryKey: ['backups', 'elsewhere', 7],
+    queryFn: () => api.backupsElsewhere(7),
   })
   const data = report.data
   const runs = data?.runs ?? []
@@ -157,7 +173,83 @@ export function BackupsPage() {
           </table>
         ) : null}
       </section>
+
+      <Elsewhere query={elsewhere} />
     </div>
+  )
+}
+
+/** What backed this server up that was not this server.
+ *
+ *  The section exists because the one above it is narrower than it looks. Both
+ *  `system.backups` and `system.backup_log` record a single thing — this
+ *  server's own `BACKUP` statement — and a great deal of ClickHouse is backed up
+ *  by something that never issues it: Altinity's `clickhouse-backup`, which
+ *  freezes the tables and copies the hardlinks out to object storage; a volume
+ *  snapshot taken underneath the disk; a replica in another rack. On those
+ *  servers the table above is empty and every archive is fine, and a page that
+ *  left it at that would be telling somebody with working backups that they have
+ *  none.
+ *
+ *  What it shows is evidence and not a catalogue, and the wording never crosses
+ *  that line. Flint cannot list a backup disk, cannot reach a bucket, and has
+ *  never seen one of these archives. It can see the freeze, because freezing is
+ *  a statement and statements are logged — so it can say a copy was taken, when,
+ *  and of what, and it says nothing about whether that copy reads back. */
+function Elsewhere({ query }: { query: ReturnType<typeof useQuery<import('../lib/backups').Elsewhere>> }) {
+  const e = query.data
+  const said = saysElsewhere(e)
+  return (
+    <section className="diag">
+      <header className="diag__head">
+        <h2 className="diag__title">Taken by something that is not this server</h2>
+        <p className="diag__sub">
+          The list above is <code>BACKUP</code>, the statement. A tool such as{' '}
+          <code>clickhouse-backup</code> never issues it — it freezes each table and copies the
+          hardlinks out — and a volume snapshot happens below ClickHouse entirely. None of them
+          writes a row above, and all of them are backups. Flint cannot see their archives: a
+          backup disk cannot be listed from SQL and a bucket is not its to read. It can see the
+          freeze, because freezing is a statement and statements are logged.
+        </p>
+      </header>
+
+      {query.isPending ? <Loading label="Reading the query log" /> : null}
+      {query.error ? <ErrorNote error={query.error} retry={() => query.refetch()} /> : null}
+
+      {e && !e.available ? <EmptyNote title="Not available here">{e.reason}.</EmptyNote> : null}
+
+      {e?.available && tookACopy(e) ? (
+        <>
+          <p className="diag__sub">{said}.</p>
+          {e.objects.length ? (
+            <p className="mono-dim">
+              {e.objects.join(', ')}
+              {/* Counts follow the list: a sample of eight standing silently for
+                  two hundred would be the page under-reporting its own good
+                  news. */}
+              {e.total_objects > e.objects.length
+                ? ` — showing ${e.objects.length} of ${e.total_objects}`
+                : ''}
+            </p>
+          ) : null}
+          {e.frozen_now > 0 && e.freezes > 0 ? (
+            <p className="diag__quiet">
+              {e.frozen_now} parts are frozen at this moment — a copy being taken now, or a
+              shadow left behind and holding disk.
+            </p>
+          ) : null}
+        </>
+      ) : null}
+
+      {e?.available && !tookACopy(e) ? (
+        <p className="diag__quiet">
+          Nothing froze a table in the {logReach(e.covered_hours)} the query log covers.
+          {tooShortToBeQuiet(e)
+            ? ' That is less than a day, so a copy taken nightly would not appear here either — this reading is as short as the log is.'
+            : ' On a server backed up by a tool that freezes, one would have shown here.'}
+        </p>
+      ) : null}
+    </section>
   )
 }
 

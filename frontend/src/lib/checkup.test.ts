@@ -281,6 +281,82 @@ describe('fromBackups', () => {
       }),
     ).toEqual([])
   })
+
+  it('claims only what the two tables record, and names what they do not', () => {
+    /* The title used to read "No backup has been taken", which is a sentence
+       about the server made out of a fact about `system.backups`. Anyone backing
+       ClickHouse up with Altinity's clickhouse-backup — freeze, copy the
+       hardlinks out — has working backups and an empty table, and read that
+       finding as Flint being wrong about their server. It was. */
+    const out = fromBackups({
+      available: true,
+      persistent: true,
+      object_storage: false,
+      runs: [],
+      disk: 'backups',
+    })
+    expect(out[0]!.title).toBe('Nothing has been backed up through this server')
+    expect(out[0]!.why).toContain('clickhouse-backup')
+    // With no reading of the query log, the finding says that rather than
+    // treating an unasked question as a negative answer.
+    expect(out[0]!.why).toContain('has not read the query log')
+  })
+
+  it('steps aside where the query log shows something else taking copies', () => {
+    const out = fromBackups(
+      { available: true, persistent: true, object_storage: false, runs: [], disk: '' },
+      {
+        available: true,
+        covered_hours: 168,
+        freezes: 12,
+        last_freeze: '2026-09-14 02:14:07',
+        users: ['backup'],
+        objects: ['analytics.events'],
+        total_objects: 41,
+        frozen_now: 0,
+      },
+    )
+    expect(out).toEqual([])
+  })
+
+  it('hedges a quiet log that is shorter than the thing it would have seen', () => {
+    /* Nine hours of query log cannot be silent about a backup that runs at
+       02:00, and a finding that pretended otherwise would be the same overreach
+       in a smaller voice. */
+    const out = fromBackups(
+      { available: true, persistent: true, object_storage: false, runs: [], disk: '' },
+      {
+        available: true,
+        covered_hours: 9.7,
+        freezes: 0,
+        last_freeze: '',
+        users: [],
+        objects: [],
+        total_objects: 0,
+        frozen_now: 0,
+      },
+    )
+    expect(out[0]!.why).toContain('9.7 hours')
+    expect(out[0]!.why).toContain('would not appear in it either')
+  })
+
+  it('still says it plainly where the log is long enough to have seen one', () => {
+    const out = fromBackups(
+      { available: true, persistent: true, object_storage: false, runs: [], disk: '' },
+      {
+        available: true,
+        covered_hours: 168,
+        freezes: 0,
+        last_freeze: '',
+        users: [],
+        objects: [],
+        total_objects: 0,
+        frozen_now: 0,
+      },
+    )
+    expect(out[0]!.why).toContain('7 days')
+    expect(out[0]!.why).not.toContain('would not appear in it either')
+  })
 })
 
 describe('fromDetached', () => {
@@ -529,6 +605,29 @@ describe('clearances never contradict their findings', () => {
     expect(c!.reading).toContain('4')
     expect(c!.reading).toContain('150')
     expect(c!.reading).not.toMatch(/\bfine\b|\bhealthy\b|\bgood\b/)
+  })
+
+  it('backups: a copy taken elsewhere clears the same check, in its own words', () => {
+    /* No run in `system.backups` and a freeze in the query log is the ordinary
+       shape of a server backed up by clickhouse-backup. It clears, and the
+       clearance says what was actually seen: the copy being taken, never the
+       archive, which Flint has no way to reach. */
+    const [c] = clearBackups(
+      { persistent: true, object_storage: false, available: true, disk: '', runs: [] },
+      {
+        available: true,
+        covered_hours: 168,
+        freezes: 12,
+        last_freeze: '2026-09-14 02:14:07',
+        users: ['backup'],
+        objects: ['analytics.events'],
+        total_objects: 41,
+        frozen_now: 0,
+      },
+    )
+    expect(c!.label).toBe('Backups, taken elsewhere')
+    expect(c!.reading).toContain('12 freezes')
+    expect(c!.reading).toContain('not visible from SQL')
   })
 
   it('backups: a clearance needs a run, since "no backup" is its twin', () => {

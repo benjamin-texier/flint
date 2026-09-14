@@ -556,6 +556,20 @@ pub async fn backup_runs(
     Ok(Json(report))
 }
 
+/// What backed this server up that was not this server.
+///
+/// Its own route rather than a field on the report above, for a reason that is
+/// about cost and not about tidiness: the backups list refreshes every five
+/// seconds while a backup is running, and this reading scans a week of
+/// `system.query_log`. Bundling them would have a page left open all afternoon
+/// scan that log seven hundred times an hour to re-read a nightly event.
+pub async fn backup_elsewhere(
+    Caller(ch): Caller,
+    Query(w): Query<Window>,
+) -> Result<Json<backups::Elsewhere>> {
+    Ok(Json(backups::elsewhere(&ch, w.days).await?))
+}
+
 /// Which of these `database.table` names exist right now.
 async fn present(
     ch: &crate::clickhouse::Client,

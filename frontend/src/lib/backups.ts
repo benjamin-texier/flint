@@ -110,3 +110,76 @@ export function suggestName(
   const of = table ? `${safe(database)}-${safe(table)}` : safe(database)
   return `${of}-${day}.${ext}`
 }
+
+/** Evidence that something *other than this server* took a copy.
+ *
+ *  `system.backups` answers one question — what this server's own `BACKUP`
+ *  statement did — and a page that reads "no backup has been taken" over an
+ *  empty one is answering a much larger question it never asked. Altinity's
+ *  `clickhouse-backup` freezes the tables and copies the hardlinks out; a volume
+ *  snapshot happens underneath the disk; a replica sits in another rack. None of
+ *  them writes a row there, and all of them are backups.
+ *
+ *  What the backend can measure is the freeze on its way past, because freezing
+ *  is a statement and statements are logged. So this is evidence and not a
+ *  catalogue: it can say *something took a copy, at 02:14, of 41 tables* and it
+ *  can never say that copy is readable. */
+export interface Elsewhere {
+  available: boolean
+  reason?: string
+  /** How far back the query log reaches, in hours. Every sentence below is
+   *  bounded by it, and the short ones are the point: a log holding nine hours
+   *  has nothing to say about a backup that runs at 02:00. */
+  covered_hours: number
+  freezes: number
+  last_freeze: string
+  users: string[]
+  objects: string[]
+  total_objects: number
+  frozen_now: number
+}
+
+/** The window, in words, in whatever unit does not lie about its precision. */
+export function logReach(hours: number): string {
+  if (hours >= 48) return `${Math.round(hours / 24)} days`
+  if (hours >= 2) return `${hours < 10 ? hours.toFixed(1) : Math.round(hours)} hours`
+  return `${Math.max(1, Math.round(hours * 60))} minutes`
+}
+
+/** Whether the log holds evidence that something took a copy.
+ *
+ *  Either mark counts. A freeze in the window is the ordinary one; parts frozen
+ *  *now* is a backup in flight, which a page refreshing every few seconds will
+ *  catch on a server whose log was trimmed a minute ago. */
+export function tookACopy(e?: Elsewhere): boolean {
+  return !!e && e.available && (e.freezes > 0 || e.frozen_now > 0)
+}
+
+/** Whether the window is too short to be quiet in.
+ *
+ *  A backup that runs nightly leaves nothing in a log that reaches back nine
+ *  hours, and "nothing froze anything" over such a window is not a finding about
+ *  the backups — it is a finding about the log. Below a day, every negative
+ *  sentence on this subject has to say so. */
+export function tooShortToBeQuiet(e?: Elsewhere): boolean {
+  return !e || !e.available || e.covered_hours < 24
+}
+
+/** What the evidence supports saying, or null where it supports nothing.
+ *
+ *  Deliberately hedged in the same breath as it reassures: the copy is real, the
+ *  archive is not something Flint has seen. Anything shorter would be this page
+ *  promising a restore it cannot check. */
+export function saysElsewhere(e?: Elsewhere): string | null {
+  if (!tookACopy(e)) return null
+  const it = e as Elsewhere
+  if (it.freezes === 0) {
+    return `${it.frozen_now} parts are frozen right now — something is taking a copy as you read this`
+  }
+  const of =
+    it.total_objects > 0
+      ? ` of ${it.total_objects} object${it.total_objects === 1 ? '' : 's'}`
+      : ''
+  const by = it.users.length ? `, as ${it.users.join(', ')}` : ''
+  return `${it.freezes} freeze${it.freezes === 1 ? '' : 's'}${of}${by}, the last at ${it.last_freeze} — how a tool such as clickhouse-backup takes one, over the ${logReach(it.covered_hours)} the query log covers`
+}
