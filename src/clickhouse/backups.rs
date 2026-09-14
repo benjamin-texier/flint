@@ -262,7 +262,10 @@ pub struct Elsewhere {
     /// server whose backup runs at 02:00 it cannot support one about last night
     /// either — which is exactly the case this figure exists to make visible.
     pub covered_hours: f64,
-    /// Freeze statements seen in that window.
+    /// Freeze statements seen in that window — the `UNFREEZE` half counted with
+    /// the `FREEZE` half, because `clickhouse-backup` issues both and a window
+    /// that caught only the second one still caught a backup. Named as
+    /// *statements* wherever it is printed, for the same reason.
     pub freezes: u64,
     /// The most recent one, or empty where there was none.
     pub last_freeze: String,
@@ -275,15 +278,21 @@ pub struct Elsewhere {
     /// page under-reporting its own good news.
     pub objects: Vec<String>,
     pub total_objects: u64,
-    /// Parts frozen at this instant.
+    /// Parts still carrying the mark a freeze leaves.
     ///
-    /// `system.parts.is_frozen` is the flag a freeze sets and an unfreeze
-    /// clears, and `clickhouse-backup` clears it the moment it has its
-    /// hardlinks — so on a server backed up every night this is *zero* nearly
-    /// always, and a zero here is not the absence of a backup. Non-zero means
-    /// one is being taken right now, or that a shadow was left behind and is
-    /// quietly holding disk.
-    pub frozen_now: u64,
+    /// Not "a backup in flight", which is what this was called until it was
+    /// measured. On 26.7.1: `ALTER TABLE … FREEZE` sets `is_frozen`, `ALTER
+    /// TABLE … UNFREEZE WITH NAME` returns ok and does **not** clear it, and
+    /// `SYSTEM UNFREEZE` is refused outright — code 344, "disabled … enable it
+    /// via 'enable_system_unfreeze'". What cleared it was the part being
+    /// rewritten: after an `OPTIMIZE … FINAL` the flag was gone.
+    ///
+    /// So it is the one part of this evidence that outlives the query log — a
+    /// freeze taken in March is still marked in April, if those parts have not
+    /// merged since — and the one that cannot be dated at all. It says a freeze
+    /// happened while these parts have been on the disk. It does not say when,
+    /// and it must never be printed as *now*.
+    pub frozen_parts: u64,
 }
 
 /// Read that evidence.
@@ -358,7 +367,7 @@ pub async fn elsewhere(ch: &Client, days: u64) -> Result<Elsewhere> {
     struct Now {
         n: u64,
     }
-    let frozen_now = ch
+    let frozen_parts = ch
         .row_with::<Now>(
             "SELECT count() AS n FROM system.parts WHERE active AND is_frozen",
             QueryOptions::internal(),
@@ -378,7 +387,7 @@ pub async fn elsewhere(ch: &Client, days: u64) -> Result<Elsewhere> {
         users: seen.users,
         objects: seen.objects,
         total_objects: seen.total_objects,
-        frozen_now,
+        frozen_parts,
     })
 }
 

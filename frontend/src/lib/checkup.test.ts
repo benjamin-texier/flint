@@ -313,7 +313,7 @@ describe('fromBackups', () => {
         users: ['backup'],
         objects: ['analytics.events'],
         total_objects: 41,
-        frozen_now: 0,
+        frozen_parts: 0,
       },
     )
     expect(out).toEqual([])
@@ -333,7 +333,7 @@ describe('fromBackups', () => {
         users: [],
         objects: [],
         total_objects: 0,
-        frozen_now: 0,
+        frozen_parts: 0,
       },
     )
     expect(out[0]!.why).toContain('9.7 hours')
@@ -351,7 +351,7 @@ describe('fromBackups', () => {
         users: [],
         objects: [],
         total_objects: 0,
-        frozen_now: 0,
+        frozen_parts: 0,
       },
     )
     expect(out[0]!.why).toContain('7 days')
@@ -622,11 +622,11 @@ describe('clearances never contradict their findings', () => {
         users: ['backup'],
         objects: ['analytics.events'],
         total_objects: 41,
-        frozen_now: 0,
+        frozen_parts: 0,
       },
     )
     expect(c!.label).toBe('Backups, taken elsewhere')
-    expect(c!.reading).toContain('12 freezes')
+    expect(c!.reading).toContain('12 freeze statements')
     expect(c!.reading).toContain('not visible from SQL')
   })
 

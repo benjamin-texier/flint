@@ -232,10 +232,16 @@ function Elsewhere({ query }: { query: ReturnType<typeof useQuery<import('../lib
                 : ''}
             </p>
           ) : null}
-          {e.frozen_now > 0 && e.freezes > 0 ? (
+          {e.frozen_parts > 0 && e.freezes > 0 ? (
+            /* Undated, and said so. `is_frozen` survives its own `UNFREEZE` —
+               measured on 26.7.1, where `SYSTEM UNFREEZE` is refused outright
+               unless the server enables it — and clears only when the part is
+               rewritten by a merge. So it outlives the query log and can never
+               be read as a time. */
             <p className="diag__quiet">
-              {e.frozen_now} parts are frozen at this moment — a copy being taken now, or a
-              shadow left behind and holding disk.
+              {e.frozen_parts} part{e.frozen_parts === 1 ? '' : 's'} still
+              carr{e.frozen_parts === 1 ? 'ies' : 'y'} the mark a freeze leaves. Nothing clears it but a merge, so it says a freeze happened while
+              these parts have been on the disk — not when.
             </p>
           ) : null}
         </>

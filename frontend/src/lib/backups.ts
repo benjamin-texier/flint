@@ -131,12 +131,20 @@ export interface Elsewhere {
    *  bounded by it, and the short ones are the point: a log holding nine hours
    *  has nothing to say about a backup that runs at 02:00. */
   covered_hours: number
+  /** Freeze *statements*: the `UNFREEZE` half counted with the `FREEZE` half,
+   *  because clickhouse-backup issues both and a window that caught only the
+   *  second one still caught a backup. Printed as statements, never as backups
+   *  — one backup of forty tables is forty of these. */
   freezes: number
   last_freeze: string
   users: string[]
   objects: string[]
   total_objects: number
-  frozen_now: number
+  /** Parts still carrying the mark a freeze leaves — `is_frozen`, which an
+   *  `UNFREEZE` does not clear and a merge does. Measured on 26.7.1, and it is
+   *  the reason this figure is never printed as *now*: it outlives the
+   *  statement that made it by however long those parts live. */
+  frozen_parts: number
 }
 
 /** The window, in words, in whatever unit does not lie about its precision. */
@@ -146,13 +154,15 @@ export function logReach(hours: number): string {
   return `${Math.max(1, Math.round(hours * 60))} minutes`
 }
 
-/** Whether the log holds evidence that something took a copy.
+/** Whether there is evidence that something took a copy.
  *
- *  Either mark counts. A freeze in the window is the ordinary one; parts frozen
- *  *now* is a backup in flight, which a page refreshing every few seconds will
- *  catch on a server whose log was trimmed a minute ago. */
+ *  Either mark counts, and they fail in opposite directions, which is why both
+ *  are here. A freeze in the query log is dated and short-lived — the log is
+ *  trimmed. A part marked `is_frozen` is undated and long-lived — nothing clears
+ *  it but a merge. A server backed up nightly, whose log holds nine hours, shows
+ *  the second and not the first. */
 export function tookACopy(e?: Elsewhere): boolean {
-  return !!e && e.available && (e.freezes > 0 || e.frozen_now > 0)
+  return !!e && e.available && (e.freezes > 0 || e.frozen_parts > 0)
 }
 
 /** Whether the window is too short to be quiet in.
@@ -174,12 +184,17 @@ export function saysElsewhere(e?: Elsewhere): string | null {
   if (!tookACopy(e)) return null
   const it = e as Elsewhere
   if (it.freezes === 0) {
-    return `${it.frozen_now} parts are frozen right now — something is taking a copy as you read this`
+    /* Undated on purpose. The mark says a freeze happened while these parts have
+       been on the disk; it does not say when, and "right now" — which this said
+       until `is_frozen` was measured surviving its own `UNFREEZE` — would be
+       Flint inventing a timestamp out of a flag. */
+    const one = it.frozen_parts === 1
+    return `${it.frozen_parts} part${one ? '' : 's'} still ${one ? 'carries' : 'carry'} the mark a freeze leaves — something froze this data at some point, and the query log no longer reaches back to say when`
   }
   const of =
     it.total_objects > 0
       ? ` of ${it.total_objects} object${it.total_objects === 1 ? '' : 's'}`
       : ''
   const by = it.users.length ? `, as ${it.users.join(', ')}` : ''
-  return `${it.freezes} freeze${it.freezes === 1 ? '' : 's'}${of}${by}, the last at ${it.last_freeze} — how a tool such as clickhouse-backup takes one, over the ${logReach(it.covered_hours)} the query log covers`
+  return `${it.freezes} freeze statement${it.freezes === 1 ? '' : 's'}${of}${by}, the last at ${it.last_freeze} — how a tool such as clickhouse-backup takes one, over the ${logReach(it.covered_hours)} the query log covers`
 }

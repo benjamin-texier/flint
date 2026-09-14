@@ -135,7 +135,7 @@ const elsewhere = (over: Partial<Elsewhere> = {}): Elsewhere => ({
   users: [],
   objects: [],
   total_objects: 0,
-  frozen_now: 0,
+  frozen_parts: 0,
   ...over,
 })
 
@@ -158,7 +158,7 @@ describe('tookACopy', () => {
        trimmed a minute ago: a backup in flight is visible in `system.parts`
        when the statement that started it is already gone from the log. */
     expect(tookACopy(elsewhere({ freezes: 12 }))).toBe(true)
-    expect(tookACopy(elsewhere({ frozen_now: 3 }))).toBe(true)
+    expect(tookACopy(elsewhere({ frozen_parts: 3 }))).toBe(true)
     expect(tookACopy(elsewhere())).toBe(false)
   })
 
@@ -193,7 +193,7 @@ describe('saysElsewhere', () => {
         covered_hours: 168,
       }),
     )!
-    expect(said).toContain('12 freezes')
+    expect(said).toContain('12 freeze statements')
     expect(said).toContain('41 objects')
     expect(said).toContain('backup')
     expect(said).toContain('2026-09-14 02:14:07')
@@ -204,9 +204,16 @@ describe('saysElsewhere', () => {
     expect(said).toContain('clickhouse-backup')
   })
 
-  it('reads a backup in flight as one, not as a past one', () => {
-    const said = saysElsewhere(elsewhere({ frozen_now: 3 }))!
-    expect(said).toContain('right now')
+  it('reads a freeze mark as undated, because that is what it is', () => {
+    /* `is_frozen` survives its own `UNFREEZE` — measured on 26.7.1, where
+       `SYSTEM UNFREEZE` is refused outright unless the server enables it — and
+       clears only when a merge rewrites the part. It outlives the query log,
+       which is why it is worth reading, and it carries no time at all, which is
+       why it must never be printed as one. */
+    const said = saysElsewhere(elsewhere({ frozen_parts: 3 }))!
+    expect(said).toContain('3 parts')
+    expect(said).toContain('no longer reaches back to say when')
+    expect(said).not.toContain('right now')
   })
 
   it('supports nothing where there is nothing', () => {

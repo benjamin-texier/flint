@@ -2866,11 +2866,21 @@ the ones shaped like `ALTER TABLE … FREEZE` or `SYSTEM UNFREEZE` — matched o
 statement's shape rather than on the word, because the word alone finds Flint's
 own probe and reports it as somebody's backup.
 
-The Backups page shows what that found: how many freezes, of how many objects,
+The Backups page shows what that found: how many freeze statements — the
+`UNFREEZE` half counted with the `FREEZE` half, since clickhouse-backup issues
+both and a window that caught only the second still caught a backup — of how many
+objects,
 under whose account, and when the last one was. `system.parts.is_frozen` is read
-alongside it for a copy being taken *right now* — `clickhouse-backup` clears that
-flag as soon as it has its hardlinks, so a zero there is not the absence of a
-backup and is never reported as one.
+alongside it, and it behaves nothing like the name suggests. Measured on 26.7.1:
+`ALTER TABLE … FREEZE` sets it, `ALTER TABLE … UNFREEZE WITH NAME` returns ok and
+leaves it set, `SYSTEM UNFREEZE` is refused outright unless the server enables it
+(code 344), and what finally cleared it was the part being rewritten by a merge.
+
+That makes it the opposite of the query log and the reason to read both. The log
+is dated and short-lived; the mark is undated and long-lived. A server backed up
+at 02:00, whose log holds nine hours, shows the mark and no freeze — so the page
+reports it as *a freeze happened while these parts have been on the disk*, and
+never as one happening now.
 
 Every sentence of it is bounded by **how far back the log actually reaches**, and
 the short windows are the point: a query log trimmed daily holds nine hours by
