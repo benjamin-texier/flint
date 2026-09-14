@@ -3098,7 +3098,7 @@ tr:hover .stratum__fill {
 
 .roles {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(232px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 232px), 1fr));
   gap: var(--s3);
 }
 
@@ -16221,4 +16221,58 @@ button.acol__val:hover {
   font-size: var(--size-label);
   line-height: 1.55;
   color: var(--chalk-faint);
+}
+
+/* Clear entry points on the home page and in an empty query tab. */
+.arrival-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--s3);
+  margin: var(--s5) 0 var(--s6);
+}
+.arrival-actions__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: var(--s4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--slab);
+  color: var(--chalk-dim);
+  line-height: 1.6;
+  transition: border-color var(--motion-fast) var(--ease),
+    background var(--motion-fast) var(--ease);
+}
+.arrival-actions__card:hover {
+  border-color: var(--line-strong);
+  background: var(--slab-raised);
+}
+.arrival-actions__title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  color: var(--chalk);
+  font-weight: 600;
+}
+.start__intro {
+  margin: 0;
+  color: var(--chalk-dim);
+  line-height: 1.6;
+}
+.start__cards { align-items: stretch; }
+.opener { min-width: 0; padding: var(--s4); border-radius: var(--radius-lg); }
+.opener__sql { overflow-wrap: anywhere; }
+.opener__action {
+  display: flex;
+  justify-content: space-between;
+  margin-top: auto;
+  padding-top: var(--s3);
+  color: var(--chalk);
+  font-weight: 600;
+}
+.start__row { min-height: 44px; }
+.chrome__find { min-height: 32px; }
+@media (max-width: 720px) {
+  .arrival-actions { grid-template-columns: 1fr; }
 }

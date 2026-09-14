@@ -83,9 +83,10 @@ export function StartHere({
                 First questions about <code className="ident">{table}</code>
               </>
             ) : (
-              'Somewhere to start'
+              'Start with a question'
             )}
           </h2>
+          <p className="start__intro">Choose a question to run its SQL and see the results below.</p>
           <div className="start__cards">
             {offers.map((o) => (
               <button
@@ -98,6 +99,7 @@ export function StartHere({
                 <span className="opener__title">{o.title}</span>
                 <span className="opener__note">{o.note}</span>
                 <code className="opener__sql">{o.sql}</code>
+                <span className="opener__action">Run query <span aria-hidden="true">→</span></span>
               </button>
             ))}
           </div>
@@ -106,7 +108,8 @@ export function StartHere({
 
       {recent.length > 0 ? (
         <section className="start__sec">
-          <h2 className="start__head">Lately on this server</h2>
+          <h2 className="start__head">Recent queries on this server</h2>
+          <p className="start__intro">Select a query to run it again.</p>
           <ul className="start__recent">
             {recent.map((e) => (
               <li key={e.query_id + e.event_time}>
