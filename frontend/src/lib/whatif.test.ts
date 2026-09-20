@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { granulesRead, handOver, pruned, verdicts, type Outcome } from './whatif'
+import { granulesRead, handOver, pruned, saysScope, verdicts, type Outcome } from './whatif'
 import { readPlan } from './plan'
 
 /** The shape ClickHouse actually prints, taken from a real run rather than
@@ -143,5 +143,28 @@ describe('handing the alteration over', () => {
     expect(to).toContain('alter=default.events')
     expect(to).toContain('kind=set%28100%29')
     expect(to).toContain('granularity=4')
+  })
+})
+
+describe('saying what was measured', () => {
+  it('names the partition where there is one', () => {
+    expect(saysScope(outcome())).toContain('on partition 202608')
+  })
+
+  it('says the whole table where the copy was all of it', () => {
+    const all = outcome({ sampled_rows: 5_319_190, table_rows: 5_319_190, partition: 'tuple()' })
+    expect(saysScope(all)).toBe('Measured on the whole table — 5.3 M rows, copied and thrown away.')
+  })
+
+  it("does not repeat ClickHouse's word for having no partitioning", () => {
+    // `tuple()` is what `system.parts` calls the single partition of an
+    // unpartitioned table, and it means nothing to the person reading.
+    const some = outcome({ sampled_rows: 1_000_000, table_rows: 5_319_190, partition: 'tuple()' })
+    expect(saysScope(some)).not.toContain('tuple()')
+    expect(saysScope(some)).toContain('1 M of 5.3 M rows')
+  })
+
+  it('says a clipped partition was only part of one', () => {
+    expect(saysScope(outcome({ clipped: true }))).toContain('part of partition')
   })
 })

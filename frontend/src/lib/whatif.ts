@@ -133,11 +133,33 @@ export function verdicts(outcome: Outcome): Verdict[] {
 
   out.push({
     tone: 'note',
-    text: `Measured on ${outcome.clipped ? 'part of ' : ''}partition ${outcome.partition} — ${count(outcome.sampled_rows)} of ${count(outcome.table_rows)} rows, copied and thrown away.`,
+    text: saysScope(outcome),
     evidence: `${count(outcome.sampled_parts)} parts here against ${count(outcome.table_parts)} in the table`,
   })
 
   return out
+}
+
+/** What was measured, in words that are true of this table.
+ *
+ *  Three cases, and the middle one is why this is a function. A table with no
+ *  `PARTITION BY` has exactly one partition and ClickHouse calls it `tuple()`
+ *  — its own word for *there is no partitioning*, and a sentence reading
+ *  "measured on partition tuple()" would be Flint repeating a term at somebody
+ *  it means nothing to. Where the copy is the whole table there is no sample
+ *  to caveat at all, and saying "5.3 M of 5.3 M rows" invites a reader to look
+ *  for the part that was left out.
+ */
+export function saysScope(outcome: Outcome): string {
+  const whole = !outcome.clipped && outcome.sampled_rows >= outcome.table_rows
+  const unpartitioned = outcome.partition === 'tuple()' || outcome.partition === 'all'
+  if (whole) {
+    return `Measured on the whole table — ${count(outcome.sampled_rows)} rows, copied and thrown away.`
+  }
+  const where = unpartitioned
+    ? ''
+    : ` on ${outcome.clipped ? 'part of ' : ''}partition ${outcome.partition}`
+  return `Measured${where} — ${count(outcome.sampled_rows)} of ${count(outcome.table_rows)} rows, copied and thrown away.`
 }
 
 /** Where the alteration is carried to be run.
