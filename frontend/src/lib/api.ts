@@ -682,6 +682,37 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 const enc = encodeURIComponent
 
+/** What narrows a reading of the query log.
+ *
+ *  One shape for all three readings that take it, because the page keeps one
+ *  filter and three panels: two of them disagreeing about what they cover is
+ *  the defect the filter exists to prevent.
+ */
+export interface Narrowing {
+  user?: string
+  table?: string
+  kind?: string
+  /** One shape, by `normalized_query_hash`. A UInt64, so it travels as a
+   *  decimal string everywhere: JavaScript cannot hold one. */
+  hash?: string
+  failed?: boolean
+}
+
+/** An empty value is *no filter* and is left off the address entirely, rather
+ *  than sent as `user=` — which the backend would otherwise have to decide
+ *  about, and which reads as a filter for the empty user that background work
+ *  actually has. */
+function narrowing(n: Narrowing): string {
+  const params = new URLSearchParams()
+  if (n.user) params.set('user', n.user)
+  if (n.table) params.set('table', n.table)
+  if (n.kind) params.set('kind', n.kind)
+  if (n.hash) params.set('hash', n.hash)
+  if (n.failed) params.set('failed', 'true')
+  const q = params.toString()
+  return q ? `&${q}` : ''
+}
+
 /** A call to a published endpoint, made the way a caller would make it.
  *
  *  Deliberately not `request`: the sandbox has to show what an outside caller
@@ -889,9 +920,28 @@ export const api = {
   /** The query log over a window. `seconds` is the checkup's traffic session —
    *  somebody marks a moment and comes back — and wins over `days` when given.
    *  Nothing else has ever wanted a window finer than a day. */
-  diagnoseQueries: (days: number, seconds?: number) =>
+  diagnoseQueries: (days: number, seconds?: number, narrow: Narrowing = {}) =>
     request<import('./diagnose').QueryReport>(
-      `/diagnostics/queries?${seconds === undefined ? `days=${days}` : `seconds=${seconds}`}`,
+      `/diagnostics/queries?${seconds === undefined ? `days=${days}` : `seconds=${seconds}`}${narrowing(narrow)}`,
+    ),
+  /** The individual statements behind the rankings. The only reading of the
+   *  log that carries a `query_id`, which is the only thing that reaches a
+   *  statement's own page. */
+  diagnoseRuns: (
+    days: number,
+    narrow: Narrowing = {},
+    order: 'recent' | 'slowest' | 'heaviest' = 'recent',
+    limit = 50,
+  ) =>
+    request<import('./statement').RunsReport>(
+      `/diagnostics/runs?days=${days}&limit=${limit}&order=${order}${narrowing(narrow)}`,
+    ),
+  /** Everything the log kept about one statement. `days` is how far back to
+   *  look for it, and it is generous on purpose: somebody following an id out
+   *  of a fortnight-old incident report is the ordinary case. */
+  statement: (queryId: string, days = 30) =>
+    request<import('./statement').StatementReport>(
+      `/diagnostics/statement/${enc(queryId)}?days=${days}`,
     ),
   diagnoseTraffic: (days: number, seconds?: number) =>
     request<import('./diagnose').TrafficReport>(

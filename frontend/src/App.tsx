@@ -33,6 +33,11 @@ const DashboardView = lazy(() =>
 const DiagnosePage = lazy(() =>
   import('./routes/Diagnose').then((m) => ({ default: m.DiagnosePage })),
 )
+// One statement, in full. Its own chunk rather than part of Diagnose: most
+// visits to that page never open one, and the page carries the plan reader.
+const StatementPage = lazy(() =>
+  import('./routes/Statement').then((m) => ({ default: m.StatementPage })),
+)
 // Infrastructure. Lazy like the rest, and for one extra reason: a deployment
 // that switched the space off should not pay for its code.
 const HealthPage = lazy(() => import('./routes/Health').then((m) => ({ default: m.HealthPage })))
@@ -273,6 +278,17 @@ export function App() {
                 element={
                   <Suspense fallback={<Loading label="Reading system tables" />}>
                     <DiagnosePage />
+                  </Suspense>
+                }
+              />
+              {/* Under `/diagnose` by the URL rule, which is also the right
+                  place by the subject: what a statement cost is Data's, and
+                  stopping one that is still running is Infrastructure's. */}
+              <Route
+                path="/diagnose/q/:id"
+                element={
+                  <Suspense fallback={<Loading label="Reading the log" />}>
+                    <StatementPage />
                   </Suspense>
                 }
               />

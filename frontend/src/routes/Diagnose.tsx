@@ -25,6 +25,8 @@ import {
   type TrafficReport,
 } from '../lib/diagnose'
 import { concerns, summarise, type Item } from '../lib/attention'
+import type { Narrowing } from '../lib/api'
+import { explainable, type Run, type RunsReport } from '../lib/statement'
 import { nameOf, notable, saysCaveat, trustworthy, type SpendReport } from '../lib/spend'
 import { keeps } from '../lib/spaces'
 import { readPlan, verdicts } from '../lib/plan'
@@ -63,14 +65,40 @@ const MOVED: Record<string, string> = {
  *  The server's own condition — running work, merges, disks, partitions — is
  *  Infrastructure's Health page. */
 export function DiagnosePage() {
-  const [days, setDays] = useState<number>(7)
-  const [params] = useSearchParams()
+  /* The whole state of this page lives in the address, and that is the point
+     rather than a convenience: "the ETL account against analytics.events over
+     seven days" is a thing one person sends another, and a page that held it
+     in `useState` could only be described in words. It is the same argument
+     the four readings of a database already make for `?view=`. */
+  const [params, setParams] = useSearchParams()
+  const days = Number(params.get('days')) || 7
+  const narrow = narrowingFrom(params)
+  const order = (params.get('order') ?? 'slowest') as 'recent' | 'slowest' | 'heaviest'
+
+  const set = (changes: Record<string, string | null>) => {
+    const next = new URLSearchParams(params)
+    for (const [key, value] of Object.entries(changes)) {
+      if (value === null || value === '') next.delete(key)
+      else next.set(key, value)
+    }
+    setParams(next, { replace: true })
+  }
+  const setDays = (n: number) => set({ days: n === 7 ? null : String(n) })
 
   const moved = MOVED[params.get('view') ?? '']
 
+  /* The filter is part of every key, because it is part of every answer. A
+     cached report from a different filter shown under this one's chips would
+     be the page lying about what it covers. */
+  const key = JSON.stringify(narrow)
   const queries = useQuery({
-    queryKey: ['diag', 'queries', days],
-    queryFn: () => api.diagnoseQueries(days),
+    queryKey: ['diag', 'queries', days, key],
+    queryFn: () => api.diagnoseQueries(days, undefined, narrow),
+    staleTime: 30_000,
+  })
+  const runs = useQuery({
+    queryKey: ['diag', 'runs', days, key, order],
+    queryFn: () => api.diagnoseRuns(days, narrow, order),
     staleTime: 30_000,
   })
   const traffic = useQuery({
@@ -164,6 +192,14 @@ export function DiagnosePage() {
             ) : null}
           </div>
         )}
+        {shutOut ? null : (
+          <Narrow
+            narrow={narrow}
+            set={set}
+            users={(spend.data?.spenders ?? []).map((sp) => sp.user).filter(Boolean)}
+            tables={(traffic.data?.traffic ?? []).map((t) => t.qualified)}
+          />
+        )}
       </header>
 
       <SectionIndex />
@@ -189,7 +225,8 @@ export function DiagnosePage() {
         <>
           <Load report={queries} days={days} />
           <Spend report={spend} />
-          <Patterns report={queries} />
+          <Patterns report={queries} onShape={(hash) => set({ hash })} />
+          <Runs report={runs} order={order} onOrder={(o) => set({ order: o })} />
           <Failures report={queries} />
           <Traffic report={traffic} storage={storage.data} />
           <Unused report={traffic} />
@@ -321,6 +358,259 @@ function Watching({ items, anything }: { items: Item[]; anything: boolean }) {
 }
 
 
+// ── Narrowing ──────────────────────────────────────────────────────────────
+
+/** ClickHouse's own word for what a statement was.
+ *
+ *  A fixed list rather than a facet read off the log: these are the values
+ *  `query_kind` takes, they do not depend on the server, and a picker offering
+ *  only the kinds that happen to be in this window would quietly hide the
+ *  filter that finds the `Drop` somebody is looking for. */
+const KINDS = ['Select', 'Insert', 'Create', 'Drop', 'Alter', 'Rename', 'System', 'Other']
+
+function narrowingFrom(params: URLSearchParams): Narrowing {
+  const of = (name: string) => params.get(name)?.trim() || undefined
+  return {
+    user: of('user'),
+    table: of('table'),
+    kind: of('kind'),
+    hash: of('hash'),
+    failed: params.get('failed') === 'true' || undefined,
+  }
+}
+
+/** What the page is narrowed to, and how to say so.
+ *
+ *  The two free fields are `datalist`s rather than dropdowns, for the reason
+ *  the RBAC form already settled on: the list is what this window happens to
+ *  hold, and typing a name it does not is a legitimate thing to do — an
+ *  account that ran nothing today still ran something on Tuesday. So the
+ *  suggestions help and never constrain.
+ *
+ *  Every filter also appears as a chip. The fields alone would be enough to
+ *  *set* one and are not enough to *see* one: a page scrolled past its header
+ *  showing forty rows out of forty thousand has to be able to say why. */
+function Narrow({
+  narrow,
+  set,
+  users,
+  tables,
+}: {
+  narrow: Narrowing
+  set: (changes: Record<string, string | null>) => void
+  users: string[]
+  tables: string[]
+}) {
+  const chips: [string, string, string][] = []
+  if (narrow.user) chips.push(['user', 'account', narrow.user])
+  if (narrow.table) chips.push(['table', 'table', narrow.table])
+  if (narrow.kind) chips.push(['kind', 'kind', narrow.kind])
+  if (narrow.hash) chips.push(['hash', 'shape', narrow.hash])
+  if (narrow.failed) chips.push(['failed', 'only', 'what failed'])
+
+  return (
+    <div className="diag__filter">
+      <span className="label">NARROW TO</span>
+      <input
+        className="input bfield bfield--sm"
+        list="diag-users"
+        placeholder="any account"
+        defaultValue={narrow.user ?? ''}
+        aria-label="Narrow to one account"
+        onBlur={(e) => set({ user: e.target.value.trim() || null })}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') set({ user: e.currentTarget.value.trim() || null })
+        }}
+      />
+      <datalist id="diag-users">
+        {[...new Set(users)].map((u) => (
+          <option key={u} value={u} />
+        ))}
+      </datalist>
+      <input
+        className="input bfield bfield--sm"
+        list="diag-tables"
+        placeholder="any table"
+        defaultValue={narrow.table ?? ''}
+        aria-label="Narrow to one table"
+        onBlur={(e) => set({ table: e.target.value.trim() || null })}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') set({ table: e.currentTarget.value.trim() || null })
+        }}
+      />
+      <datalist id="diag-tables">
+        {[...new Set(tables)].map((t) => (
+          <option key={t} value={t} />
+        ))}
+      </datalist>
+      <select
+        className="picker__select"
+        value={narrow.kind ?? ''}
+        aria-label="Narrow to one kind of statement"
+        onChange={(e) => set({ kind: e.target.value || null })}
+      >
+        <option value="">any kind</option>
+        {KINDS.map((k) => (
+          <option key={k} value={k}>
+            {k}
+          </option>
+        ))}
+      </select>
+      {/* Inside a `.segmented`, which is where that class gets its frame: on
+          its own the button rendered as bare text and read as a label rather
+          than as something to press. */}
+      <div className="segmented">
+        <button
+          className={`segmented__item${narrow.failed ? ' is-on' : ''}`}
+          onClick={() => set({ failed: narrow.failed ? null : 'true' })}
+          aria-pressed={Boolean(narrow.failed)}
+          type="button"
+        >
+          only what failed
+        </button>
+      </div>
+      {chips.length > 0 ? (
+        <>
+          {chips.map(([param, label, value]) => (
+            <span className="qchip" key={param}>
+              <span className="qchip__text" title={`${label} ${value}`}>
+                {label} {value}
+              </span>
+              <button
+                className="qchip__x"
+                onClick={() => set({ [param]: null })}
+                title={`Stop narrowing by ${label}`}
+                aria-label={`Stop narrowing by ${label}`}
+                type="button"
+              >
+                ×
+              </button>
+            </span>
+          ))}
+          <button
+            className="btn btn--quiet"
+            onClick={() =>
+              set({ user: null, table: null, kind: null, hash: null, failed: null })
+            }
+            type="button"
+          >
+            Clear
+          </button>
+        </>
+      ) : null}
+    </div>
+  )
+}
+
+// ── Runs ───────────────────────────────────────────────────────────────────
+
+const ORDERS: [('recent' | 'slowest' | 'heaviest'), string][] = [
+  ['slowest', 'slowest'],
+  ['heaviest', 'most read'],
+  ['recent', 'newest'],
+]
+
+/** The statements themselves, one row each.
+ *
+ *  Everything above this on the page is grouped, and a group has no
+ *  `query_id`: a shape cannot be opened, cannot be explained as it actually
+ *  ran, and cannot say which of its runs was the bad one. This is the list
+ *  that can, and it is deliberately below the rankings — the shapes answer
+ *  what is expensive, and this answers which call, which is the second
+ *  question rather than the first.
+ *
+ *  Ordered by the slowest by default rather than the newest, because somebody
+ *  who filtered got here looking for the bad one. The control says which, and
+ *  the section says how many of how many: a list of fifty with no sort named
+ *  is fifty rows nobody can place. */
+function Runs({
+  report,
+  order,
+  onOrder,
+}: {
+  report: Q<RunsReport>
+  order: string
+  onOrder: (order: 'recent' | 'slowest' | 'heaviest') => void
+}) {
+  const rows = report.data?.runs ?? []
+  return (
+    <Section
+      title="The statements themselves"
+      sub={`One row per run, with what it cost. ${
+        report.data?.more
+          ? `The ${rows.length} ${ORDERS.find(([o]) => o === order)?.[1] ?? ''} of more than that.`
+          : rows.length > 0
+            ? `All ${rows.length} the window holds under this filter.`
+            : ''
+      }`}
+      q={report}
+    >
+      <div className="diag__filter">
+        <span className="label">FIRST</span>
+        <div className="segmented">
+          {ORDERS.map(([value, label]) => (
+            <button
+              key={value}
+              className={`segmented__item${order === value ? ' is-on' : ''}`}
+              onClick={() => onOrder(value)}
+              type="button"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {rows.length ? (
+        <table className="tbl">
+          <thead>
+            <tr>
+              <th>Statement</th>
+              <th className="tbl--n">Took</th>
+              <th className="tbl--n">Read</th>
+              <th className="tbl--n">Returned</th>
+              <th>Account</th>
+              <th>When</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <RunRow key={r.query_id} run={r} />
+            ))}
+          </tbody>
+        </table>
+      ) : report.data?.available ? (
+        <EmptyNote title="Nothing matched">
+          No statement in this window matches the filter above. Widen the window, or clear one of
+          the chips.
+        </EmptyNote>
+      ) : null}
+    </Section>
+  )
+}
+
+function RunRow({ run }: { run: Run }) {
+  return (
+    <tr>
+      <td className="tbl__key">
+        <Link className="diag__sql" to={`/diagnose/q/${encodeURIComponent(run.query_id)}`}>
+          {run.query.replace(/\s+/g, ' ').trim()}
+          {/* The text is cut at 300 characters by the backend, and a row that
+              ends mid-word without saying so reads as a statement that did. */}
+          {run.clipped ? '…' : ''}
+        </Link>
+        {run.exception_code !== 0 ? (
+          <Flag level="throw">{run.exception_name || run.exception_code}</Flag>
+        ) : null}
+      </td>
+      <td className="tbl--n">{exact(run.duration_ms)} ms</td>
+      <td className="tbl--n mono-dim">{bytes(run.read_bytes)}</td>
+      <td className="tbl--n mono-dim">{count(run.result_rows)}</td>
+      <td className="mono-dim">{run.user || 'background'}</td>
+      <td className="mono-dim">{relativeTime(run.at)}</td>
+    </tr>
+  )
+}
+
 // ── Load ───────────────────────────────────────────────────────────────────
 
 function Load({ report, days }: { report: Q<QueryReport>; days: number }) {
@@ -383,7 +673,13 @@ function Load({ report, days }: { report: Q<QueryReport>; days: number }) {
 
 // ── Patterns ───────────────────────────────────────────────────────────────
 
-function Patterns({ report }: { report: Q<QueryReport> }) {
+function Patterns({
+  report,
+  onShape,
+}: {
+  report: Q<QueryReport>
+  onShape: (hash: string) => void
+}) {
   const [open, setOpen] = useState<string | null>(null)
   const patterns = report.data?.patterns ?? []
   const worst = patterns[0]?.total_ms ?? 0
@@ -440,6 +736,21 @@ function Patterns({ report }: { report: Q<QueryReport> }) {
                       >
                         Open in editor →
                       </Link>
+                      {/* The shape's own runs. This is the one link on the
+                          page that turns a ranking into something with a
+                          `query_id` behind it — "which of these 4,812 runs
+                          was the four-second one" is not a question a group
+                          can answer. */}
+                      <button
+                        className="diag__open"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          onShape(p.hash)
+                        }}
+                        type="button"
+                      >
+                        Every run of this shape →
+                      </button>
                       <WhyPattern pattern={p} />
                     </>
                   ) : null}
@@ -489,7 +800,7 @@ function WhyPattern({ pattern }: { pattern: Pattern }) {
     queryKey: ['pattern-plan', pattern.hash],
     queryFn: () =>
       api.run({
-        sql: `EXPLAIN PLAN indexes = 1 ${pattern.sample.trim()}`,
+        sql: `EXPLAIN PLAN indexes = 1 ${explainable(pattern.sample)}`,
         database,
       }),
     enabled: asked,

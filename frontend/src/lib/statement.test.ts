@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   againstShape,
   counter,
+  explainable,
   granuleFloor,
   hitRate,
   notable,
@@ -284,5 +285,30 @@ describe('the verdicts', () => {
     expect(verdicts(report({ statement: few })).some((v) => v.text.includes('mark cache'))).toBe(false)
     const many = statement({ events: events({ MarkCacheHits: 10, MarkCacheMisses: 990 }) })
     expect(verdicts(report({ statement: many })).some((v) => v.text.includes('mark cache'))).toBe(true)
+  })
+})
+
+describe('putting a logged statement behind EXPLAIN', () => {
+  it('drops the FORMAT the log kept, which EXPLAIN will not take', () => {
+    expect(explainable('SELECT 1 FROM t FORMAT TSV')).toBe('SELECT 1 FROM t')
+    expect(explainable('SELECT 1 FROM t format JSONEachRow  ')).toBe('SELECT 1 FROM t')
+  })
+
+  it('drops a trailing semicolon', () => {
+    expect(explainable('SELECT 1;')).toBe('SELECT 1')
+  })
+
+  it('does not reach inside a string that ends in one', () => {
+    // The closing quote is not part of a bare word, so the pattern cannot
+    // match — which is the whole of why it is anchored and narrow.
+    expect(explainable("SELECT 1 WHERE x = 'a FORMAT TSV'")).toBe(
+      "SELECT 1 WHERE x = 'a FORMAT TSV'",
+    )
+  })
+
+  it('leaves a FORMAT that is not at the end alone', () => {
+    expect(explainable('SELECT formatDateTime(ts, FORMAT) FROM t')).toBe(
+      'SELECT formatDateTime(ts, FORMAT) FROM t',
+    )
   })
 })

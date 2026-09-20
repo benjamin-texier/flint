@@ -106,6 +106,13 @@ const PAGES = [
   { path: '/build', wait: 'main' },
   { path: '/dash', wait: 'main' },
   { path: '/diagnose', wait: '.tbl' },
+  /* The same page narrowed. The filter lives in the address, so a filtered
+     Diagnose is a cold load like any other link — and it renders controls the
+     bare page does not: the chips, the Clear button and the order switch. A
+     filter that matches nothing is checked too, because the empty note under a
+     full set of chips is the state somebody actually lands in. */
+  { path: '/diagnose?kind=Insert&order=heaviest', wait: '.qchip' },
+  { path: '/diagnose?user=nobody-ran-this', wait: '.note--empty, .tbl' },
   // Infrastructure. Each is a different set of system tables and a different
   // way of being unavailable, which is why they are walked separately rather
   // than trusted to behave like the page next door.
@@ -196,6 +203,23 @@ async function discover() {
       { path: `${at}?tab=projections`, wait: 'main' },
       { path: `${at}?tab=ddl`, wait: 'main' },
     ]
+  } catch {
+    return []
+  }
+}
+
+/** One statement's own page, discovered the same way.
+ *
+ *  A `query_id` cannot be a fixed path — every one of them is a row somebody
+ *  else's server wrote. The slowest run in the window is the one worth
+ *  walking: it is the one with counters on it, so the panels that only render
+ *  when the server recorded something actually render. */
+async function discoverStatement() {
+  try {
+    const report = await (await fetch(`${BASE}/api/diagnostics/runs?days=7&limit=1&order=slowest`)).json()
+    const run = report?.runs?.[0]
+    if (!run) return []
+    return [{ path: `/diagnose/q/${encodeURIComponent(run.query_id)}`, wait: '.metrics' }]
   } catch {
     return []
   }
@@ -308,11 +332,16 @@ if (endpoints.length === 0) {
   console.log('note: nothing is published, so the endpoint page is not covered')
 }
 
+const statements = await discoverStatement()
+if (statements.length === 0) {
+  console.log('note: the query log holds nothing, so the statement page is not covered')
+}
+
 const browser = await open()
 try {
   for (const scheme of ['light', 'dark']) {
     console.log(`\n${scheme}`)
-    for (const page of [...PAGES, ...discovered, ...endpoints]) {
+    for (const page of [...PAGES, ...discovered, ...endpoints, ...statements]) {
       if (wanted(page.path)) await visit(browser, page, scheme)
     }
     if (wanted('palette')) await palette(browser, scheme)

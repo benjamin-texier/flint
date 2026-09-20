@@ -92,6 +92,38 @@ export interface Statement {
   flint_settings: number
 }
 
+/** One statement, as a row in a list. */
+export interface Run {
+  query_id: string
+  at: string
+  duration_ms: number
+  user: string
+  kind: string
+  read_rows: number
+  read_bytes: number
+  result_rows: number
+  memory_usage: number
+  exception_code: number
+  exception_name: string
+  query: string
+  /** Whether the text above was cut at 300 characters. */
+  clipped: boolean
+  tables: string[]
+  hash: string
+}
+
+export interface RunsReport {
+  available: boolean
+  reason?: string
+  window_days: number
+  window_seconds: number
+  runs: Run[]
+  /** What the server sorted by, echoed back so the page can say which
+   *  fifty of a million these are. */
+  order: string
+  more: boolean
+}
+
 export interface StatementReport {
   available: boolean
   reason?: string
@@ -391,6 +423,51 @@ export function verdicts(report: StatementReport): Verdict[] {
   if (against) out.push(against)
 
   return out
+}
+
+/** Where this statement opens in the editor.
+ *
+ *  `current_database` rather than the first qualified table the log names,
+ *  which is what the shape rankings have to guess from: a row for one run
+ *  records the database the statement was actually written against, so the
+ *  unqualified names in it resolve the same way they did when it ran.
+ *
+ *  Runs of spaces are collapsed and the lines are kept, the same rule the
+ *  shape link follows: a statement Flint sent itself arrives padded out by its
+ *  own line continuations, and thirty spaces mid-line reads as a broken paste.
+ */
+export function openInEditor(statement: Statement): string {
+  const params = new URLSearchParams({ sql: statement.query.replace(/[ \t]+/g, ' ').trim() })
+  if (statement.database) params.set('database', statement.database)
+  return `/query?${params}`
+}
+
+/** A logged statement, made safe to put behind `EXPLAIN`.
+ *
+ *  Two things the log keeps that an `EXPLAIN` will not take, and both are
+ *  ordinary rather than exotic:
+ *
+ *  **A trailing `FORMAT`.** Every statement anyone sends over the HTTP
+ *  interface or through `clickhouse-client` may carry one, the log records the
+ *  statement as it arrived, and `EXPLAIN PLAN indexes = 1 SELECT … FORMAT TSV`
+ *  is a syntax error. Found by pressing the button on a real row: the page
+ *  reported that the server "would not explain this statement", which was true
+ *  and blamed the wrong thing entirely.
+ *
+ *  **A trailing semicolon**, for the same reason and with the same fix.
+ *
+ *  Only at the very end, and only a bare word after `FORMAT`: a statement
+ *  ending in the *string* `'… FORMAT TSV'` keeps its closing quote, so the
+ *  pattern cannot reach inside it. This is not a SQL parser and must not grow
+ *  into one — anything it fails to clean up still reaches the server, which
+ *  refuses it, and the page says so.
+ */
+export function explainable(sql: string): string {
+  return sql
+    .trim()
+    .replace(/;\s*$/, '')
+    .replace(/\s+FORMAT\s+[A-Za-z0-9_]+\s*$/i, '')
+    .trim()
 }
 
 /** The one-line verdict a list row can carry. */
