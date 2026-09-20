@@ -10,6 +10,13 @@
  *  What is new here is the *comparison*, and two things about it have to be
  *  kept straight or the page overstates its own measurement.
  *
+ *  **The two totals can differ by a little, and that is the mutation.**
+ *  `MATERIALIZE INDEX` rewrites the parts it touches, so the copy after the
+ *  index is not byte-for-byte the copy before it — measured at 385 granules
+ *  against 396, about three per cent. Each figure is true of its own plan and
+ *  neither is adjusted to match the other; what carries the finding is the
+ *  share, which is measured on the same rows either way.
+ *
  *  **The share is the finding; the counts belong to the copy.** Before and
  *  after are measured on the same rows with one thing different, which is what
  *  makes "it skipped 99% of the granules" a fact. The 396 it skipped them out

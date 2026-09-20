@@ -23,6 +23,7 @@ import {
   rowsPerRun,
   servedByKey,
   PROJECTION_ROW_FLOOR,
+  keyColumn,
   ranked,
   rankTally,
   standing,
@@ -109,20 +110,30 @@ describe('reading a statement', () => {
       COLUMNS,
     )
     expect(access?.equalities).toEqual([
-      { column: 'device_id', kind: 'equality', bucket: null, expr: 'device_id' },
+      // The literal travels with the filter now: the index advisor has to
+      // plan the comparison to measure it, and a plan without a value in it
+      // is a plan about nothing.
+      { column: 'device_id', kind: 'equality', bucket: null, expr: 'device_id', op: 'eq', value: 'dev-1' },
     ])
-    expect(access?.ranges).toEqual([{ column: 'time', kind: 'range', bucket: null, expr: 'time' }])
+    // `now() - INTERVAL 7 DAY` is an expression, not a literal, so there is
+    // no value to carry — which is the common case for a time filter.
+    expect(access?.ranges).toEqual([
+      { column: 'time', kind: 'range', bucket: null, expr: 'time', op: 'gt', value: null },
+    ])
     // `>=` arrives as two punctuation tokens and has to be read as one.
     const ge = read('SELECT count() FROM events WHERE time >= now()', 'events', COLUMNS)
     expect(ge.access?.ranges).toEqual([
-      { column: 'time', kind: 'range', bucket: null, expr: 'time' },
+      // `>=` arrives as two tokens and comes back as one keyword.
+      { column: 'time', kind: 'range', bucket: null, expr: 'time', op: 'gte', value: null },
     ])
   })
 
   it('reads IN as an equality and LIKE as no filter at all', () => {
     const inList = read("SELECT count() FROM events WHERE type IN ('view', 'click')", 'events', COLUMNS)
     expect(inList.access?.equalities).toEqual([
-      { column: 'type', kind: 'equality', bucket: null, expr: 'type' },
+      // An `IN` list is refused as a value: measuring a plan against one of
+      // several is a plan about a question nobody asked.
+      { column: 'type', kind: 'equality', bucket: null, expr: 'type', op: 'in', value: null },
     ])
     // A key does nothing for a LIKE, so proposing one for it would produce a
     // projection the server never chooses.
@@ -207,7 +218,14 @@ describe('reading a statement', () => {
       COLUMNS,
     )
     expect(access?.ranges).toEqual([
-      { column: 'time', kind: 'range', bucket: 'toStartOfHour', expr: 'toStartOfHour(time)' },
+      {
+        column: 'time',
+        kind: 'range',
+        bucket: 'toStartOfHour',
+        expr: 'toStartOfHour(time)',
+        op: 'gt',
+        value: null,
+      },
     ])
   })
 
@@ -1131,5 +1149,35 @@ describe('one noisy shape does not mask the answer', () => {
     // And it says which of the shapes it is talking about, rather than
     // implying it read the whole workload.
     expect(r!.says).toContain('costliest shapes read here')
+  })
+})
+
+describe('a sorting key written through assumeNotNull', () => {
+  /* ClickHouse puts `assumeNotNull(x)` in the key itself whenever `x` is
+     Nullable. Compared as text that is a different column from `x`, and every
+     rule downstream then decides the key serves nothing — on tables where it
+     serves everything. Measured on a real 42.9 M-row table keyed that way:
+     `WHERE account_id = 'x'` reads 17 of 5,241 granules. */
+  it('sees through the wrapper when asking what the key serves', () => {
+    const { access } = read(
+      'SELECT count() FROM events WHERE project_id = 7',
+      'events',
+      COLUMNS,
+    )
+    expect(servedByKey(access!, ['assumeNotNull(project_id)', 'assumeNotNull(time)'])).toBe(true)
+  })
+
+  it('does not see through a bucket, which prunes differently', () => {
+    // 620 rows against 2,363,170, measured on the same projection: a filter on
+    // `time` does not reach a key on `toStartOfHour(time)`.
+    const { access } = read('SELECT count() FROM events WHERE time > now()', 'events', COLUMNS)
+    expect(servedByKey(access!, ['toStartOfHour(time)'])).toBe(false)
+  })
+
+  it('reads a key column out of its term', () => {
+    expect(keyColumn('assumeNotNull(account_id)')).toBe('account_id')
+    expect(keyColumn('`account_id`')).toBe('account_id')
+    expect(keyColumn('toStartOfHour(time)')).toBe('toStartOfHour(time)')
+    expect(keyColumn(undefined)).toBeNull()
   })
 })

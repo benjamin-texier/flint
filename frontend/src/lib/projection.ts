@@ -161,6 +161,20 @@ export type FilterKind = 'equality' | 'range'
 export interface Filter {
   column: string
   kind: FilterKind
+  /** The comparison, as one of the keywords the shape grammar uses — `eq`,
+   *  `gt`, `lte`, `in`, `between`. Carried for the same reason the value is:
+   *  planning `>` for a query that wrote `<` answers the opposite question. */
+  op: string | null
+  /** The literal this shape compared to, where the comparison was against one
+   *  plain value.
+   *
+   *  Carried for the index advisor, which has to *plan* the filter to measure
+   *  it — and a plan is only worth reading if a value took part in it, since
+   *  an index condition is evaluated against the literal. Null for everything
+   *  that is not a single quoted string or number: an `IN` list, a `BETWEEN`,
+   *  a subquery, an expression. The projection advisor ignores this field,
+   *  because a sort order does not care what the value was. */
+  value: string | null
   /** The bucketing function the comparison went through, if any.
    *
    *  Load-bearing, and the reason a filter is not just a column name.
@@ -279,6 +293,49 @@ function columnRefs(
  *  `has(tags, …)`, an inequality — is not a filter a sort order can use, and
  *  saying so is the whole point: proposing a key for a `LIKE` would produce a
  *  projection that never gets chosen. */
+/** The comparison as the workload wrote it, in the keyword the shape grammar
+ *  and the what-if both already speak.
+ *
+ *  `FilterKind` is enough for a sort order — a key serves `<` and `>` the same
+ *  way — and it is *not* enough to plan one. Measured, on a column ranging
+ *  −134 to 127: `signal < -200` prunes every granule and `signal > -200` prunes
+ *  none. An index measured against the operator nobody wrote answers the
+ *  opposite question, which is exactly the failure this whole feature exists
+ *  to avoid. */
+function operator(term: string): string | null {
+  const tokens = meaningful(term)
+  let ops = ''
+  for (let i = 0; i < tokens.length; i += 1) {
+    const tok = tokens[i]!
+    if (tok.kind === 'punct' && '=<>!'.includes(tok.text)) {
+      ops += tok.text
+      continue
+    }
+    if (ops) break
+    if (tok.kind === 'keyword' || tok.kind === 'name') {
+      const word = tok.text.toUpperCase()
+      if (word === 'IN') return 'in'
+      if (word === 'BETWEEN') return 'between'
+      if (word === 'NOT' || word === 'LIKE' || word === 'ILIKE') return null
+    }
+  }
+  switch (ops) {
+    case '=':
+    case '==':
+      return 'eq'
+    case '>':
+      return 'gt'
+    case '>=':
+      return 'gte'
+    case '<':
+      return 'lt'
+    case '<=':
+      return 'lte'
+    default:
+      return null
+  }
+}
+
 function comparison(term: string): FilterKind | null {
   const tokens = meaningful(term)
   let ops = ''
@@ -326,6 +383,27 @@ function operatorAt(term: string): number | null {
       }
     }
   }
+  return null
+}
+
+/** The literal on the right of a comparison, where it is one plain value.
+ *
+ *  Deliberately narrow. Everything this refuses — a list, a range, an
+ *  expression, a subquery — is something the index measurement would have to
+ *  guess at, and a value guessed at produces a plan about a question nobody
+ *  asked. The operator is skipped by taking everything after the first run of
+ *  comparison characters or the first word, and the rest has to be exactly one
+ *  token.
+ */
+function literal(after: string): string | null {
+  const rest = after.replace(/^\s*(?:[=<>!]+|NOT\s+IN|NOT\s+LIKE|IN|BETWEEN|LIKE|ILIKE)\s*/i, '').trim()
+  if (rest === '') return null
+  // A quoted string, with ClickHouse's own escaping undone the way `unquote`
+  // does it for identifiers.
+  const quoted = /^'((?:[^'\\]|\\.|'')*)'$/.exec(rest)
+  if (quoted) return quoted[1]!.replace(/''/g, "'").replace(/\\'/g, "'")
+  // A number, and nothing that merely starts with one.
+  if (/^-?\d+(?:\.\d+)?$/.test(rest)) return rest
   return null
 }
 
@@ -427,6 +505,8 @@ export function read(statement: string, table: string, columns: readonly AdviceC
       bucket: subject.bucket,
       expr: subject.expr,
       kind,
+      op: operator(term.text),
+      value: literal(term.text.slice(at)),
     }
     if (kind === 'equality') equalities.push(filter)
     else ranges.push(filter)
@@ -468,11 +548,36 @@ export function read(statement: string, table: string, columns: readonly AdviceC
  *  which is the whole of what makes the difference between reading a table and
  *  reading a corner of it. */
 export function servedByKey(access: Access, sortingKey: readonly string[]): boolean {
-  const first = sortingKey[0]
+  const first = keyColumn(sortingKey[0])
   if (!first) return false
   return (
     access.equalities.some((f) => f.column === first) || access.ranges.some((f) => f.column === first)
   )
+}
+
+/** The column a sorting-key term is about, seeing through `assumeNotNull`.
+ *
+ *  ClickHouse writes `assumeNotNull(x)` into the key itself whenever `x` is
+ *  Nullable, which is most tables anybody generates rather than hand-writes.
+ *  Compared as text, `assumeNotNull(account_id)` and a filter on `account_id`
+ *  are different columns — and everything downstream then concludes that the
+ *  key serves nothing, on tables where it serves everything.
+ *
+ *  Measured before it was written, on a 42.9 M-row table keyed on
+ *  `assumeNotNull(account_id)`: `WHERE account_id = 'x'` reads **17 of 5,241
+ *  granules**, binary search and all. The server sees through the wrapper, so
+ *  this has to as well.
+ *
+ *  Only that wrapper. `toStartOfHour(time)` is a *bucket* — a filter on `time`
+ *  and one on `toStartOfHour(time)` prune differently, which this file
+ *  measured at 620 rows against 2,363,170 — and unwrapping those would undo
+ *  the distinction the `bucket` field exists to keep.
+ */
+export function keyColumn(term: string | undefined): string | null {
+  if (!term) return null
+  const bare = term.trim()
+  const wrapped = /^assumeNotNull\s*\(\s*(.+?)\s*\)$/i.exec(bare)
+  return unquote(wrapped ? wrapped[1]!.trim() : bare)
 }
 
 /* -- Candidates ---------------------------------------------------------- */

@@ -3,7 +3,16 @@ import { Link } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
 
 import { api } from '../lib/api'
-import { bytes, count } from '../lib/format'
+import { bytes, count, duration } from '../lib/format'
+import {
+  claim,
+  measurable,
+  proposals,
+  saysKind,
+  saysNothing,
+  saysUnmeasurable,
+  type Proposal,
+} from '../lib/indexAdvice'
 import { handOver, verdicts, type Outcome } from '../lib/whatif'
 import { ErrorNote, Loading } from './Note'
 
@@ -32,6 +41,17 @@ export function IndexWhatIf({ database, table }: { database: string; table: stri
     queryFn: () => api.derived(database, table),
     retry: false,
   })
+  /* The workload, on the same query key the projections tab uses — opening
+     both tabs is one read of `system.query_log`, not two. The two advisors
+     read the same measurement and answer different questions from it; that is
+     the whole reason this is a separate module rather than more rules in the
+     other one. */
+  const advice = useQuery({
+    queryKey: ['projections', database, table, 7],
+    queryFn: () => api.projectionAdvice(database, table, 7),
+    staleTime: 30_000,
+    retry: false,
+  })
 
   const names = (columns.data?.columns ?? []).map((c) => c.name)
   const [column, setColumn] = useState('')
@@ -49,8 +69,43 @@ export function IndexWhatIf({ database, table }: { database: string; table: stri
      the commonest way to measure nothing and conclude the index is useless. */
   const on = column || names[0] || ''
 
+  const argued = advice.data
+    ? proposals(advice.data, declared.data?.indexes.items ?? [])
+    : null
+
+  /* One press from a proposal to its measurement: the form is filled in and
+     the measurement run, because a proposal nobody can check in a click is a
+     recommendation, and this page does not make those. */
+  const measureProposal = (proposal: Proposal, kind: Proposal['kind']) => {
+    setColumn(proposal.column)
+    setKind(kind)
+    // The comparison the workload wrote, not one inferred from its kind: `<`
+    // and `>` on the same column are opposite questions, and an index
+    // measured against the wrong one answers the wrong one.
+    setOp(proposal.op)
+    if (proposal.sample !== null) setValue(proposal.sample)
+    measure.mutate({
+      column: proposal.column,
+      kind,
+      granularity: 4,
+      filter_column: proposal.column,
+      filter_op: proposal.op,
+      filter_values: [proposal.sample ?? value],
+    })
+  }
+
   return (
     <div className="stack">
+      {advice.data && argued ? (
+        <Argued
+          advice={advice.data}
+          argued={argued}
+          onMeasure={measureProposal}
+          measuring={measure.isPending ? (measure.variables?.column ?? null) : null}
+        />
+      ) : null}
+      {advice.isPending ? <Loading label="Reading the workload" /> : null}
+
       <section className="wif">
         <header className="wif__head">
           <h3 className="wif__title">Would an index help?</h3>
@@ -185,6 +240,88 @@ export function IndexWhatIf({ database, table }: { database: string; table: stri
         </section>
       ) : null}
     </div>
+  )
+}
+
+/** What the workload argues for, ranked by the time it actually spends.
+ *
+ *  Every proposal here is a *question* rather than a recommendation, and the
+ *  difference is one press: the measurement beside it builds the thing on a
+ *  copy and says what it would have done. That is the loop this advisor was
+ *  waiting for — A9 before A10, in the roadmap's own order, because five more
+ *  advisors whose claims rest on a model is what B4 measured its way out of. */
+function Argued({
+  advice,
+  argued,
+  onMeasure,
+  measuring,
+}: {
+  advice: Parameters<typeof proposals>[0]
+  argued: ReturnType<typeof proposals>
+  onMeasure: (proposal: Proposal, kind: Proposal['kind']) => void
+  measuring: string | null
+}) {
+  const says = saysNothing(argued.nothing, advice)
+  if (argued.proposals.length === 0 && !says) return null
+  return (
+    <section className="wif">
+      <header className="wif__head">
+        <h3 className="wif__title">What the workload argues for</h3>
+        <p className="says says--wide">
+          Read from every SELECT against this table in the last {advice.window_days} days, ranked
+          by the time the window actually spent on them — never by a saving anything predicted.
+        </p>
+      </header>
+      {argued.proposals.length > 0 ? (
+        <ul className="wif__list">
+          {argued.proposals.map((p) => (
+            <li className="wif__card" key={p.id}>
+              <div className="wif__cardhead">
+                <span className="wif__claim">{claim(p)}</span>
+                <span className="wif__spent">
+                  {duration(p.spentMs / 1000)}
+                  <span className="wif__spentlabel">spent on {p.patterns.length === 1 ? 'this shape' : `${p.patterns.length} shapes`}</span>
+                </span>
+              </div>
+              <p className="says">{saysKind(p)}</p>
+              <p className="bhint">
+                {count(p.runs)} {p.runs === 1 ? 'run' : 'runs'} in the window
+                {/* Where the value comes from, because a plan is only worth
+                    reading if a value took part in it — and where it cannot
+                    come from, which is said rather than left to a button that
+                    does not work. */}
+                {measurable(p)
+                  ? ` · measured against ${p.sample}, which one of them compared to`
+                  : ` · ${saysUnmeasurable(p)}`}
+              </p>
+              <div className="wif__cardacts">
+                <button
+                  className="btn"
+                  disabled={measuring !== null || !measurable(p)}
+                  onClick={() => onMeasure(p, p.kind)}
+                  type="button"
+                >
+                  {measuring === p.column ? 'Measuring…' : `Measure ${p.kind}`}
+                </button>
+                {p.alternative ? (
+                  <button
+                    className="btn btn--soft"
+                    disabled={measuring !== null || !measurable(p)}
+                    onClick={() => onMeasure(p, p.alternative!)}
+                    type="button"
+                  >
+                    and {p.alternative}
+                  </button>
+                ) : null}
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {/* Why the list is short, or empty. A page that proposes nothing and
+          says nothing has told the reader there is nothing to find. */}
+      {says ? <p className="says says--wide">{says}</p> : null}
+    </section>
   )
 }
 

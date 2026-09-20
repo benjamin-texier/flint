@@ -5541,6 +5541,64 @@ tr:hover .stratum__fill {
   min-width: 0;
 }
 
+/* One card per proposal, the shape the projection advisor's cards already
+ * have: the claim and what it rests on at the top, the reasoning under it,
+ * and the measurement that settles it at the bottom. */
+.wif__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wif__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: var(--s3);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.wif__cardhead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s3);
+}
+
+.wif__claim {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* The figure the ranking is made of, stacked over its own label so the unit
+ * cannot be read against another card's. */
+.wif__spent {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex: none;
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.wif__spentlabel {
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+.wif__cardacts {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-wrap: wrap;
+}
+
 .wif__reading {
   display: flex;
   flex-direction: column;
