@@ -2551,7 +2551,8 @@ What is switched off is a section in the server's *configuration*, not a
 setting a request can carry, so the page says that rather than suggesting a
 `SETTINGS` clause that would change nothing. Where the table does exist it is
 read, folded one row per operator name, with the processor count as that
-stage's parallelism.
+stage's parallelism — and that half is the one branch here nobody has watched
+render, because producing it needs a server configured with that section.
 
 **`EXPLAIN ANALYZE` is the other way to those figures**, and it is in the
 editor's Explain menu rather than on this page, because it answers about a

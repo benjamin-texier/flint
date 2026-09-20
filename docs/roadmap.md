@@ -235,7 +235,7 @@ under *Placements still to settle* now.
 | family | state | where |
 | --- | --- | --- |
 | Query Log Explorer | built | `/diagnose`, narrowed by account, table, kind or shape |
-| Query Profiler | built | `/diagnose/q/<query_id>` — A8 |
+| Query Profiler | built | `/diagnose/q/<query_id>` — A8, less the drawn plan |
 | EXPLAIN Viewer | built | five in the editor, and `ANALYZE` behind its own price |
 | EXPLAIN WHATIF | not built | A9 |
 | Instance Overview | built | B3, *Right now*, every figure against its ceiling |
@@ -1702,7 +1702,7 @@ source column, a cursor offered where the next request would refuse it, a bucket
 colliding with a dimension. The type system had nothing to say about any of them,
 and a real request said it immediately.
 
-### A8. One statement, and everything known about it — **built**
+### A8. One statement, and everything known about it — **built, less the drawing**
 
 `/diagnose` ranks. The costliest shapes, the tables read, who spent the time,
 what failed — and the window is its only control. "What did the ETL account run
@@ -1769,6 +1769,11 @@ What building it corrected:
   `<processors_profile_log>` section in the server's configuration. The page
   says that rather than suggesting a `SETTINGS` clause that would change
   nothing.
+
+  Which leaves the honest gap in this section: the *refusal* is what every run
+  here has rendered, and the table of operators is the one branch nobody has
+  watched. Producing it means a server configured with that section, which is
+  a fixture this repository does not have.
 
 `ANALYZE` shipped as this section said it had to: a deliberate act rather than
 a tab, gated by what the last run of that statement cost — and asking even when

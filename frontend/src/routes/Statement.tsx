@@ -121,34 +121,42 @@ function title(s: Statement): string {
 
 function Figures({ statement: s }: { statement: Statement }) {
   const failed = s.exception_code !== 0
+  /* A `QueryStart` row carries no figures at all — every one of them is
+     written when the statement ends. Rendered as a metric line six zeros
+     wide, that does not read as "not known yet"; it reads as a statement that
+     read nothing, took no time and used no memory, which is a claim about a
+     query that may be four minutes into a scan. So they are dropped, which is
+     the house rule for an absent figure, and what *is* known is still
+     printed — including that the outcome is neither `ok` nor `failed`. */
+  const unfinished = s.outcome === 'QueryStart'
 
   return (
     <section className="diag">
-      <MetricLine
-        lead
-        metrics={[
-          { value: exact(s.duration_ms), unit: 'ms', label: 'TOOK' },
-          { value: count(s.read_rows), label: 'ROWS READ' },
-          { value: bytes(s.read_bytes), label: 'BYTES READ' },
-          { value: count(s.result_rows), label: 'RETURNED' },
-          { value: bytes(s.memory_usage), label: 'MEMORY' },
-          /* Zero means "this version does not record it", which is not one
-             thread — so the figure is dropped rather than printed as 0. An
-             absent figure is dropped, not dashed. */
-          ...(s.peak_threads > 0
-            ? [{ value: exact(s.peak_threads), label: 'THREADS' }]
-            : []),
-          /* `failed`, not the exception code. Under a label reading FAILED a
-             number is read as a count, and `394` is not 394 failures — it is
-             the code, which belongs in the sentence that quotes the server's
-             own words rather than in a figure. */
-          {
-            value: failed ? 'failed' : 'ok',
-            label: 'OUTCOME',
-            level: failed ? ('throw' as const) : ('ok' as const),
-          },
-        ]}
-      />
+      {unfinished ? null : (
+        <MetricLine
+          lead
+          metrics={[
+            { value: exact(s.duration_ms), unit: 'ms', label: 'TOOK' },
+            { value: count(s.read_rows), label: 'ROWS READ' },
+            { value: bytes(s.read_bytes), label: 'BYTES READ' },
+            { value: count(s.result_rows), label: 'RETURNED' },
+            { value: bytes(s.memory_usage), label: 'MEMORY' },
+            /* Zero means "this version does not record it", which is not one
+               thread — so the figure is dropped rather than printed as 0. An
+               absent figure is dropped, not dashed. */
+            ...(s.peak_threads > 0 ? [{ value: exact(s.peak_threads), label: 'THREADS' }] : []),
+            /* `failed`, not the exception code. Under a label reading FAILED a
+               number is read as a count, and `394` is not 394 failures — it is
+               the code, which belongs in the sentence that quotes the server's
+               own words rather than in a figure. */
+            {
+              value: failed ? 'failed' : 'ok',
+              label: 'OUTCOME',
+              level: failed ? ('throw' as const) : ('ok' as const),
+            },
+          ]}
+        />
+      )}
       <p className="bhint">
         Run by <strong>{s.user || 'the server itself, with no account behind it'}</strong>
         {s.database ? (
@@ -157,7 +165,10 @@ function Figures({ statement: s }: { statement: Statement }) {
             against <code>{s.database}</code>
           </>
         ) : null}
-        , {s.started} → {s.at}
+        {/* Two timestamps where there are two. On an unfinished statement the
+            row's own time *is* its start, and `13:50:34 → 13:50:34` reads as a
+            query that took no time rather than one that has not ended. */}
+        {unfinished ? `, started ${s.started}` : `, ${s.started} → ${s.at}`}
         {/* Whether it came through Flint, read off the `log_comment` Flint
             stamps. The audit page makes the same statement for the same
             reason: a statement somebody ran in a terminal is honestly marked
