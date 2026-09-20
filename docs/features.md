@@ -2486,8 +2486,8 @@ about *statements*, so the summary, the rankings, who the server works for,
 which tables are read, the failures and the load band can never describe
 different populations. It stops at one section, out loud: **Read by nothing**
 is about tables rather than statements, and a table no statement of one account
-read is not a table nothing read. The filter lives in the address, which is the point
-rather than a convenience: "the ETL account against `analytics.events` over
+read is not a table nothing read. The filter lives in the address, which is
+the point rather than a convenience: "the ETL account against `analytics.events` over
 seven days" is a thing one person sends another, and a page holding that in
 memory can only be described in words. What is narrowed is also shown as chips,
 because a page scrolled past its own header has to be able to say why it is

@@ -209,8 +209,8 @@ page that holds them around one `query_id`. It asks for an Optimization
 Advisor; Flint has the schema review, the projection advisor, the cold-column
 reading, the twins detector and the drift reading, each answering well on its
 own page, and `/checkup` — which is the composition, and which no version of
-this document has ever mentioned. Several rows below read *partly* for that reason alone: the
-measurement is there and the assembly is not.
+this document has ever mentioned. Several rows below read *partly* for that
+reason alone: the measurement is there and the assembly is not.
 
 **One family is refused whole, and three items inside families that are
 otherwise built.** Cluster Management is provisioning under another name;
@@ -1786,8 +1786,9 @@ with the reasoning in the one place the two diverge.
 `EXPLAIN PLAN indexes = 1` into sentences, and for the question it answers —
 how many granules were skipped, by which index, and whether the sorting key did
 any of it — the sentences are better than any diagram, because the answer is a
-number with a reason attached. They are worse for the shape: a stage that fans out to sixteen
-threads and rejoins is a shape, and a paragraph about it is a paragraph. The
+number with a reason attached. They are worse for the shape: a stage that fans
+out to sixteen threads and rejoins is a shape, and a paragraph about it is a
+paragraph. The
 canvas exists (A0c already stopped the product having two diagrams with two sets
 of manners), so this is a layout over an existing renderer and not a new
 picture. The rule it inherits: the drawing may not become the only place a
