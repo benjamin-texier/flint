@@ -243,7 +243,7 @@ under *Placements still to settle* now.
 | Health Alerts | built | B3's firing banner, and `/checkup` |
 | Table Overview and its tabs | built | A0, A1 |
 | Column Storage Analysis | built | `cold.rs`, and *Mass* down to the column |
-| Advisor Core | partly | `/checkup` composes; nothing can be answered — A11 |
+| Advisor Core | built | `/checkup` composes, and a finding can be answered — A11 |
 | Projection Advisor | built | B4, with `Measure it` and `Weigh it` |
 | Index Advisor | not built | A10 |
 | ORDER BY Advisor | partly | diagnose says the key is not narrowing; nothing proposes one — A10 |
@@ -272,9 +272,10 @@ under *Placements still to settle* now.
 | Replication & Keeper | built | B2, less `RESTORE REPLICA` and its reason |
 | Cluster Management | refused | provisioning — see the last section |
 | RBAC | built | B6, complete |
-| Advisor Rule Library | partly | the rules exist per page; the library is A11 |
+| Advisor Rule Library | partly | the rules exist per page, one file and one test each; a *configurable* library is refused in A11 |
 
-Thirty-nine families: **18 built, 11 partly, 9 not built, 1 refused** — A8
+Thirty-nine families: **19 built, 10 partly, 9 not built, 1 refused** — A8 and
+A11
 moved the first three of them, and the count is what it is rather than what the
 table above once said. Ten new
 sections carry what the last two columns point at and no existing section
@@ -1878,7 +1879,7 @@ granules' worth of rows there is no question. The first version of the
 projection advisor asked whether a five-row dictionary source wanted a
 projection, which is not a question anybody has.
 
-### A11. A finding somebody can answer
+### A11. A finding somebody can answer — **built**
 
 `/checkup` is the advisor core the backlog asks for, and it has the two
 properties that list does not: every finding carries what acting gives back *in
@@ -1903,6 +1904,39 @@ the same place. The same key is what makes re-evaluation meaningful: a
 dismissal that survives the schema change it was about is a dismissal that has
 outlived its reason, and the honest behaviour is to raise it again and say it
 was dismissed before.
+
+**Built, and the key was where this section said it would be.** `lib/checkup`
+already built a finding's id from what it is about rather than from its
+wording, so nothing had to be invented: `checkup_answers` in the workspace is
+keyed on it, appended rather than updated — the history is one of the four
+things asked for, and a `ReplacingMergeTree` would have kept the newest row and
+thrown the reasons away.
+
+Three things were decided in the building rather than here:
+
+- **No TTL on that table**, which is the one place it departs from the event
+  logs beside it. An alert firing is evidence and ninety days of it is plenty;
+  a dismissal is a *decision*, and a decision that expires quietly puts a
+  finding back on the page with nobody having changed their mind.
+- **Re-evaluation needed no new measurement.** The worth travels with the
+  answer, so the comparison is against what the finding was worth when it was
+  answered: put away at 267 MiB, back at 1.4 GiB, edged, with both figures and
+  the note. Two parts to the rule, because being wrong in either direction
+  costs something — a factor, since "the same problem, bigger" is
+  proportional, and a floor per unit, since doubling six megabytes is not
+  news. And a finding with nothing to measure cannot go stale at all: "nothing
+  is backed up" is the same claim it was in March, and re-raising it on a
+  timer would be a reminder rather than a finding.
+- **The arrival board had to read them too.** It offers no controls — it
+  reports and links — but a finding put away reappearing on the first screen
+  is the two pages disagreeing about one judgement. The same rule the
+  diagnostics filter keeps.
+
+One defect this found in the page it was added to, and one it found in itself.
+The checkup's headline counted findings the list no longer showed, which is the
+cap rule broken on the page that states it most often. And `/checkup` was in no
+browser check at all — adding it turned up an 11px timestamp at 3.2:1 against
+its surface, under AA in both themes, in the first run.
 
 Deliberately out of scope here: a *rule library* as a configurable object.
 The backlog's Phase-5 rule families are already the modules in
@@ -3488,10 +3522,10 @@ because the tempting order is the wrong one. **A9 before A10**: a measured
 hypothetical is what lets five new advisors claim anything, and without it they
 are five models of a plan, which is the thing B4 measured its way out of.
 **A11 before A10 as well**: an answerable finding is what stops a page of
-verdicts becoming a list nobody can ever clear. Those two, then the advisors, is one
-release with a shape. Taking A10 first ships five more voices with no way to
-quiet any of them, on a page that is already the first thing a new reader
-sees.
+verdicts becoming a list nobody can ever clear. That half is done, so what
+remains of the argument is A9 — taking A10 first would ship five more voices
+whose claims rest on a model rather than a measurement, onto a page that is
+already the first thing a new reader sees.
 
 ---
 

@@ -5436,8 +5436,12 @@ tr:hover .stratum__fill {
   color: var(--warning);
 }
 
+/* `--text-muted`, not `--text-faint`: this is 11px body text, and faint at
+ * that size measures 3.2:1 against the surface — under AA, in both themes.
+ * Caught by the contrast audit the moment this page joined it, which is the
+ * argument for the page being in it. */
 .checkup__markwhen {
-  color: var(--text-faint);
+  color: var(--text-muted);
 }
 
 /* The count of what is not listed, which is a sentence rather than a control

@@ -12,6 +12,7 @@ their own headings:
 - [Which of the disk is doing any work](#which-of-the-disk-is-doing-any-work)
 - [Who this server has been working for](#who-this-server-has-been-working-for)
 - [One statement, and everything known about it](#one-statement-and-everything-known-about-it)
+- [Answering a finding](#answering-a-finding)
 - [The same data, held twice](#the-same-data-held-twice)
 - [Long operations](#long-operations)
 - [What the server has been doing](#what-the-server-has-been-doing)
@@ -2569,6 +2570,63 @@ ending that never arrived; those look identical in the log, so Flint asks
 `system.processes` to tell them apart, and says which. Stopping one is on
 Health: what a statement cost is Data's business, and operating the server is
 the other space.
+
+## Answering a finding
+
+`/checkup` composes every advisor in the product into one page: what to
+change, what acting on it gives back, and where the control that does it
+lives. Until now it could only be read. Every finding is recomputed from
+scratch on every visit — which is what keeps it honest, and also why the same
+thirty constants came back forever, including the ones somebody had already
+decided about.
+
+**Three answers.** *Put away* — not a problem here; the finding stops being
+listed and is **counted** instead, because a page that hides things without
+saying how many is a page whose silence means nothing. *Accepted* — yes, and I
+will do it; it stays listed and is marked, since hiding work somebody has taken
+on is how it stops happening. *Reopened* — the undo, kept as a row rather than
+as a deletion, because changing one's mind is the part of the history worth
+having.
+
+Each is asked with a note, on the row rather than in a dialog: a decision made
+away from the evidence is a decision made without it, and "kept on purpose for
+the audit" is the sentence that makes a dismissal worth anything to whoever
+finds it six weeks later. Empty is still allowed.
+
+**They are keyed by the finding, not by the row.** `lib/checkup` has always
+built a finding's id out of what it is *about* — `schema:cold:analytics.events`
+— rather than out of its wording, so an answer survives Flint rewriting the
+sentence, the numbers moving, and the report being asked for over a different
+window.
+
+**A dismissal can outlive its reason**, and this is the half that makes it more
+than a hide button. The worth is stored with the answer, so a finding put away
+when a column held 267 MiB comes back when the same column reaches 1.4 GiB: it
+is listed again, edged, and says both figures and the note it was put away
+with. The rule has two parts, and each is a sentence somebody can argue with in
+a test — a **factor**, because "the same problem, bigger" is proportional, and
+a **floor per unit**, because doubling six megabytes is not news and neither is
+nine seconds of query time a week.
+
+What cannot move is left alone: "nothing is backed up" is the same claim in
+September that it was in March, and re-raising it on a timer would be a
+reminder rather than a finding.
+
+**The history is the table.** Answers are appended, never updated — the current
+standing is the newest row per finding — so a finding carries how many times it
+has been answered, and above one the page says so: somebody has changed their
+mind about this before.
+
+**The arrival board reads the same answers** and offers no controls. It reports
+and links; answering is an act, and the checkup is the page for it. But a
+finding somebody put away reappearing on the first screen of the product would
+be two pages disagreeing about one judgement, which is worse than a shorter
+board — so what was put away is counted there with everything else the cap left
+out.
+
+**Without a workspace there is nothing to answer with.** Answering is reader
+state, and a stateless Flint keeps none: the findings are all still there and
+the controls are simply absent, rather than present and failing.
 
 ## The same data, held twice
 

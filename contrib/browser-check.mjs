@@ -105,6 +105,12 @@ const PAGES = [
   { path: '/query?mode=build', wait: '.buildband' },
   { path: '/build', wait: 'main' },
   { path: '/dash', wait: 'main' },
+  /* The checkup: every advisor in the product, composed. Not walked until
+     now, which is how its rows came to carry an unformatted byte count beside
+     a formatted one for as long as they did. Waits for a row rather than for
+     `main`, because the readings land one at a time and an audit of the page
+     before any of them has arrived passes by having nothing to measure. */
+  { path: '/checkup', wait: '.checkup__row, .cleared, .note--empty' },
   { path: '/diagnose', wait: '.tbl' },
   /* The same page narrowed. The filter lives in the address, so a filtered
      Diagnose is a cold load like any other link — and it renders controls the
