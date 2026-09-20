@@ -420,7 +420,16 @@ function Narrow({
   return (
     <div className="diag__filter">
       <span className="label">NARROW TO</span>
+      {/* `key` on the value, and it is load-bearing rather than tidy. These
+          are uncontrolled — a controlled box would re-ask the server on every
+          keystroke — so React leaves the DOM value alone when the filter
+          changes from somewhere else, and clearing the chip beside it left
+          the box still reading `analyst` over a page that was no longer
+          narrowed. Keyed on the value, the box is a new element whenever the
+          address says something different, and the control cannot contradict
+          the page. */}
       <input
+        key={`user:${narrow.user ?? ''}`}
         className="input bfield bfield--sm"
         list="diag-users"
         placeholder="any account"
@@ -437,6 +446,7 @@ function Narrow({
         ))}
       </datalist>
       <input
+        key={`table:${narrow.table ?? ''}`}
         className="input bfield bfield--sm"
         list="diag-tables"
         placeholder="any table"
