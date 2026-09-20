@@ -3533,19 +3533,31 @@ of the APIs, and the one feature here that still needs a background component to
 land on rather than a page.
 
 **And then the backlog above landed ten sections in the two tracks**, which
-overtakes that paragraph in turn: A5 is no longer the last thing on Data. **A8
-is built**, and it was the right one to take first for the reason the table
-gave: three families moved on one page, and none of it needed a measurement
-Flint was not already making. The order inside what is left is not free either, and it is worth stating once
-because the tempting order is the wrong one. **A9 before A10** — *done for the
-index half*: a measured hypothetical is what lets five new advisors claim
-anything, and without it they are five models of a plan, which is the thing B4
-measured its way out of.
-**A11 before A10 as well**: an answerable finding is what stops a page of
-verdicts becoming a list nobody can ever clear. That half is done, so what
-remains of the argument is A9 — taking A10 first would ship five more voices
-whose claims rest on a model rather than a measurement, onto a page that is
-already the first thing a new reader sees.
+overtakes that paragraph in turn: A5 is no longer the last thing on Data.
+
+Four of those ten are built, and they were taken in the order this paragraph
+argued for rather than the tempting one:
+
+- **A8** first, for the reason the table gave — three families moved on one
+  page, and none of it needed a measurement Flint was not already making.
+- **A11** next, because an answerable finding is what stops a page of verdicts
+  becoming a list nobody can ever clear. Adding advisors to a page nobody can
+  clear makes it worse, not better.
+- **A9 before A10**, which was the load-bearing one. A measured hypothetical
+  is what lets an advisor claim anything; without it, five new advisors are
+  five models of a plan, which is the thing B4 measured its way out of.
+- **A10's first advisor**, on top of it — and its first real run proved the
+  order right twice over, finding that the sorting key had been read wrongly
+  on every Nullable-keyed table and that a filter's operator had been thrown
+  away. Both were defects a model would have hidden and a measurement could
+  not.
+
+What is left of A10 is four advisors of the same shape: read the workload,
+judge in a module with a test per rule, hand the DDL over, and let something
+measurable settle what a rule of thumb would otherwise assert. The sorting key
+and the partition key are the two that cannot be applied — both produce a
+migration for a person to read rather than a job — and that is the next real
+design question rather than the next piece of code.
 
 ---
 
