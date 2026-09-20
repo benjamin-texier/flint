@@ -13,6 +13,7 @@ their own headings:
 - [Who this server has been working for](#who-this-server-has-been-working-for)
 - [One statement, and everything known about it](#one-statement-and-everything-known-about-it)
 - [Answering a finding](#answering-a-finding)
+- [Would an index help](#would-an-index-help)
 - [The same data, held twice](#the-same-data-held-twice)
 - [Long operations](#long-operations)
 - [What the server has been doing](#what-the-server-has-been-doing)
@@ -2634,6 +2635,66 @@ out.
 **Without a workspace there is nothing to answer with.** Answering is reader
 state, and a stateless Flint keeps none: the findings are all still there and
 the controls are simply absent, rather than present and failing.
+
+## Would an index help
+
+A skip index is the cheapest optimisation ClickHouse offers and the easiest to
+get wrong: it costs a write on every insert and disk on every part, forever,
+and nothing reports that the query it was added for ignores it. The usual way
+to find out is to add one to a production table and see.
+
+ClickHouse has no `EXPLAIN WHATIF`, so there are two ways to answer and the
+difference between them is the whole of this. Flint could **model** the plan it
+thinks the server would choose — cheap, instant, and a prediction — or **build
+the thing** and ask. It builds it: a scratch table in Flint's own database, the
+rows of one partition, the index declared and materialized on it, and `EXPLAIN
+PLAN indexes = 1` run either side. Then the copy is dropped, whatever happened.
+The table the question is about is never touched.
+
+The same choice was made for a type change and for a projection key, and the
+reason is on the record: a plausible model of what a read would cost was wrong
+by 164×, because reads bottom out at `parts × index_granularity` and the model
+did not know it.
+
+**Three things were measured before this was built**, and each settled a
+decision that could have gone the other way.
+
+*A bound parameter reaches the planner.* The rule Flint will not break is that
+it never formats a value into SQL — and a plan is only worth reading if the
+value took part in it, since an index condition is evaluated against the
+literal. Both are true at once: the same statement with a parameter and with
+the value written in produced the same condition and pruned the same parts.
+
+*The sample has to be contiguous, and a random one would be worse than none.*
+An index prunes because values cluster inside granules. A random sample keeps
+the joint distribution and destroys the density: each granule of the copy then
+spans a far wider slice of the table's key space, so its range is wider and its
+set holds more values than any real granule does. That does not add noise — it
+under-reports, every time, in the same direction. So the copy is **one
+partition**, and the reading says which.
+
+*The copy's own granule count is not the table's.* A partition's rows arrive as
+a handful of parts where the real table may have many. Before and after are
+measured on the same copy with one thing different, so the **share** is a fact;
+the absolute figures belong to the sample and are labelled that way.
+
+**What it says.** How much of the read the index skipped and out of what, what
+the index weighed, and what was measured on — "3.2 M of 42.9 M rows, copied and
+thrown away". Where the read is already at the floor, it says so: a read touches
+at least one whole granule in every part it reaches. Where the server refused to
+build the index at all, that is the answer and the only one, in the server's own
+words.
+
+**And it is as loud when the answer is no.** Two real readings from one table:
+a `set` index on one column skipped 99% of the read for 1.5 KiB, and a `set`
+index on another skipped **nothing** for 1,958 bytes. The second is the one
+worth having — it is a cost nobody would otherwise discover until after paying
+it.
+
+Nothing here proposes an index; it answers the question somebody already has.
+And nothing here writes structure: the `ALTER` is handed to Infrastructure →
+Schema as the four fields that form already takes, named the way somebody would
+name it if they kept it.
 
 ## The same data, held twice
 

@@ -237,7 +237,7 @@ under *Placements still to settle* now.
 | Query Log Explorer | built | `/diagnose`, narrowed by account, table, kind or shape |
 | Query Profiler | built | `/diagnose/q/<query_id>` — A8, less the drawn plan |
 | EXPLAIN Viewer | built | five in the editor, and `ANALYZE` behind its own price |
-| EXPLAIN WHATIF | not built | A9 |
+| EXPLAIN WHATIF | partly | built for skip indexes — A9 |
 | Instance Overview | built | B3, *Right now*, every figure against its ceiling |
 | System tables | partly | `crash_log`, S3Queue and `rocksdb` are B3's remainder |
 | Health Alerts | built | B3's firing banner, and `/checkup` |
@@ -245,7 +245,7 @@ under *Placements still to settle* now.
 | Column Storage Analysis | built | `cold.rs`, and *Mass* down to the column |
 | Advisor Core | built | `/checkup` composes, and a finding can be answered — A11 |
 | Projection Advisor | built | B4, with `Measure it` and `Weigh it` |
-| Index Advisor | not built | A10 |
+| Index Advisor | partly | a hypothetical can be measured; nothing proposes one — A10 |
 | ORDER BY Advisor | partly | diagnose says the key is not narrowing; nothing proposes one — A10 |
 | Compression Advisor | built | the schema review, weighed by `probe.rs` |
 | Partition Advisor | partly | the verdict is on the storage reading; the proposal is A10 |
@@ -274,10 +274,10 @@ under *Placements still to settle* now.
 | RBAC | built | B6, complete |
 | Advisor Rule Library | partly | the rules exist per page, one file and one test each; a *configurable* library is refused in A11 |
 
-Thirty-nine families: **19 built, 10 partly, 9 not built, 1 refused** — A8 and
-A11
-moved the first three of them, and the count is what it is rather than what the
-table above once said. Ten new
+Thirty-nine families: **19 built, 12 partly, 7 not built, 1 refused** — A8
+moved three, A11 a fourth, and A9 moved two more off *not built* without
+finishing either. The count is what it is rather than what the table above said
+when it was written. Ten new
 sections carry what the last two columns point at and no existing section
 already owns — A8 through A14 on Data, B9 through B11 on Infrastructure. They
 are numbered into the tracks rather than gathered here, because a feature not
@@ -3518,9 +3518,10 @@ overtakes that paragraph in turn: A5 is no longer the last thing on Data. **A8
 is built**, and it was the right one to take first for the reason the table
 gave: three families moved on one page, and none of it needed a measurement
 Flint was not already making. The order inside what is left is not free either, and it is worth stating once
-because the tempting order is the wrong one. **A9 before A10**: a measured
-hypothetical is what lets five new advisors claim anything, and without it they
-are five models of a plan, which is the thing B4 measured its way out of.
+because the tempting order is the wrong one. **A9 before A10** — *done for the
+index half*: a measured hypothetical is what lets five new advisors claim
+anything, and without it they are five models of a plan, which is the thing B4
+measured its way out of.
 **A11 before A10 as well**: an answerable finding is what stops a page of
 verdicts becoming a list nobody can ever clear. That half is done, so what
 remains of the argument is A9 — taking A10 first would ship five more voices
