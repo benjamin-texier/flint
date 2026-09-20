@@ -5468,6 +5468,42 @@ tr:hover .stratum__fill {
   min-width: 0;
 }
 
+/* What was said before, oldest at the bottom: a list read top-down where the
+ * newest answer is the one in force. Indented under the row it belongs to
+ * rather than in a panel, because it is about that row and nothing else. */
+.checkup__history {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  margin: 0;
+  padding: var(--s2) 0 0 var(--s3);
+  list-style: none;
+  border-left: 1px solid var(--border);
+}
+
+.checkup__past {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  flex-wrap: wrap;
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+.checkup__paststate {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.checkup__pastwhen,
+.checkup__pastsaid {
+  font-family: var(--font-data);
+}
+
+.checkup__pastsaid {
+  color: var(--text-muted);
+}
+
 /* "Nothing yet" and "nothing to say" are different answers, so they do not
  * look the same. */
 .checkup__waiting {

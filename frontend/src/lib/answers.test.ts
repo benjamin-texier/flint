@@ -98,8 +98,10 @@ describe('where a finding stands', () => {
     expect(standingOf(finding(), answer({ state: 'accepted' })).kind).toBe('accepted')
   })
 
-  it('reads a reopened finding as open again', () => {
-    expect(standingOf(finding(), answer({ state: 'reopened' })).kind).toBe('open')
+  it('reads a reopened finding as its own standing, not as unanswered', () => {
+    // Listed exactly like an open one — that is what reopening means — but
+    // marked, because the history is the one thing it still has to say.
+    expect(standingOf(finding(), answer({ state: 'reopened' })).kind).toBe('reopened')
   })
 
   it('leaves a finding open on a state it does not recognise', () => {
@@ -155,5 +157,14 @@ describe('what a marked row says', () => {
     expect(says).toBe(
       'Put away by analyst — small enough to leave. Back because it was 1.2 GiB then, and is 9.0 GiB now',
     )
+  })
+})
+
+describe('a finding that was put away and taken back', () => {
+  it('is listed like any other, and still says so', () => {
+    const standing = standingOf(finding(), answer({ state: 'reopened', times: 3 }))
+    expect(standing.kind).toBe('reopened')
+    expect(split([finding()], index([answer({ state: 'reopened' })])).away).toHaveLength(0)
+    expect(saysStanding(standing)).toBe('Reopened by analyst')
   })
 })

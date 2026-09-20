@@ -2614,8 +2614,15 @@ reminder rather than a finding.
 
 **The history is the table.** Answers are appended, never updated — the current
 standing is the newest row per finding — so a finding carries how many times it
-has been answered, and above one the page says so: somebody has changed their
-mind about this before.
+has been answered, and above one the page says so and opens it: who said what,
+when, with their note, and *what the finding claimed at the time*. That last
+column is the one a recomputed finding cannot supply, and it is why the words
+travel with the answer.
+
+A finding that was put away and taken back is listed like any other — that is
+what reopening means — and is still marked *Reopened by …*, because otherwise
+the record of somebody changing their mind would be reachable only through the
+API. Found by looking for it.
 
 **The arrival board reads the same answers** and offers no controls. It reports
 and links; answering is an act, and the checkup is the page for it. But a

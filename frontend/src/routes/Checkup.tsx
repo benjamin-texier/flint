@@ -524,6 +524,7 @@ export function FindingRow({
      from putting away something they know is fine. */
   const [asking, setAsking] = useState<'dismissed' | 'accepted' | null>(null)
   const [note, setNote] = useState('')
+  const [showing, setShowing] = useState(false)
   const mark = standing ? saysStanding(standing) : null
 
   const send = (state: 'dismissed' | 'accepted' | 'reopened', text = '') => {
@@ -568,11 +569,22 @@ export function FindingRow({
             <span className="checkup__markwhen">
               {' '}
               · {relativeTime(standing.answer.at)}
-              {standing.answer.times > 1 ? ` · answered ${standing.answer.times} times` : ''}
+              {/* Above one, somebody has changed their mind about this before
+                  — which is the whole reason the table is a log — and the
+                  count is a way in rather than a fact on its own. */}
+              {standing.answer.times > 1 ? (
+                <>
+                  {' · '}
+                  <button className="linkish" onClick={() => setShowing(!showing)} type="button">
+                    {showing ? 'hide what was said' : `answered ${standing.answer.times} times`}
+                  </button>
+                </>
+              ) : null}
             </span>
           ) : null}
         </p>
       ) : null}
+      {showing ? <History finding={finding.id} /> : null}
       <div className="checkup__acts">
         {finding.act ? (
           <Link className="link checkup__act" to={finding.act.to}>
@@ -580,7 +592,9 @@ export function FindingRow({
           </Link>
         ) : null}
         {onAnswer && asking === null ? (
-          standing && standing.kind !== 'open' ? (
+          /* A reopened finding is an open one again, so it is offered the same
+             two answers rather than an Undo for an undo. */
+          standing && (standing.kind === 'away' || standing.kind === 'accepted' || standing.kind === 'stale') ? (
             <button className="linkish" disabled={busy} onClick={() => send('reopened')} type="button">
               {busy ? 'Reopening…' : 'Reopen'}
             </button>
@@ -630,6 +644,50 @@ export function FindingRow({
         </form>
       ) : null}
     </li>
+  )
+}
+
+/** Everything ever said about one finding.
+ *
+ *  Asked for only when somebody opens it, and only ever for the one row: a
+ *  page that fetched every finding's history to show a count nobody clicked
+ *  would spend a request per row to answer a question nobody asked. Each
+ *  entry keeps the *words the finding had then* — it is recomputed on every
+ *  visit, so a row reading "dismissed `schema:cold:orders`" would be a record
+ *  nobody can act on six weeks later. */
+function History({ finding }: { finding: string }) {
+  const past = useQuery({
+    queryKey: ['checkup', 'answers', 'history', finding],
+    queryFn: () => api.answerHistory(finding),
+    retry: false,
+  })
+  if (past.isPending) return <p className="says checkup__markwhen">Reading what was said…</p>
+  if (past.error) return <ErrorNote error={past.error} retry={() => void past.refetch()} />
+  return (
+    <ol className="checkup__history">
+      {(past.data ?? []).map((a) => (
+        <li className="checkup__past" key={`${a.at}-${a.state}`}>
+          <span className="checkup__paststate">{a.state}</span>
+          <span className="checkup__pastwho">{a.who}</span>
+          {/* To the second. The milliseconds are in the row because two
+              answers can land in one second and the order matters; printed,
+              they are three digits of noise on every line. */}
+          <span className="checkup__pastwhen">{a.at.slice(0, 19)}</span>
+          {a.note ? <span className="checkup__pastnote">{a.note}</span> : null}
+          {/* What it claimed at the time, which is the half a recomputed
+              finding cannot tell you. Dropped where a version that did not
+              record it wrote the row, rather than printed as a zero. */}
+          {a.title && a.title !== '' ? <span className="checkup__pastsaid">{a.title}</span> : null}
+        </li>
+      ))}
+      {/* Whose clock, said once rather than per row. The audit page learned
+          this the hard way: an unlabelled naive timestamp is read as the
+          reader's own, and here that would date somebody's decision to the
+          wrong afternoon. */}
+      {(past.data ?? []).length > 0 ? (
+        <li className="checkup__past checkup__pastnote">By the server's clock.</li>
+      ) : null}
+    </ol>
   )
 }
 

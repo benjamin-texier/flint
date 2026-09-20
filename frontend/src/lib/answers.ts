@@ -64,6 +64,13 @@ export interface Answer {
 /** What a finding's answer means for this run of it. */
 export type Standing =
   | { kind: 'open' }
+  /** Answered, and the answer was to put it back. Listed exactly like an
+   *  unanswered finding — that is what reopening means — but *marked*, because
+   *  the history is the one thing a reopened finding still has to say and a row
+   *  with no mark has nowhere to hang it. Found by looking: a finding put away
+   *  and taken back showed no trace at all, so the record of somebody changing
+   *  their mind was reachable only through the API. */
+  | { kind: 'reopened'; answer: Answer }
   | { kind: 'away'; answer: Answer }
   | { kind: 'accepted'; answer: Answer }
   /** Put away, and the thing it was put away about has moved. */
@@ -128,8 +135,8 @@ export function index(answers: Answer[] | undefined): Map<string, Answer> {
 export function standingOf(finding: Finding, answer: Answer | undefined): Standing {
   if (!answer) return { kind: 'open' }
   if (answer.state === 'accepted') return { kind: 'accepted', answer }
-  // Anything that is not a live dismissal is open: `reopened` is the undo, and
-  // a state this version does not know is not a reason to hide something.
+  if (answer.state === 'reopened') return { kind: 'reopened', answer }
+  // A state this version does not know is not a reason to hide something.
   if (answer.state !== 'dismissed') return { kind: 'open' }
   const says = moved(finding.gain, { kind: answer.gain_kind, n: answer.gain_n })
   return says ? { kind: 'stale', answer, says } : { kind: 'away', answer }
@@ -148,6 +155,8 @@ export function split(
   const open: Finding[] = []
   const away: Finding[] = []
   for (const finding of findings) {
+    // Only a live dismissal is put aside. Accepted, reopened and stale are all
+    // listed, for three different reasons written where each is decided.
     if (standingOf(finding, answers.get(finding.id)).kind === 'away') away.push(finding)
     else open.push(finding)
   }
@@ -169,6 +178,8 @@ export function saysStanding(standing: Standing): string | null {
   switch (standing.kind) {
     case 'open':
       return null
+    case 'reopened':
+      return `Reopened by ${standing.answer.who}`
     case 'accepted':
       return `Accepted by ${standing.answer.who}${standing.answer.note ? ` — ${standing.answer.note}` : ''}`
     case 'away':
