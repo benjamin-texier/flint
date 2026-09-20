@@ -69,6 +69,15 @@ the same commands and nothing else.
 - **Every interaction keeps the contract its ARIA role announces.** A tablist is
   driven by arrows and holds one tab stop; a menu closes on Escape and walks with
   arrows; a sortable column publishes `aria-sort`.
+- **No customer vocabulary in the repository.** Fixtures, comments, test data
+  and commit messages use neutral examples — `events`, `orders`, `account_id`,
+  `source_id` — never the table, column, account or namespace names of a real
+  server Flint was pointed at. This is easy to get wrong precisely when the
+  work is going well: a measurement is most convincing with the real figures
+  beside it, and the real figures arrive attached to somebody's schema. Keep
+  the figures, rename the identifiers. Screenshots come from the ClickHouse
+  playground (`contrib/pull-play.mjs`), which is what `docs/images` already
+  holds.
 - **Verify in the browser, not only in the test run.** The bugs this codebase has
   actually shipped — a diagram clipped by a stale fit, a canvas collapsed to zero
   height, a bar rounded to a hairline — were all invisible to `tsc` and Vitest and
