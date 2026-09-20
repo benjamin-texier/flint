@@ -690,6 +690,54 @@ pub struct AlertEvent {
     pub delivery_error: String,
 }
 
+/// What somebody said about a finding, and what the finding said at the time.
+///
+/// The second half is what makes a history readable: a finding is recomputed
+/// on every visit, so a row saying only "dismissed `schema:cold:orders`" is a
+/// record nobody can act on six weeks later. The title and the worth travel
+/// with the answer, frozen at the moment it was given — which is also what the
+/// re-evaluation rule compares against.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Answer {
+    pub finding: String,
+    #[serde(alias = "happened")]
+    pub at: String,
+    /// `dismissed`, `accepted`, or `reopened`.
+    pub state: String,
+    pub note: String,
+    pub who: String,
+    pub area: String,
+    pub object: String,
+    pub title: String,
+    pub gain_kind: String,
+    pub gain_n: f64,
+    /// How many times this finding has been answered, including this one — the
+    /// tell that somebody has changed their mind about it before.
+    #[serde(default)]
+    pub times: u64,
+}
+
+/// One answer, as a caller gives it. `who` is not here: it is the session's,
+/// and a field a caller could fill in is a field a caller could fill in with
+/// somebody else's name.
+#[derive(Debug, Clone, Deserialize)]
+pub struct AnswerInput {
+    pub finding: String,
+    pub state: String,
+    #[serde(default)]
+    pub note: String,
+    #[serde(default)]
+    pub area: String,
+    #[serde(default)]
+    pub object: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub gain_kind: String,
+    #[serde(default)]
+    pub gain_n: f64,
+}
+
 #[derive(Clone)]
 pub struct Workspace {
     database: String,
@@ -859,6 +907,49 @@ impl Workspace {
                  PARTITION BY toYYYYMM(at) \
                  ORDER BY (alert_id, at) \
                  TTL toDateTime(at) + INTERVAL 90 DAY"
+                ),
+                self.write_opts(),
+            )
+            .await
+            .map_err(|e| self.explain(e))?;
+
+        // What somebody said about a finding.
+        //
+        // A log like `alert_events` and for the same reason — the history is
+        // one of the four things A11 asks for, and `ReplacingMergeTree` would
+        // keep the newest row and throw the reason away. The current standing
+        // is the newest row per finding, read with `argMax`.
+        //
+        // **No TTL here**, which is the one place this table departs from the
+        // event logs beside it. An alert firing is evidence and ninety days of
+        // it is plenty; a dismissal is a *decision*, and a decision that
+        // expires quietly puts a finding back on the page with nobody having
+        // changed their mind. If a dismissal should stop applying, that is the
+        // re-evaluation rule's job, and it says why.
+        //
+        // The finding's own words travel with the answer — what it claimed and
+        // what it was worth at the time — because the row is recomputed on
+        // every visit and a history reading "you dismissed schema:cold:x" is
+        // not a history anybody can use.
+        self.ch
+            .execute(
+                &format!(
+                    "CREATE TABLE IF NOT EXISTS {db}.checkup_answers \
+                 ( \
+                    finding    String, \
+                    at         DateTime64(3), \
+                    state      LowCardinality(String), \
+                    note       String, \
+                    who        String, \
+                    area       LowCardinality(String), \
+                    object     String, \
+                    title      String, \
+                    gain_kind  LowCardinality(String), \
+                    gain_n     Float64 \
+                 ) \
+                 ENGINE = MergeTree \
+                 PARTITION BY toYYYYMM(at) \
+                 ORDER BY (finding, at)"
                 ),
                 self.write_opts(),
             )
@@ -3501,6 +3592,155 @@ impl Workspace {
     }
 
     /// The recent history of one alert, or of all of them.
+    /// Where every finding stands: the newest answer per finding, and how many
+    /// times it has been answered.
+    ///
+    /// Everything, rather than a page of it. A deployment's whole set of
+    /// answers is a few hundred rows at the very most — one per finding
+    /// somebody has ever put away — and the two pages that apply them need the
+    /// lot: a filter that arrived a page at a time would put a dismissed
+    /// finding back on the board for whoever scrolled far enough.
+    pub async fn answers(&self) -> Result<Vec<Answer>> {
+        self.ensure().await?;
+        // `argMax` on `at` for every field, so the row that comes back is one
+        // answer rather than the newest of each column separately — the same
+        // trap the backup log set, where a per-column max mixed two runs into
+        // a row that never happened.
+        let sql = format!(
+            "SELECT finding                        AS finding, \
+                    toString(max(at))              AS happened, \
+                    argMax(state, at)              AS state, \
+                    argMax(note, at)               AS note, \
+                    argMax(who, at)                AS who, \
+                    argMax(area, at)               AS area, \
+                    argMax(object, at)             AS object, \
+                    argMax(title, at)              AS title, \
+                    argMax(gain_kind, at)          AS gain_kind, \
+                    argMax(gain_n, at)             AS gain_n, \
+                    toUInt64(count())              AS times \
+             FROM {}.checkup_answers \
+             GROUP BY finding \
+             ORDER BY happened DESC \
+             LIMIT 2000",
+            self.quoted()
+        );
+        self.ch
+            .rows_with(
+                &sql,
+                QueryOptions {
+                    quote_64bit_integers: false,
+                    introspection: true,
+                    ..Default::default()
+                },
+            )
+            .await
+    }
+
+    /// Everything ever said about one finding, newest first.
+    pub async fn answer_history(&self, finding: &str, limit: u64) -> Result<Vec<Answer>> {
+        self.ensure().await?;
+        let sql = format!(
+            "SELECT finding          AS finding, \
+                    toString(at)     AS happened, \
+                    state            AS state, \
+                    note             AS note, \
+                    who              AS who, \
+                    area             AS area, \
+                    object           AS object, \
+                    title            AS title, \
+                    gain_kind        AS gain_kind, \
+                    gain_n           AS gain_n, \
+                    /* The total for this finding, on every row of its own \
+                       history — rather than a zero, which reads as never \
+                       answered on the one row a save hands back. */ \
+                    toUInt64(count() OVER ()) AS times \
+             FROM {}.checkup_answers \
+             WHERE finding = {{finding:String}} \
+             ORDER BY at DESC \
+             LIMIT {}",
+            self.quoted(),
+            limit.clamp(1, 200)
+        );
+        self.ch
+            .rows_with(
+                &sql,
+                QueryOptions {
+                    params: vec![("finding".to_string(), finding.to_string())],
+                    quote_64bit_integers: false,
+                    introspection: true,
+                    ..Default::default()
+                },
+            )
+            .await
+    }
+
+    /// Record one answer. Append, never update: changing one's mind is a second
+    /// row, which is what makes the history a history.
+    pub async fn answer(&self, input: &AnswerInput, who: &str) -> Result<Answer> {
+        self.ensure().await?;
+        let state = match input.state.as_str() {
+            "dismissed" | "accepted" | "reopened" => input.state.clone(),
+            other => {
+                return Err(Error::BadRequest(format!(
+                    "`{other}` is not an answer: a finding is dismissed, accepted or reopened"
+                )))
+            }
+        };
+        if input.finding.trim().is_empty() || input.finding.len() > 512 {
+            return Err(Error::BadRequest(
+                "a finding id is between 1 and 512 characters".into(),
+            ));
+        }
+        self.ch
+            .execute(
+                &format!(
+                    "INSERT INTO {}.checkup_answers \
+                     (finding, at, state, note, who, area, object, title, gain_kind, gain_n) \
+                     SELECT {{finding:String}}, now64(3), {{state:String}}, {{note:String}}, \
+                            {{who:String}}, {{area:String}}, {{object:String}}, {{title:String}}, \
+                            {{gain_kind:String}}, {{gain_n:Float64}}",
+                    self.quoted()
+                ),
+                QueryOptions {
+                    params: vec![
+                        ("finding".to_string(), input.finding.clone()),
+                        ("state".to_string(), state.clone()),
+                        ("note".to_string(), input.note.clone()),
+                        ("who".to_string(), who.to_string()),
+                        ("area".to_string(), input.area.clone()),
+                        ("object".to_string(), input.object.clone()),
+                        ("title".to_string(), input.title.clone()),
+                        ("gain_kind".to_string(), input.gain_kind.clone()),
+                        ("gain_n".to_string(), input.gain_n.to_string()),
+                    ],
+                    ..self.write_opts()
+                },
+            )
+            .await?;
+
+        // Read back rather than echo: the timestamp and the count are the
+        // server's, and a page that drew its own optimistic row would show a
+        // "times" that the next refresh corrects.
+        Ok(self
+            .answer_history(&input.finding, 1)
+            .await?
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| Answer {
+                finding: input.finding.clone(),
+                at: String::new(),
+                state,
+                note: input.note.clone(),
+                who: who.to_string(),
+                area: input.area.clone(),
+                object: input.object.clone(),
+                title: input.title.clone(),
+                gain_kind: input.gain_kind.clone(),
+                gain_n: input.gain_n,
+                times: 0,
+            }))
+    }
+
     pub async fn alert_events(
         &self,
         alert_id: Option<&str>,

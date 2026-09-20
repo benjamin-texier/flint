@@ -361,6 +361,11 @@ pub fn router(state: AppState) -> Router {
         .route("/schema", get(explorer::schema))
         .route("/history", get(explorer::history))
         .route("/diagnostics/news", get(diagnostics::what_changed))
+        // Where every finding stands, and what was said about one. Under
+        // `/checkup` rather than `/diagnostics` because it is reader state
+        // about the advisors rather than a reading of `system.*`.
+        .route("/checkup/answers", get(saved::answers).post(saved::answer))
+        .route("/checkup/answers/history", get(saved::answer_history))
         .route("/diagnostics/queries", get(diagnostics::queries))
         // The rankings say which shapes are expensive; these two say which
         // *call* was, and what the log kept about it. One is the list a filter

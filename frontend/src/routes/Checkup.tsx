@@ -1,9 +1,9 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { useEffect, useMemo, useState } from 'react'
 
 import { api } from '../lib/api'
-import { bytes as fmtBytes, count } from '../lib/format'
+import { bytes as fmtBytes, count, relativeTime } from '../lib/format'
 import {
   AREAS,
   clearBackups,
@@ -34,6 +34,16 @@ import {
   type Finding,
   type Gain,
 } from '../lib/checkup'
+import {
+  index as answerIndex,
+  saysAway,
+  saysStanding,
+  split,
+  standingOf,
+  type Answer,
+  type Standing,
+} from '../lib/answers'
+import { keeps } from '../lib/spaces'
 import { ClearedList } from '../components/ClearedList'
 import { ErrorNote } from '../components/Note'
 
@@ -104,6 +114,29 @@ export function CheckupPage() {
          could do about it. */
     }
   }
+
+  /* What has already been said about these findings.
+     
+     Only where Flint keeps anything: answering is reader state, and a
+     stateless Flint has nowhere to put it. The page then shows no controls
+     rather than controls that fail — the same rule the Data board follows for
+     alerts and reports. */
+  const config = useQuery({ queryKey: ['config'], queryFn: () => api.config() })
+  const stateful = keeps(config.data)
+  const answers = useQuery({
+    queryKey: ['checkup', 'answers'],
+    queryFn: () => api.answers(),
+    enabled: stateful,
+    retry: false,
+  })
+  const client = useQueryClient()
+  const answer = useMutation({
+    mutationFn: api.answerFinding,
+    /* Refetched rather than patched in place. The count of how many times a
+       finding has been answered is the server's, and a row that drew its own
+       optimistic version of it would show a number the next load corrects. */
+    onSuccess: () => client.invalidateQueries({ queryKey: ['checkup', 'answers'] }),
+  })
 
   /* Each of these is a reading the backend already produces. The checkup does
      not measure anything of its own — it judges, and the judging is in
@@ -235,6 +268,8 @@ export function CheckupPage() {
     ],
   )
 
+  const answered = useMemo(() => answerIndex(answers.data), [answers.data])
+  const listed = useMemo(() => split(findings, answered).open, [findings, answered])
   const workloadAsked = read !== null
   const workloadPending =
     queries.isFetching || traffic.isFetching || cold.isFetching || spend.isFetching
@@ -244,7 +279,11 @@ export function CheckupPage() {
       <header className="page__head">
         <p className="eyebrow">Checkup</p>
         <h1 className="page__title page__title--hero">What to change</h1>
-        <p className="page__sub">{saysReport(findings, stillReading)}</p>
+        {/* Counted over what the page actually lists. A headline saying seven
+            above a list of six is the defect this codebase calls out in every
+            other cap: the count follows the list, and what was put away is
+            counted where it was put away. */}
+        <p className="page__sub">{saysReport(listed, stillReading)}</p>
       </header>
 
       <div className="checkup__asks">
@@ -316,6 +355,8 @@ export function CheckupPage() {
         </p>
       ) : null}
 
+      {answer.error ? <ErrorNote error={answer.error} /> : null}
+
       {AREAS.map((area) => (
         <AreaSection
           key={area.id}
@@ -323,6 +364,9 @@ export function CheckupPage() {
           findings={inArea(findings, area.id)}
           cleared={inAreaCleared(cleared, area.id)}
           waiting={waitingFor(area.id, { stillReading, workloadAsked, workloadPending })}
+          answers={answered}
+          onAnswer={stateful ? (body) => answer.mutate(body) : undefined}
+          answering={answer.isPending ? (answer.variables?.finding ?? null) : null}
         />
       ))}
     </article>
@@ -355,11 +399,26 @@ function waitingFor(
   return s.stillReading > 0 ? 'Still reading.' : null
 }
 
+/** What a row can be answered with, as the page hands it down. */
+export type Answering = (body: {
+  finding: string
+  state: 'dismissed' | 'accepted' | 'reopened'
+  note?: string
+  area?: string
+  object?: string
+  title?: string
+  gain_kind?: string
+  gain_n?: number
+}) => void
+
 function AreaSection({
   area,
   findings,
   cleared,
   waiting,
+  answers,
+  onAnswer,
+  answering,
 }: {
   area: (typeof AREAS)[number]
   findings: Finding[]
@@ -369,22 +428,60 @@ function AreaSection({
    *  is what made a healthy page look like a broken one. */
   cleared: Cleared[]
   waiting: string | null
+  answers: Map<string, Answer>
+  /** Absent on a stateless Flint, where there is nowhere to keep an answer.
+   *  The rows then draw no controls rather than controls that fail. */
+  onAnswer?: Answering
+  /** The finding whose answer is in flight, so its own row can say so. */
+  answering: string | null
 }) {
+  const [showAway, setShowAway] = useState(false)
+  const { open, away } = split(findings, answers)
+  const put = saysAway(away)
   return (
     <section className="section">
       <h2 className="section__title">{area.label}</h2>
       <p className="says">{area.lead}</p>
       {waiting ? <p className="says checkup__waiting">{waiting}</p> : null}
 
-      {findings.length > 0 ? (
+      {open.length > 0 ? (
         <ul className="checkup__list">
-          {findings.map((f) => (
-            <FindingRow key={f.id} finding={f} />
+          {open.map((f) => (
+            <FindingRow
+              key={f.id}
+              finding={f}
+              standing={standingOf(f, answers.get(f.id))}
+              onAnswer={onAnswer}
+              busy={answering === f.id}
+            />
           ))}
         </ul>
       ) : null}
 
-      <ClearedList cleared={cleared} also={findings.length > 0} />
+      {/* Counted, never silently dropped — and a click away, because the
+          reader who put them away is the one most likely to want them back. */}
+      {put ? (
+        <p className="says checkup__putaway">
+          <button className="linkish" onClick={() => setShowAway(!showAway)} type="button">
+            {showAway ? `Hide the ${put.toLowerCase()}` : put}
+          </button>
+        </p>
+      ) : null}
+      {showAway && away.length > 0 ? (
+        <ul className="checkup__list checkup__list--away">
+          {away.map((f) => (
+            <FindingRow
+              key={f.id}
+              finding={f}
+              standing={standingOf(f, answers.get(f.id))}
+              onAnswer={onAnswer}
+              busy={answering === f.id}
+            />
+          ))}
+        </ul>
+      ) : null}
+
+      <ClearedList cleared={cleared} also={open.length > 0} />
 
       {/* Neither a finding nor a clearance, and not waiting either: every
           reading this area is made of came back unreadable. Said rather than
@@ -405,9 +502,54 @@ function AreaSection({
  *  renderings of one `Finding` would drift — the day somebody adds a field
  *  here, the home stops showing it and nobody notices, because both pages still
  *  look finished. */
-export function FindingRow({ finding }: { finding: Finding }) {
+export function FindingRow({
+  finding,
+  standing,
+  onAnswer,
+  busy,
+}: {
+  finding: Finding
+  /** Where it stands. Absent on the arrival board, which lists findings and
+   *  does not answer them — it is a page that reports and links, and answering
+   *  is an act. */
+  standing?: Standing
+  onAnswer?: Answering
+  busy?: boolean
+}) {
+  /* The note is asked for rather than assumed. A dismissal with no reason is
+     the one that somebody else finds six weeks later and cannot evaluate —
+     "kept on purpose for the audit" is what makes the row worth keeping, and
+     it is the difference between a hide button and an answer. Empty is still
+     allowed: a reader who will not explain themselves should not be stopped
+     from putting away something they know is fine. */
+  const [asking, setAsking] = useState<'dismissed' | 'accepted' | null>(null)
+  const [note, setNote] = useState('')
+  const mark = standing ? saysStanding(standing) : null
+
+  const send = (state: 'dismissed' | 'accepted' | 'reopened', text = '') => {
+    onAnswer?.({
+      finding: finding.id,
+      state,
+      note: text,
+      area: finding.area,
+      object: finding.object ?? '',
+      title: finding.title,
+      /* The worth travels with the answer, and it is what the re-evaluation
+         compares against later. A dismissal is a judgement about a figure,
+         not about an id. */
+      gain_kind: finding.gain.kind,
+      gain_n: finding.gain.kind === 'none' ? 0 : finding.gain.n,
+    })
+    setAsking(null)
+    setNote('')
+  }
+
   return (
-    <li className={`checkup__row checkup__row--${finding.urgency}`}>
+    <li
+      className={`checkup__row checkup__row--${finding.urgency}${
+        standing && standing.kind !== 'open' ? ` checkup__row--${standing.kind}` : ''
+      }`}
+    >
       <div className="checkup__head">
         <span className="checkup__title">{finding.title}</span>
         {/* The unit is part of the figure and never dropped: "4.2 GB" and
@@ -417,10 +559,75 @@ export function FindingRow({ finding }: { finding: Finding }) {
       </div>
       <p className="says checkup__why">{finding.why}</p>
       <p className="says checkup__evidence">{finding.evidence}</p>
-      {finding.act ? (
-        <Link className="link checkup__act" to={finding.act.to}>
-          {finding.act.label} →
-        </Link>
+      {/* What was said about it, and when. A stale dismissal says both figures
+          here — it is back on the page precisely because they differ. */}
+      {mark ? (
+        <p className={`says checkup__mark checkup__mark--${standing?.kind}`}>
+          {mark}
+          {standing && standing.kind !== 'open' ? (
+            <span className="checkup__markwhen">
+              {' '}
+              · {relativeTime(standing.answer.at)}
+              {standing.answer.times > 1 ? ` · answered ${standing.answer.times} times` : ''}
+            </span>
+          ) : null}
+        </p>
+      ) : null}
+      <div className="checkup__acts">
+        {finding.act ? (
+          <Link className="link checkup__act" to={finding.act.to}>
+            {finding.act.label} →
+          </Link>
+        ) : null}
+        {onAnswer && asking === null ? (
+          standing && standing.kind !== 'open' ? (
+            <button className="linkish" disabled={busy} onClick={() => send('reopened')} type="button">
+              {busy ? 'Reopening…' : 'Reopen'}
+            </button>
+          ) : (
+            <>
+              <button className="linkish" disabled={busy} onClick={() => setAsking('dismissed')} type="button">
+                Put away
+              </button>
+              <button className="linkish" disabled={busy} onClick={() => setAsking('accepted')} type="button">
+                Accept
+              </button>
+            </>
+          )
+        ) : null}
+      </div>
+      {asking ? (
+        <form
+          className="checkup__answer"
+          onSubmit={(e) => {
+            e.preventDefault()
+            send(asking, note.trim())
+          }}
+        >
+          <input
+            className="input bfield bfield--sm"
+            autoFocus
+            value={note}
+            placeholder={asking === 'dismissed' ? 'why this is fine here (optional)' : 'what you will do (optional)'}
+            aria-label={asking === 'dismissed' ? 'Why this finding is fine here' : 'What you will do about this finding'}
+            onChange={(e) => setNote(e.target.value)}
+            onKeyDown={(e) => {
+              // Escape leaves without answering, which is the contract every
+              // other dismissible thing in this product keeps.
+              if (e.key === 'Escape') {
+                e.stopPropagation()
+                setAsking(null)
+                setNote('')
+              }
+            }}
+          />
+          <button className="btn btn--soft" type="submit" disabled={busy}>
+            {asking === 'dismissed' ? 'Put it away' : 'Accept it'}
+          </button>
+          <button className="linkish" type="button" onClick={() => setAsking(null)}>
+            Cancel
+          </button>
+        </form>
       ) : null}
     </li>
   )

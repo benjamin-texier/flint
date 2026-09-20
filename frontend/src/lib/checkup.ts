@@ -555,9 +555,12 @@ export function fromHeavy(reports: Heavy[], floorBytes = 1024 * 1024 * 1024): Fi
       id: `schema:heavy:${database}.${column.table}.${column.column}`,
       area: 'schema' as const,
       urgency: 'worth' as const,
-      title: `${column.column} in ${database}.${column.table} holds ${column.compressed} bytes`,
+      // Formatted, like the figure printed beside it. `3474902961 bytes` in a
+      // title over `3.2 GiB` in the margin is one fact written two ways, and
+      // the unformatted one is the version nobody can read at a glance.
+      title: `${column.column} in ${database}.${column.table} holds ${bytes(column.compressed)}`,
       why: `A ${column.type}. Whether that is the right type for what is in it is a question about the values, which the schema review answers by reading them.`,
-      evidence: `${column.compressed} bytes compressed, ${column.uncompressed} uncompressed.`,
+      evidence: `${bytes(column.compressed)} compressed, ${bytes(column.uncompressed)} uncompressed.`,
       gain: { kind: 'bytes' as const, n: column.compressed },
       object: `${database}.${column.table}`,
       act: {

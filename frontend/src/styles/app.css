@@ -5401,6 +5401,69 @@ tr:hover .stratum__fill {
   font-size: var(--size-label);
 }
 
+/* ── Answering a finding ──────────────────────────────────────────────────
+ * The controls sit on the row's own line, beside the link that acts on it:
+ * going to fix something and deciding not to are two answers to one question,
+ * and putting them in two places would make one of them look like the page's
+ * and the other like the reader's. */
+.checkup__acts {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  flex-wrap: wrap;
+}
+
+/* An answered row is quieter than an open one, and only in weight — no wash,
+ * no second colour. The page's one colour rule is the danger edge on what is
+ * already happening, and an answer must not compete with it. */
+.checkup__row--away,
+.checkup__row--accepted {
+  opacity: 0.82;
+}
+
+/* Except the one that came back. A dismissal whose figure has moved is the
+ * page telling the reader their own decision no longer fits, which is the
+ * only thing here worth an edge of its own. */
+.checkup__row--stale {
+  border-left-color: var(--warning);
+}
+
+.checkup__mark {
+  color: var(--text-muted);
+}
+
+.checkup__mark--stale {
+  color: var(--warning);
+}
+
+.checkup__markwhen {
+  color: var(--text-faint);
+}
+
+/* The count of what is not listed, which is a sentence rather than a control
+ * until somebody wants it. */
+.checkup__putaway {
+  color: var(--text-muted);
+}
+
+.checkup__list--away {
+  margin-top: var(--s2);
+}
+
+/* The note, asked for on the row rather than in a dialog: a decision made in
+ * a modal is a decision made away from the evidence it is about. */
+.checkup__answer {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-wrap: wrap;
+}
+
+.checkup__answer .input {
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+
 /* "Nothing yet" and "nothing to say" are different answers, so they do not
  * look the same. */
 .checkup__waiting {

@@ -35,6 +35,8 @@ import {
   type Cleared,
   type Finding,
 } from '../lib/checkup'
+import { index as answerIndex, split } from '../lib/answers'
+import { keeps } from '../lib/spaces'
 import { bytes, count, exact, uptime } from '../lib/format'
 import { onDisk, weigh } from '../lib/weight'
 import { Headlines } from '../components/Headlines'
@@ -223,7 +225,26 @@ export function ArrivalPage() {
     ],
   )
 
-  const ordered = inOrder(findings, SHOWN)
+  /* What has already been answered, applied here too.
+     
+     This page reports and does not act — there are no controls on it, and
+     there should not be: answering is a decision and `/checkup` is the page
+     for it. But a finding somebody put away coming back on the first screen
+     of the product is the two pages disagreeing about the same judgement,
+     which is worse than the board being one row shorter. So the answers are
+     read and applied, and what they hid is counted with everything else the
+     cap left out. */
+  const config = useQuery({ queryKey: ['config'], queryFn: () => api.config() })
+  const answers = useQuery({
+    queryKey: ['checkup', 'answers'],
+    queryFn: () => api.answers(),
+    enabled: keeps(config.data),
+    retry: false,
+  })
+  const answered = useMemo(() => answerIndex(answers.data), [answers.data])
+  const { open, away } = useMemo(() => split(findings, answered), [findings, answered])
+
+  const ordered = inOrder(open, SHOWN)
   /* The scale the gutter marks are drawn against: the largest gain *in each
      unit*, because a gigabyte and a second are not two points on one scale — the
      rule `lib/checkup` exists to enforce. A mark is therefore "the heaviest
@@ -233,7 +254,12 @@ export function ArrivalPage() {
     if (f.gain.kind === 'none') return max
     return { ...max, [f.gain.kind]: Math.max(max[f.gain.kind] ?? 0, f.gain.n) }
   }, {})
-  const hidden = findings.length - ordered.length
+  /* Both kinds of absence in one figure: the ones past the cap and the ones
+     somebody put away. They are counted together because the sentence they
+     appear in is about what this list does not show, and a reader who wants
+     the difference has `/checkup`, where the put-away ones are counted on
+     their own. */
+  const hidden = open.length - ordered.length + away.length
   const covered = saysRead(readings)
 
   /* The scale of the thing, from the two cheapest reads on the page. Both are

@@ -978,6 +978,31 @@ export const api = {
     ),
   diagnoseActivity: () => request<import('./diagnose').ActivityReport>('/diagnostics/activity'),
 
+  /** Where every finding stands. Two pages apply these — the checkup and the
+   *  arrival board — because a finding somebody put away must not come back
+   *  on the other one. */
+  answers: () => request<import('./answers').Answer[]>('/checkup/answers'),
+  /** Everything ever said about one finding. Its own request: a history is
+   *  read about one row, by somebody who already has a question about it. */
+  answerHistory: (finding: string) =>
+    request<import('./answers').Answer[]>(`/checkup/answers/history?finding=${enc(finding)}`),
+  /** Answer one. `who` is the session's and is not sent: a name a caller can
+   *  fill in is a name a caller can fill in with somebody else's. */
+  answerFinding: (body: {
+    finding: string
+    state: 'dismissed' | 'accepted' | 'reopened'
+    note?: string
+    area?: string
+    object?: string
+    title?: string
+    gain_kind?: string
+    gain_n?: number
+  }) =>
+    request<import('./answers').Answer>('/checkup/answers', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
   alerts: () => request<import('./alert').Alert[]>('/alerts'),
   saveAlert: (body: {
     id?: string

@@ -7,9 +7,9 @@ use crate::clickhouse::reads::Space;
 use crate::error::{Error, Result};
 use crate::published::usage::{CacheUsage, EndpointUsage, UsageIndex};
 use crate::workspace::{
-    Alert, AlertEvent, AlertInput, ApiKey, ApiKeyInput, Dashboard, DashboardInput,
-    PublishTablesInput, Published, PublishedInput, Report, ReportInput, ReportRun, SaveInput,
-    SavedQuery, State as RevisionState,
+    Alert, AlertEvent, AlertInput, Answer, AnswerInput, ApiKey, ApiKeyInput, Dashboard,
+    DashboardInput, PublishTablesInput, Published, PublishedInput, Report, ReportInput, ReportRun,
+    SaveInput, SavedQuery, State as RevisionState,
 };
 
 use super::{AppState, Caller, SignedIn};
@@ -24,6 +24,54 @@ fn workspace(state: &AppState) -> Result<&crate::workspace::Workspace> {
                 .into(),
         )
     })
+}
+
+/// Where every finding stands.
+///
+/// Read by two pages — the checkup and the arrival board — because a finding
+/// somebody put away must not come back on the other one. That is the same
+/// rule the diagnostics filter keeps: two screens of one product disagreeing
+/// about what they cover is worse than neither of them narrowing at all.
+pub async fn answers(_: SignedIn, State(state): State<AppState>) -> Result<Json<Vec<Answer>>> {
+    Ok(Json(workspace(&state)?.answers().await?))
+}
+
+#[derive(Deserialize)]
+pub struct OneFinding {
+    finding: String,
+    #[serde(default = "history_limit")]
+    limit: u64,
+}
+
+fn history_limit() -> u64 {
+    50
+}
+
+/// Everything ever said about one finding. Its own request rather than part of
+/// the listing above: a history is read about one row, by somebody who already
+/// has a question about that row, and carrying every answer's every revision
+/// to every page would be a payload nobody reads.
+pub async fn answer_history(
+    _: SignedIn,
+    State(state): State<AppState>,
+    Query(q): Query<OneFinding>,
+) -> Result<Json<Vec<Answer>>> {
+    Ok(Json(
+        workspace(&state)?
+            .answer_history(&q.finding, q.limit)
+            .await?,
+    ))
+}
+
+/// Answer one finding. The name recorded is the session's, never the body's.
+pub async fn answer(
+    _: SignedIn,
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    Json(input): Json<AnswerInput>,
+) -> Result<Json<Answer>> {
+    let who = state.caller_name(&headers);
+    Ok(Json(workspace(&state)?.answer(&input, &who).await?))
 }
 
 pub async fn list(_: SignedIn, State(state): State<AppState>) -> Result<Json<Vec<SavedQuery>>> {
