@@ -2638,6 +2638,26 @@ the controls are simply absent, rather than present and failing.
 
 ## Would an index help
 
+**What the workload argues for** sits above it. Flint reads every SELECT
+against the table in the window — the same measurement the projection advisor
+reads — and where a filter cannot be pruned by the sorting key it proposes an
+index for it, ranked by the time the window actually spent on those shapes and
+never by a saving anything predicted. The kind follows the filter: a range
+wants `minmax`, an equality wants a membership test, and where two are
+plausible Flint proposes one and **names the other**, because measuring it
+takes the same few seconds and a guess that can be checked in seconds is not a
+conclusion.
+
+Each proposal carries the comparison and the literal the workload actually
+wrote, so one press measures the filter somebody really runs. Where a shape
+compared against a list, a range of expressions or `now()`, there is no single
+value to plan against — the card says so and the measurement below asks for
+one, rather than offering a button that answers a question nobody asked.
+
+The empty list is explained too: how many shapes the sorting key already
+serves, which columns already carry an index, and how many shapes could not be
+read at all.
+
 A skip index is the cheapest optimisation ClickHouse offers and the easiest to
 get wrong: it costs a write on every insert and disk on every part, forever,
 and nothing reports that the query it was added for ignores it. The usual way

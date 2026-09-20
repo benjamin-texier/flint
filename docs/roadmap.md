@@ -245,7 +245,7 @@ under *Placements still to settle* now.
 | Column Storage Analysis | built | `cold.rs`, and *Mass* down to the column |
 | Advisor Core | built | `/checkup` composes, and a finding can be answered — A11 |
 | Projection Advisor | built | B4, with `Measure it` and `Weigh it` |
-| Index Advisor | partly | a hypothetical can be measured; nothing proposes one — A10 |
+| Index Advisor | built | proposed from the workload, measured in a press — A10 |
 | ORDER BY Advisor | partly | diagnose says the key is not narrowing; nothing proposes one — A10 |
 | Compression Advisor | built | the schema review, weighed by `probe.rs` |
 | Partition Advisor | partly | the verdict is on the storage reading; the proposal is A10 |
@@ -274,9 +274,9 @@ under *Placements still to settle* now.
 | RBAC | built | B6, complete |
 | Advisor Rule Library | partly | the rules exist per page, one file and one test each; a *configurable* library is refused in A11 |
 
-Thirty-nine families: **19 built, 12 partly, 7 not built, 1 refused** — A8
-moved three, A11 a fourth, and A9 moved two more off *not built* without
-finishing either. The count is what it is rather than what the table above said
+Thirty-nine families: **20 built, 11 partly, 7 not built, 1 refused** — A8
+moved three, A11 a fourth, A9 moved two more off *not built* without finishing
+either, and A10's index advisor finished one of those two. The count is what it is rather than what the table above said
 when it was written. Ten new
 sections carry what the last two columns point at and no existing section
 already owns — A8 through A14 on Data, B9 through B11 on Infrastructure. They
@@ -1834,7 +1834,7 @@ It needs `FLINT_WORKSPACE_DATABASE`, like every other weighing, and it must
 state its sample rather than implying the whole table. A saving measured over a
 tenth of the rows is a saving over a tenth of the rows.
 
-### A10. The advisors the projection advisor is the first of
+### A10. The advisors the projection advisor is the first of — **the index one is built**
 
 Five more of them, and the argument for each is the same argument B4 already
 made for projections, which is why they are one section and not five: the
@@ -1844,13 +1844,32 @@ DDL is handed to Infrastructure → Schema with the form filled in. No Data
 control changes structure as a side effect; the hand-over *is* the corollary
 working.
 
-- **A skip index.** `minmax`, `set`, a bloom filter, a token filter over text.
-  What makes this different from the projection advisor is that the evidence is
-  narrower: a filter on a column that is not in the sorting key and reads the
-  whole table every time. `plan.ts` already names the opposite finding — *the
-  skip index pruned nothing here* — so the detector for a *useless* index is
-  written and the proposer for a missing one is not. Both halves matter, and an
-  advisor that only adds grows a table's write cost forever.
+- **A skip index — built.** `minmax`, `set` and a bloom filter, proposed from
+  the same measurement the projection advisor reads and ranked the same way,
+  with A9's measurement one press away on every card. The kind follows the
+  filter and the *other* kind is named rather than chosen, because a guess
+  settled in seconds should not be presented as a conclusion.
+
+  Two things the building found, and the first was not this advisor's:
+
+  - **`servedByKey` could not see through `assumeNotNull`.** ClickHouse writes
+    it into the sorting key for any Nullable column, so compared as text it is
+    a different column — and every rule downstream concluded the key served
+    nothing on tables where it serves everything. Measured: a filter on the
+    bare column reads **17 of 5,241 granules** through the wrapper. The
+    projection advisor has had this since it shipped, and three of the index
+    advisor's first four proposals were for filters the key already answered.
+  - **A `range` is not an operator.** The reader kept the kind and dropped the
+    comparison, so a proposal from `WHERE signal < -200` was measured as `>`.
+    On a column ranging −134 to 127 those are opposite answers — every granule
+    against none — which the run reported both ways, before the fix and after.
+
+  What is still not built is the other half this section asked for: nothing
+  reports that an *existing* index is useless, and nothing can, because
+  ClickHouse's query log does not record which skip index served a statement.
+  Checked on 26.7: thirteen `used_*` columns, none of them about skip indexes.
+  The only place an index is seen earning its keep is a plan, which is what
+  the what-if and the statement page read.
 - **A sorting key.** The hardest of the five and the one to be most careful
   with, because it cannot be applied: changing `ORDER BY` means rewriting the
   table. Diagnose already says "the sorting key is not narrowing these queries";
