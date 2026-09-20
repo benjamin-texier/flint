@@ -45,6 +45,30 @@ export function rerunPolicy(last: LastRun | null): Rerun {
   }
 }
 
+/** Whether `EXPLAIN ANALYZE` may just go.
+ *
+ *  It is `rerunPolicy` with the unknown case answered the other way, and the
+ *  difference is the whole reason it is a second function rather than a flag.
+ *  A rewrite is a *re*-run: something has already run, and where nothing has,
+ *  the next thing to happen is somebody pressing Run themselves. Analyze is
+ *  reached from a menu labelled `Explain…`, four of whose five entries cost
+ *  nothing at all — so on a fresh tab with a billion-row statement in it, the
+ *  first press is both the expensive act and the one nobody has been warned
+ *  about. Unknown therefore means ask.
+ *
+ *  Where something *has* run, the same two thresholds decide, because the
+ *  question is identical: is running this again a surprise minute of cluster
+ *  time. */
+export function analyzePolicy(last: LastRun | null): Rerun {
+  if (!last) {
+    return {
+      auto: false,
+      why: 'nothing has run in this tab yet, so there is no telling what it will cost',
+    }
+  }
+  return rerunPolicy(last)
+}
+
 /* -- A read worth understanding ---------------------------------------- */
 
 /** Past this, a read is worth being able to ask about. Not "wrong": a quarter

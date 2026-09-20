@@ -141,6 +141,7 @@ pub async fn traffic(
     State(state): State<AppState>,
     Caller(ch): Caller,
     Query(w): Query<Window>,
+    Query(n): Query<Narrow>,
 ) -> Result<Json<diagnostics::TrafficReport>> {
     Ok(Json(
         diagnostics::traffic(
@@ -148,6 +149,7 @@ pub async fn traffic(
             w.span(),
             w.limit,
             state.config.workspace_database.as_deref(),
+            &n.filter(),
         )
         .await?,
     ))
@@ -561,8 +563,9 @@ pub async fn cold_bytes(
 pub async fn spend_by_user(
     Caller(ch): Caller,
     Query(w): Query<Window>,
+    Query(n): Query<Narrow>,
 ) -> Result<Json<spend::SpendReport>> {
-    Ok(Json(spend::spend(&ch, w.days, w.limit).await?))
+    Ok(Json(spend::spend(&ch, w.days, w.limit, &n.filter()).await?))
 }
 
 /// Tables that look like copies of each other.

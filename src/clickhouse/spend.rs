@@ -35,7 +35,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::diagnostics::excluding_flint;
+use super::diagnostics::{excluding_flint, Filter};
 use super::{Client, QueryOptions, Reach};
 use crate::error::Result;
 
@@ -92,9 +92,23 @@ pub struct SpendReport {
 }
 
 /// Who the server worked for, most expensive first.
-pub async fn spend(ch: &Client, days: u64, limit: u64) -> Result<SpendReport> {
+///
+/// The filter is the page's, and it applies here for the reason it applies
+/// anywhere: this section sits under the rankings it is the other half of, and
+/// two panels on one screen answering about different populations is worse than
+/// no filter at all. "Who spent the time on inserts" is a real question; "who
+/// spent the time on everything, under a heading that says Inserts" is a
+/// misreading waiting to happen.
+pub async fn spend(ch: &Client, days: u64, limit: u64, filter: &Filter) -> Result<SpendReport> {
     let days = days.clamp(1, 90);
-    if let Some(why) = blocked(ch).await? {
+    // Two ways this cannot be answered — the log is out of reach, or the filter
+    // asks for a column this server's log does not have — and one shape of
+    // answer for both, because the page does the same thing with either.
+    let refusal = match blocked(ch).await? {
+        Some(why) => Some(why),
+        None => filter.usable(ch).await?,
+    };
+    if let Some(why) = refusal {
         return Ok(SpendReport {
             available: false,
             reason: Some(why),
@@ -110,6 +124,7 @@ pub async fn spend(ch: &Client, days: u64, limit: u64) -> Result<SpendReport> {
 
     let flint = excluding_flint(ch).await?;
     let excludes_flint = !flint.is_empty();
+    let (narrow, params) = filter.sql();
 
     /* One statement, with the window's own total riding inside it as a scalar
     subquery rather than fetched separately: two round trips over a busy log
@@ -128,7 +143,7 @@ pub async fn spend(ch: &Client, days: u64, limit: u64) -> Result<SpendReport> {
              SELECT sum(query_duration_ms) AS ms, count() AS n, min(event_time) AS oldest, \
                     uniqExact(user) AS accounts \
              FROM system.query_log \
-             WHERE event_time > now() - INTERVAL {days} DAY AND type = 'QueryFinish' {flint} \
+             WHERE event_time > now() - INTERVAL {days} DAY AND type = 'QueryFinish' {flint}{narrow} \
          ), \
          /* A nested subquery rather than a second CTE, and not by taste: \
             ClickHouse substitutes a CTE by name, so `max(ms)` over a CTE whose \
@@ -145,7 +160,7 @@ pub async fn spend(ch: &Client, days: u64, limit: u64) -> Result<SpendReport> {
                         sum(query_duration_ms)  AS table_ms \
                  FROM system.query_log \
                  WHERE event_time > now() - INTERVAL {days} DAY \
-                   AND type = 'QueryFinish' {flint} \
+                   AND type = 'QueryFinish' {flint}{narrow} \
                    AND notEmpty(tables) \
                  GROUP BY user, table \
              ) \
@@ -167,7 +182,7 @@ pub async fn spend(ch: &Client, days: u64, limit: u64) -> Result<SpendReport> {
          FROM system.query_log AS q \
          LEFT JOIN busiest AS b ON b.user = q.user \
          WHERE q.event_time > now() - INTERVAL {days} DAY \
-           AND q.type = 'QueryFinish' {flint} \
+           AND q.type = 'QueryFinish' {flint}{narrow} \
          GROUP BY q.user \
          ORDER BY seconds DESC \
          LIMIT {}",
@@ -175,6 +190,7 @@ pub async fn spend(ch: &Client, days: u64, limit: u64) -> Result<SpendReport> {
     );
 
     let opts = QueryOptions {
+        params,
         quote_64bit_integers: false,
         introspection: true,
         ..Default::default()
@@ -198,7 +214,7 @@ pub async fn spend(ch: &Client, days: u64, limit: u64) -> Result<SpendReport> {
                                                                         AS covered_days \
                  FROM system.query_log \
                  WHERE event_time > now() - INTERVAL {days} DAY \
-                   AND type = 'QueryFinish' {flint}"
+                   AND type = 'QueryFinish' {flint}{narrow}"
             ),
             opts,
         )

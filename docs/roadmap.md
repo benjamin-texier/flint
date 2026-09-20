@@ -234,9 +234,9 @@ under *Placements still to settle* now.
 
 | family | state | where |
 | --- | --- | --- |
-| Query Log Explorer | partly | `/diagnose` ranks; it does not filter — A8 |
-| Query Profiler | partly | the parts exist, the page does not — A8 |
-| EXPLAIN Viewer | partly | four of the family in the editor — A8 |
+| Query Log Explorer | built | `/diagnose`, narrowed by account, table, kind or shape |
+| Query Profiler | built | `/diagnose/q/<query_id>` — A8 |
+| EXPLAIN Viewer | built | five in the editor, and `ANALYZE` behind its own price |
 | EXPLAIN WHATIF | not built | A9 |
 | Instance Overview | built | B3, *Right now*, every figure against its ceiling |
 | System tables | partly | `crash_log`, S3Queue and `rocksdb` are B3's remainder |
@@ -274,7 +274,9 @@ under *Placements still to settle* now.
 | RBAC | built | B6, complete |
 | Advisor Rule Library | partly | the rules exist per page; the library is A11 |
 
-Thirty-nine families: **15 built, 14 partly, 9 not built, 1 refused**. Ten new
+Thirty-nine families: **18 built, 11 partly, 9 not built, 1 refused** — A8
+moved the first three of them, and the count is what it is rather than what the
+table above once said. Ten new
 sections carry what the last two columns point at and no existing section
 already owns — A8 through A14 on Data, B9 through B11 on Infrastructure. They
 are numbered into the tracks rather than gathered here, because a feature not
@@ -1700,7 +1702,7 @@ source column, a cursor offered where the next request would refuse it, a bucket
 colliding with a dimension. The type system had nothing to say about any of them,
 and a real request said it immediately.
 
-### A8. One statement, and everything known about it
+### A8. One statement, and everything known about it — **built**
 
 `/diagnose` ranks. The costliest shapes, the tables read, who spent the time,
 what failed — and the window is its only control. "What did the ETL account run
@@ -1741,11 +1743,45 @@ Two things in the backlog's profiler are genuinely absent rather than scattered:
   as the error log: read it where it is on, and say which switch is off rather
   than drawing an empty picture.
 
-**And the plan drawn rather than read out.** `plan.ts` turns `EXPLAIN PLAN
-indexes = 1` into sentences, and for the question it answers — how many granules
-were skipped, by which index, and whether the sorting key did any of it — the
-sentences are better than any diagram, because the answer is a number with a
-reason attached. They are worse for the shape: a stage that fans out to sixteen
+**Built, and two of the three paragraphs above were wrong.** The page is
+`/diagnose/q/<query_id>`; the filter is in the address, so a narrowed Diagnose
+is a link somebody sends; and under the rankings there is a list of individual
+runs, because a filter needs somewhere to land and a shape has no `query_id`.
+What building it corrected:
+
+- **The pruning did not need a plan at all.** `ProfileEvents` carries
+  `SelectedMarks`/`SelectedMarksTotal` and `SelectedParts`/`SelectedPartsTotal`
+  — what *this run* skipped, where an `EXPLAIN` asked today re-plans against
+  parts that have merged since. Both are on the page and the difference is not
+  theoretical: measured on one row, the counters said 27 of 5,241 granules and
+  14 of 18 parts, the plan a minute later said 31 and 18 of 18. The counters
+  cannot say which index did it, so the sentences stop at the arithmetic.
+- **`EXPLAIN ANALYZE` already carries the per-stage figures**, including the
+  parallelism this document sent to `system.processors_profile_log` for. On
+  26.7 it prints rows in and out, bytes, time and `parallelism 1.28/4` against
+  every step. So the processors log is the *attributable* source — it belongs
+  to the run that already happened — and `ANALYZE` is the available one, at the
+  price of running the statement again.
+- **The processors log is usually absent, and for a reason no setting fixes.**
+  `log_processors_profiles` reads `1`, a statement was run carrying it, the
+  flush was waited on, and `system.processors_profile_log` still did not exist
+  — fifteen `system.*_log` tables on the machine and not that one. It is a
+  `<processors_profile_log>` section in the server's configuration. The page
+  says that rather than suggesting a `SETTINGS` clause that would change
+  nothing.
+
+`ANALYZE` shipped as this section said it had to: a deliberate act rather than
+a tab, gated by what the last run of that statement cost — and asking even when
+*nothing* has run, which `rerunPolicy` does not, because the other four entries
+in that menu are free and the first press would be both the expensive act and
+the one nobody was warned about. That difference is `analyzePolicy`, beside it,
+with the reasoning in the one place the two diverge.
+
+**What is left is the plan drawn rather than read out.** `plan.ts` turns
+`EXPLAIN PLAN indexes = 1` into sentences, and for the question it answers —
+how many granules were skipped, by which index, and whether the sorting key did
+any of it — the sentences are better than any diagram, because the answer is a
+number with a reason attached. They are worse for the shape: a stage that fans out to sixteen
 threads and rejoins is a shape, and a paragraph about it is a paragraph. The
 canvas exists (A0c already stopped the product having two diagrams with two sets
 of manners), so this is a layout over an existing renderer and not a new
@@ -3438,8 +3474,10 @@ of the APIs, and the one feature here that still needs a background component to
 land on rather than a page.
 
 **And then the backlog above landed ten sections in the two tracks**, which
-overtakes that paragraph in turn: A5 is no longer the last thing on Data. The
-order inside the new work is not free either, and it is worth stating once
+overtakes that paragraph in turn: A5 is no longer the last thing on Data. **A8
+is built**, and it was the right one to take first for the reason the table
+gave: three families moved on one page, and none of it needed a measurement
+Flint was not already making. The order inside what is left is not free either, and it is worth stating once
 because the tempting order is the wrong one. **A9 before A10**: a measured
 hypothetical is what lets five new advisors claim anything, and without it they
 are five models of a plan, which is the thing B4 measured its way out of.

@@ -248,7 +248,7 @@ pub struct Filter {
 impl Filter {
     /// The predicate, and the parameters it binds. Prefixed `f_` so a caller
     /// mixing these into a statement of its own cannot collide with them.
-    fn sql(&self) -> (String, Vec<(String, String)>) {
+    pub(super) fn sql(&self) -> (String, Vec<(String, String)>) {
         let mut sql = String::new();
         let mut params = Vec::new();
         if let Some(user) = &self.user {
@@ -281,18 +281,22 @@ impl Filter {
     /// statement touched, and an old enough server does not have it. Returning
     /// unfiltered rows under a filter chip would be a lie the reader cannot
     /// see, so the report refuses instead.
-    async fn usable(&self, ch: &Client) -> Result<Option<String>> {
-        if self.table.is_some()
-            && !ch.system_columns("query_log").await?.contains("tables")
-            && !ch.system_columns("query_log").await?.is_empty()
-        {
-            return Ok(Some(
-                "this ClickHouse version's system.query_log has no tables column, so a filter by \
-                 table cannot be honoured"
-                    .to_string(),
-            ));
+    pub(super) async fn usable(&self, ch: &Client) -> Result<Option<String>> {
+        if self.table.is_none() {
+            return Ok(None);
         }
-        Ok(None)
+        let columns = ch.system_columns("query_log").await?;
+        // An empty set is "cannot tell", never "has no columns" — `missing`
+        // records why. A role that may not read `system.columns` must not be
+        // told its filter is unsupported.
+        if columns.is_empty() || columns.contains("tables") {
+            return Ok(None);
+        }
+        Ok(Some(
+            "this ClickHouse version's system.query_log has no tables column, so a filter by \
+             table cannot be honoured"
+                .to_string(),
+        ))
     }
 }
 
@@ -814,11 +818,21 @@ impl TrafficReport {
 /// names every table a statement touched, so counting all of them as reads
 /// credits a materialized view's target table with traffic it never had — it
 /// was written by the insert, and nobody has selected from it in weeks.
+/// What each table was read and written by, and what nothing read at all.
+///
+/// The filter reaches the first half and deliberately not the second. "Which
+/// tables did this account read" is a question; "which tables did no statement
+/// of this account read" is not the same thing as "read by nothing", and
+/// printing the second under the first's heading would be the page claiming a
+/// table is unused because somebody narrowed to one user. The unused list is
+/// about tables, the filter is about statements, and the page says so where
+/// one is on.
 pub async fn traffic(
     ch: &Client,
     span: Span,
     limit: u64,
     workspace: Option<&str>,
+    filter: &Filter,
 ) -> Result<TrafficReport> {
     let days = span.as_days();
     let seconds = span.as_secs();
@@ -836,8 +850,13 @@ pub async fn traffic(
         ));
     }
 
+    if let Some(why) = filter.usable(ch).await? {
+        return Ok(TrafficReport::unavailable(days, why));
+    }
+
     let limit = limit.clamp(1, 200);
     let ours = excluding_flint(ch).await?;
+    let (narrow, params) = filter.sql();
     let traffic_sql = format!(
         "SELECT t                                             AS qualified, \
                 countIf(query_kind = 'Select')                AS reads, \
@@ -850,7 +869,7 @@ pub async fn traffic(
                 toString(maxIf(event_time, query_kind = 'Select')) AS last_read \
          FROM system.query_log \
          ARRAY JOIN tables AS t \
-         WHERE type != 'QueryStart' AND event_time > now() - INTERVAL {seconds} SECOND {ours}\
+         WHERE type != 'QueryStart' AND event_time > now() - INTERVAL {seconds} SECOND {ours}{narrow}\
            AND notEmpty(t) \
            AND t NOT LIKE 'system.%' \
            AND t NOT LIKE '\\_table\\_function.%' \
@@ -903,10 +922,11 @@ pub async fn traffic(
          LIMIT {limit}"
     );
 
-    let traffic = match rows_or_denial::<TableTraffic>(ch, &traffic_sql, "query_log").await? {
-        Ok(rows) => rows,
-        Err(reason) => return Ok(TrafficReport::unavailable(days, reason)),
-    };
+    let traffic =
+        match rows_or_denial_with::<TableTraffic>(ch, &traffic_sql, &params, "query_log").await? {
+            Ok(rows) => rows,
+            Err(reason) => return Ok(TrafficReport::unavailable(days, reason)),
+        };
     let unused = match rows_or_denial::<UnusedTable>(ch, &unused_sql, "parts").await? {
         Ok(rows) => rows,
         Err(reason) => return Ok(TrafficReport::unavailable(days, reason)),

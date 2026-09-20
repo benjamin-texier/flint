@@ -11,6 +11,7 @@ their own headings:
 
 - [Which of the disk is doing any work](#which-of-the-disk-is-doing-any-work)
 - [Who this server has been working for](#who-this-server-has-been-working-for)
+- [One statement, and everything known about it](#one-statement-and-everything-known-about-it)
 - [The same data, held twice](#the-same-data-held-twice)
 - [Long operations](#long-operations)
 - [What the server has been doing](#what-the-server-has-been-doing)
@@ -2471,6 +2472,99 @@ the server, and 12% of that on `events`" is two figures that together say nothin
 the log's own, like the reading above: below a day of coverage the ranking is
 shown and marked as not to be leaned on, because ranking who spent the week from
 five hours of log ranks who was awake this morning.
+
+## One statement, and everything known about it
+
+Every other reading of the query log groups: by shape, by account, by table, by
+error. That answers *what is expensive here* and cannot answer the question
+somebody has once they have that answer — **this call was slow, why**. A shape
+has no `query_id`, so there was nothing to open.
+
+**The log can be narrowed now.** One account, one table, one kind of statement,
+one shape, or only what failed — applied to every panel on the page at once, so
+the summary, the rankings, the failures and the load band can never describe
+different populations. The filter lives in the address, which is the point
+rather than a convenience: "the ETL account against `analytics.events` over
+seven days" is a thing one person sends another, and a page holding that in
+memory can only be described in words. What is narrowed is also shown as chips,
+because a page scrolled past its own header has to be able to say why it is
+showing forty rows out of forty thousand.
+
+Under the rankings is the list they cannot be: **one row per run**, with its
+own `query_id`, ordered by the slowest by default — somebody who filtered came
+looking for the bad one. The list says which ordering it used and asks the
+server for one row more than it shows, so "there is more" is a fact rather than
+a total nobody can reconstruct.
+
+A row opens **the statement's own page**, and everything on it is a column or a
+counter the server wrote while that statement ran. Nothing is re-measured,
+which is what lets the page be read against `system.query_log` line by line.
+
+**The pruning is in the log, not only in a plan.** `SelectedMarks` against
+`SelectedMarksTotal`, and `SelectedParts` against `SelectedPartsTotal`, are how
+much of the table this run actually skipped. Flint could already read pruning
+out of `EXPLAIN PLAN indexes = 1`, and that is a weaker claim about a different
+thing: an explain asked today re-plans against parts that have merged and rows
+that have arrived since. Both are offered and the page says which is which —
+measured side by side on one row, the counters said 27 of 5,241 granules and 14
+of 18 parts, and the plan asked a minute later said 31 of 5,241 and 18 of 18.
+What the counters cannot say is *by what*: no counter records which index did
+the pruning, so the sentences stop at the arithmetic and the plan is there for
+anybody who needs the name.
+
+**The phases are in the log too.** Parsing, analysis, planning, optimising and
+building the pipeline are each counted in microseconds. They do not add up to
+the duration — everything after the pipeline is built is execution, which is
+the remainder rather than a counter, and is labelled as such. Three
+milliseconds of planning under a four-minute scan is noise; the same three
+under a twelve-millisecond statement is most of it, and only the second is
+worth a sentence.
+
+**What it ran with, less what Flint attached.** `system.query_log` records the
+settings that differed from the profile, and on a statement Flint sent that
+list opens with Flint's own dozen. Subtracted here for the same reason the
+configuration page subtracts them, against the same one list — and *counted*,
+because a settings list that silently drops a third of itself cannot be
+reconciled against `SHOW SETTINGS`.
+
+Beside those: which projections answered it, which views it passed through,
+which row policies decided what it could see — the honest answer to "why did I
+get fewer rows than my colleague" — the mark and query-condition cache hit
+rates, the widest it ever ran, and every one of the hundred-odd `ProfileEvents`
+counters, with the dozen that usually say something first and the rest folded.
+
+**And how this run compares with its own shape.** The median of every run of
+the same normalised statement, with the p95 and the worst beside it. Below five
+runs the panel says so in words instead: a median of two is one of the two, and
+three identical figures under headings promising a distribution is a normal the
+page does not have.
+
+**`system.processors_profile_log` is usually not there**, and that was measured
+rather than assumed. It is the only source of per-operator figures; on the
+server this was built against, `log_processors_profiles` reads `1`, a statement
+was run carrying it explicitly, the flush was waited on, and the table was
+still absent — fifteen `system.*_log` tables on the machine and not that one.
+What is switched off is a section in the server's *configuration*, not a
+setting a request can carry, so the page says that rather than suggesting a
+`SETTINGS` clause that would change nothing. Where the table does exist it is
+read, folded one row per operator name, with the processor count as that
+stage's parallelism.
+
+**`EXPLAIN ANALYZE` is the other way to those figures**, and it is in the
+editor's Explain menu rather than on this page, because it answers about a
+*new* run: it executes the statement and reports what each step did — rows in
+and out, bytes, time and parallelism per stage — then throws the rows away. It
+is the only member of that menu that costs anything, so it is the only one that
+asks first, and what it asks is what the last run of that statement cost. With
+nothing run yet it still asks, because the menu's other four entries are free
+and the first press would otherwise be both the expensive act and the one
+nobody was warned about.
+
+A statement the log holds only a *start* for is either still running or an
+ending that never arrived; those look identical in the log, so Flint asks
+`system.processes` to tell them apart, and says which. Stopping one is on
+Health: what a statement cost is Data's business, and operating the server is
+the other space.
 
 ## The same data, held twice
 

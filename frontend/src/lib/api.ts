@@ -943,9 +943,9 @@ export const api = {
     request<import('./statement').StatementReport>(
       `/diagnostics/statement/${enc(queryId)}?days=${days}`,
     ),
-  diagnoseTraffic: (days: number, seconds?: number) =>
+  diagnoseTraffic: (days: number, seconds?: number, narrow: Narrowing = {}) =>
     request<import('./diagnose').TrafficReport>(
-      `/diagnostics/traffic?${seconds === undefined ? `days=${days}` : `seconds=${seconds}`}`,
+      `/diagnostics/traffic?${seconds === undefined ? `days=${days}` : `seconds=${seconds}`}${narrowing(narrow)}`,
     ),
   diagnoseStorage: () => request<import('./diagnose').StorageReport>('/diagnostics/storage'),
   /** Who the server has been working for. The other half of `diagnoseQueries`:
@@ -959,8 +959,10 @@ export const api = {
         ...(opts.limit === undefined ? {} : { limit: String(opts.limit) }),
       })}`,
     ),
-  spend: (days = 7, limit = 20) =>
-    request<import('./spend').SpendReport>(`/diagnostics/spend?days=${days}&limit=${limit}`),
+  spend: (days = 7, limit = 20, narrow: Narrowing = {}) =>
+    request<import('./spend').SpendReport>(
+      `/diagnostics/spend?days=${days}&limit=${limit}${narrowing(narrow)}`,
+    ),
   /** What this server pays for and nothing reads. `database` narrows it to one;
    *  `floorBytes` is what a table has to hold in cold bytes to be listed at all,
    *  and a page about one table passes 0 because it is not choosing between

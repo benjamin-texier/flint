@@ -121,7 +121,10 @@ rows; **Infrastructure** works on structure and on the server. See
 - **Health** — replication, parts, merges, mutations, free space, and what is
   running right now.
 - **Diagnostics** — which queries cost what, and *why* the expensive ones are
-  expensive, with Flint's own traffic left out.
+  expensive, with Flint's own traffic left out. Narrow it to an account, a
+  table or a shape, then open one statement: what it skipped, where its time
+  went, what it ran with, and how that run compares with every other run of
+  its shape.
 - **Schema review** — column types weighed as one decision each, and the
   projections the workload actually argues for.
 - **Access** — grants, row policies and quotas, read as who can do what.

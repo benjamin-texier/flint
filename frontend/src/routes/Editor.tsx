@@ -35,7 +35,7 @@ import {
   type Op,
   type QuerySpec,
 } from '../lib/query'
-import { rerunPolicy, worthExplaining } from '../lib/cost'
+import { analyzePolicy, rerunPolicy, worthExplaining } from '../lib/cost'
 import { readPlan, verdicts } from '../lib/plan'
 import {
   addFilter,
@@ -127,6 +127,13 @@ export function Editor() {
    *  EXPLAIN is the one result on this page that is not the query's own answer,
    *  and which pass produced it changes how to read it. */
   const [explainNote, setExplainNote] = useState<string | null>(null)
+  /** Why `Analyze` is waiting to be asked twice — null when it is not.
+   *
+   *  It is the one member of the EXPLAIN family that executes the statement,
+   *  so on a query that was expensive last time it asks before spending that
+   *  again. The string is what the last run cost, which is the only honest
+   *  estimate a browser has. */
+  const [analyzing, setAnalyzing] = useState<string | null>(null)
   /** The plan read back for the statement whose rows are on screen.
    *
    *  Deliberately *not* through `runSql`: asking why a read was large must not
@@ -490,12 +497,41 @@ export function Editor() {
   /** Run an EXPLAIN of the current statement. The plan comes back as an
    *  ordinary result set, so it travels the same path as any other query. */
   const explain = useCallback(
-    async (kind: ExplainKind) => {
+    /* `force` is an argument and deliberately not the `analyzing` state: this
+       callback is memoised on `[currentStatement, runSql]`, so a closure over
+       that state would still read `null` after it was set — the second press
+       would ask the same question again and `Analyze` would never run at all.
+       Passed in, the decision travels with the gesture that made it. */
+    async (kind: ExplainKind, force = false) => {
       const target = currentStatement()
       const statement = target?.sql.trim()
       if (!statement) return
       const explainer: Explainer = EXPLAINS[kind]
       const shaped = shapeOf(statement)
+      /* The one member of the family that executes. Whether it needs asking
+         about is the judgement `lib/cost` already makes for a header click,
+         and for the same reason: on `system.query_log` this is forty
+         milliseconds and a confirmation is the caution that makes a tool feel
+         slow; on a billion-row table it is forty seconds of cluster time
+         nobody agreed to. Cheap last time, go — otherwise say what it will
+         spend and wait. `analyzePolicy` rather than `rerunPolicy` because the
+         unknown case goes the other way here, and the reason is written where
+         the two differ. */
+      if (explainer.spends && !force) {
+        const policy = analyzePolicy(
+          active?.result
+            ? {
+                elapsed: active.result.statistics.elapsed,
+                bytesRead: active.result.statistics.bytes_read,
+              }
+            : null,
+        )
+        if (!policy.auto) {
+          setAnalyzing(policy.why)
+          return
+        }
+      }
+      setAnalyzing(null)
       // ClickHouse only explains a SELECT, and what it says otherwise is a
       // syntax error pointing at the second word — which reads as "your SQL is
       // wrong" when the SQL is fine and the question was.
@@ -1057,6 +1093,23 @@ export function Editor() {
           is true — a click that quietly does nothing is the one that stops
           people trusting the ones that work. */}
       {refused ? <p className="editor__refused">{refused}</p> : null}
+
+      {/* Asked once, then asked again with the price on it. In the same place
+          as the refusal above, for the same reason: it is about the question
+          rather than about the answer below, which has not changed. */}
+      {analyzing ? (
+        <p className="editor__refused">
+          <strong>Analyze runs the statement for real</strong> — {analyzing}. It returns the cost
+          of each step and throws the rows away.{' '}
+          <button className="linkish" onClick={() => void explain('analyze', true)} type="button">
+            Run it anyway
+          </button>{' '}
+          ·{' '}
+          <button className="linkish" onClick={() => setAnalyzing(null)} type="button">
+            Leave it
+          </button>
+        </p>
+      ) : null}
 
       {/* ── The answer ────────────────────────────────────────────────────
           One block, with the figures as its head.
@@ -1813,6 +1866,14 @@ interface Explainer {
   label: string
   /** The plain form, which every server understands. */
   plain: (sql: string) => string
+  /** Whether asking this *runs* the statement.
+   *
+   *  Four of the five are free: they describe what the server would do, and a
+   *  reader can walk the whole menu on a billion-row table for nothing.
+   *  `ANALYZE` executes it. That is the difference between a tab somebody
+   *  lands on and a thing somebody decides to do, and it is the only reason
+   *  this field exists. */
+  spends?: true
   /** A better form to try first, when there is one. */
   wrap?: (sql: string) => string
   /** What the answer on screen is, when the plain reading of it would mislead. */
@@ -1883,6 +1944,16 @@ const EXPLAINS = {
     label: 'Query tree',
     plain: (sql) => `EXPLAIN QUERY TREE ${sql}`,
     note: 'The analyzer’s own resolution: every column it worked out, with the type it gave it.',
+  },
+  /* Last, and the only one that is not free. Everything above describes what
+     the server *would* do; this runs the statement and reports what each step
+     of the pipeline actually did, which is the one reading that cannot be had
+     any other way — and the one that costs exactly what the query costs. */
+  analyze: {
+    label: 'Analyze — runs it',
+    plain: (sql) => `EXPLAIN ANALYZE ${sql}`,
+    spends: true,
+    note: 'This ran the statement. The figures against each step are what it actually did, not an estimate — and the rows it returned were thrown away, so this is the cost of the query with none of its answer.',
   },
   // `satisfies` rather than an annotation, so the keys stay the five literals
   // the picker walks and every entry is still checked against the shape.

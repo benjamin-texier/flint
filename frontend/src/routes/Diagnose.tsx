@@ -102,8 +102,8 @@ export function DiagnosePage() {
     staleTime: 30_000,
   })
   const traffic = useQuery({
-    queryKey: ['diag', 'traffic', days],
-    queryFn: () => api.diagnoseTraffic(days),
+    queryKey: ['diag', 'traffic', days, key],
+    queryFn: () => api.diagnoseTraffic(days, undefined, narrow),
     staleTime: 30_000,
   })
   /* Not shown as a section here — Health owns storage — but Traffic prints each
@@ -146,8 +146,8 @@ export function DiagnosePage() {
      server" is only answerable over a span, and a section quoting a different
      one from the page it sits on is a section nobody can reconcile. */
   const spend = useQuery({
-    queryKey: ['diag', 'spend', days],
-    queryFn: () => api.spend(days),
+    queryKey: ['diag', 'spend', days, key],
+    queryFn: () => api.spend(days, 20, narrow),
   })
 
   const reports = [queries.data, traffic.data]
@@ -229,7 +229,7 @@ export function DiagnosePage() {
           <Runs report={runs} order={order} onOrder={(o) => set({ order: o })} />
           <Failures report={queries} />
           <Traffic report={traffic} storage={storage.data} />
-          <Unused report={traffic} />
+          <Unused report={traffic} narrowed={Object.values(narrow).some(Boolean)} />
         </>
       )}
     </div>
@@ -990,7 +990,16 @@ function Traffic({
 
 // ── Unused ─────────────────────────────────────────────────────────────────
 
-function Unused({ report }: { report: Q<TrafficReport> }) {
+/** The one section on this page the filter does not reach, which is said
+ *  rather than left to be noticed.
+ *
+ *  "Which tables did this account read" is a question; "which tables did no
+ *  statement of this account read" is not the same thing as *read by nothing*,
+ *  and printing the second under the first's heading would have the page call
+ *  a table unused because somebody narrowed to one user. The list is about
+ *  tables and the filter is about statements, so the filter stops here — and
+ *  the line above it says so for exactly as long as one is on. */
+function Unused({ report, narrowed }: { report: Q<TrafficReport>; narrowed: boolean }) {
   const rows = report.data?.unused ?? []
   return (
     <Section
@@ -998,7 +1007,11 @@ function Unused({ report }: { report: Q<TrafficReport> }) {
       /* The caveat is the feature. A table read only through an INSERT … SELECT
          appears here too, and a reader who deletes on this evidence alone needs
          to know that before they do it. */
-      sub="Not touched by any logged SELECT in this window. A short window, or an unlogged reader, will list a table that is genuinely in use."
+      sub={`Not touched by any logged SELECT in this window. A short window, or an unlogged reader, will list a table that is genuinely in use.${
+        narrowed
+          ? ' This section ignores the filter above: a table nobody in that narrowing read is not a table nothing read.'
+          : ''
+      }`}
       q={report}
     >
       {rows.length ? (
