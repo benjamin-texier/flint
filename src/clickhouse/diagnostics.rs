@@ -193,7 +193,24 @@ async fn rows_or_denial<T: DeserializeOwned>(
     sql: &str,
     table: &str,
 ) -> Result<std::result::Result<Vec<T>, String>> {
-    match ch.rows::<T>(sql).await {
+    rows_or_denial_with(ch, sql, &[], table).await
+}
+
+/// The same, for a statement carrying bound parameters. Every filtered reading
+/// goes through here rather than formatting a value into the text.
+async fn rows_or_denial_with<T: DeserializeOwned>(
+    ch: &Client,
+    sql: &str,
+    params: &[(String, String)],
+    table: &str,
+) -> Result<std::result::Result<Vec<T>, String>> {
+    let opts = super::QueryOptions {
+        params: params.to_vec(),
+        quote_64bit_integers: false,
+        introspection: true,
+        ..Default::default()
+    };
+    match ch.rows_with::<T>(sql, opts).await {
         Ok(rows) => Ok(Ok(rows)),
         Err(e) => match denial(&e, table) {
             Some(reason) => Ok(Err(reason)),
@@ -203,6 +220,81 @@ async fn rows_or_denial<T: DeserializeOwned>(
 }
 
 // ── Queries ────────────────────────────────────────────────────────────────
+
+/// What narrows a reading of the log.
+///
+/// Every query-log reading in Flint used to answer over *everything* in the
+/// window, which is right for a ranking and useless once somebody has a
+/// suspicion: "what did the ETL account run against `analytics.events` on
+/// Tuesday" had to be answered by reading the rankings and hoping. One filter,
+/// applied to every statement a report is made of, so the summary, the shapes,
+/// the failures and the load band can never describe different populations —
+/// two panels on one page disagreeing about what they cover is worse than no
+/// filter at all.
+///
+/// Every field is bound, never formatted: a table called `events'; DROP` is a
+/// table name, and the server is the one that decides it does not exist.
+#[derive(Debug, Clone, Default)]
+pub struct Filter {
+    pub user: Option<String>,
+    pub table: Option<String>,
+    pub kind: Option<String>,
+    /// One shape, by `normalized_query_hash` as a decimal string. The link
+    /// from a ranked shape to the runs behind it.
+    pub hash: Option<String>,
+    pub failed: bool,
+}
+
+impl Filter {
+    /// The predicate, and the parameters it binds. Prefixed `f_` so a caller
+    /// mixing these into a statement of its own cannot collide with them.
+    fn sql(&self) -> (String, Vec<(String, String)>) {
+        let mut sql = String::new();
+        let mut params = Vec::new();
+        if let Some(user) = &self.user {
+            sql.push_str("AND user = {f_user:String} ");
+            params.push(("f_user".to_string(), user.clone()));
+        }
+        if let Some(table) = &self.table {
+            sql.push_str("AND has(tables, {f_table:String}) ");
+            params.push(("f_table".to_string(), table.clone()));
+        }
+        if let Some(kind) = &self.kind {
+            sql.push_str("AND query_kind = {f_kind:String} ");
+            params.push(("f_kind".to_string(), kind.clone()));
+        }
+        if let Some(hash) = &self.hash {
+            // `normalized_query_hash` is a UInt64 and JavaScript cannot hold
+            // one, so it travels as a decimal string everywhere in Flint and
+            // is cast back here rather than parsed in Rust — the server's
+            // parse is the one that has to agree with the column.
+            sql.push_str("AND normalized_query_hash = toUInt64({f_hash:String}) ");
+            params.push(("f_hash".to_string(), hash.clone()));
+        }
+        if self.failed {
+            sql.push_str("AND exception_code != 0 ");
+        }
+        (sql, params)
+    }
+
+    /// A filter by table needs the column that records which tables a
+    /// statement touched, and an old enough server does not have it. Returning
+    /// unfiltered rows under a filter chip would be a lie the reader cannot
+    /// see, so the report refuses instead.
+    async fn usable(&self, ch: &Client) -> Result<Option<String>> {
+        if self.table.is_some()
+            && !ch.system_columns("query_log").await?.contains("tables")
+            && !ch.system_columns("query_log").await?.is_empty()
+        {
+            return Ok(Some(
+                "this ClickHouse version's system.query_log has no tables column, so a filter by \
+                 table cannot be honoured"
+                    .to_string(),
+            ));
+        }
+        Ok(None)
+    }
+}
 
 /// One bucket of the window: what the server was asked in it, and what that
 /// cost.
@@ -316,7 +408,7 @@ impl QueryReport {
 /// What ran, what it cost, and what failed — grouped by pattern rather than
 /// listed one row at a time, because a single slow query is an anecdote and a
 /// slow pattern is a problem.
-pub async fn queries(ch: &Client, span: Span, limit: u64) -> Result<QueryReport> {
+pub async fn queries(ch: &Client, span: Span, limit: u64, filter: &Filter) -> Result<QueryReport> {
     let days = span.as_days();
     let seconds = span.as_secs();
     if let Some(reason) = blocked(ch.reach("query_log").await?, "query_log") {
@@ -338,8 +430,13 @@ pub async fn queries(ch: &Client, span: Span, limit: u64) -> Result<QueryReport>
         ));
     }
 
+    if let Some(why) = filter.usable(ch).await? {
+        return Ok(QueryReport::unavailable(days, why));
+    }
+
     let limit = limit.clamp(1, 200);
     let ours = excluding_flint(ch).await?;
+    let (narrow, params) = filter.sql();
     let has_tables = ch.system_columns("query_log").await?.contains("tables");
     // `groupArray` is bounded: a pattern that ran a hundred thousand times
     // would otherwise build a hundred-thousand-element array to answer "which
@@ -363,9 +460,19 @@ pub async fn queries(ch: &Client, span: Span, limit: u64) -> Result<QueryReport>
                 uniqExact(user)                               AS users, \
                 toString(min(event_time))                     AS since \
          FROM system.query_log \
-         WHERE type != 'QueryStart' AND event_time > now() - INTERVAL {seconds} SECOND {ours}"
+         WHERE type != 'QueryStart' AND event_time > now() - INTERVAL {seconds} SECOND {ours}{narrow}"
     );
 
+    /* The ranking has always been SELECTs: "where the time went" is a question
+    about reads, and an INSERT's duration is as much the client's upload as the
+    server's work. A kind filter *replaces* that default rather than
+    intersecting with it — asking for Inserts and being shown an empty panel,
+    because the page also insists on Selects, is a filter that appears not to
+    work. */
+    let kind_of = match &filter.kind {
+        Some(_) => String::new(),
+        None => "AND query_kind = 'Select'".to_string(),
+    };
     let patterns_sql = format!(
         "SELECT toString(normalized_query_hash)               AS hash, \
                 count()                                       AS runs, \
@@ -383,7 +490,7 @@ pub async fn queries(ch: &Client, span: Span, limit: u64) -> Result<QueryReport>
                 {tables_expr}                                 AS tables \
          FROM system.query_log \
          WHERE type != 'QueryStart' AND event_time > now() - INTERVAL {seconds} SECOND \
-           AND query_kind = 'Select' {ours}\
+           {kind_of} {ours}{narrow}\
          GROUP BY normalized_query_hash \
          ORDER BY total_ms DESC \
          LIMIT {limit}"
@@ -399,7 +506,7 @@ pub async fn queries(ch: &Client, span: Span, limit: u64) -> Result<QueryReport>
                 sum(read_bytes)                               AS read_bytes, \
                 sum(query_duration_ms)                        AS total_ms \
          FROM system.query_log \
-         WHERE type != 'QueryStart' AND event_time > now() - INTERVAL {seconds} SECOND {ours}\
+         WHERE type != 'QueryStart' AND event_time > now() - INTERVAL {seconds} SECOND {ours}{narrow}\
          GROUP BY at \
          ORDER BY at"
     );
@@ -415,25 +522,28 @@ pub async fn queries(ch: &Client, span: Span, limit: u64) -> Result<QueryReport>
                 any(exception)                                AS message \
          FROM system.query_log \
          WHERE type != 'QueryStart' AND event_time > now() - INTERVAL {seconds} SECOND \
-           AND exception_code != 0 {ours}\
+           AND exception_code != 0 {ours}{narrow}\
          GROUP BY exception_code \
          ORDER BY occurrences DESC \
          LIMIT 20"
     );
 
-    let summary = match rows_or_denial::<Summary>(ch, &summary_sql, "query_log").await? {
-        Ok(rows) => rows.into_iter().next(),
-        Err(reason) => return Ok(QueryReport::unavailable(days, reason)),
-    };
-    let patterns = match rows_or_denial::<Pattern>(ch, &patterns_sql, "query_log").await? {
-        Ok(rows) => rows,
-        Err(reason) => return Ok(QueryReport::unavailable(days, reason)),
-    };
-    let failures = match rows_or_denial::<Failure>(ch, &failures_sql, "query_log").await? {
-        Ok(rows) => rows,
-        Err(reason) => return Ok(QueryReport::unavailable(days, reason)),
-    };
-    let load = match rows_or_denial::<LoadBucket>(ch, &load_sql, "query_log").await? {
+    let summary =
+        match rows_or_denial_with::<Summary>(ch, &summary_sql, &params, "query_log").await? {
+            Ok(rows) => rows.into_iter().next(),
+            Err(reason) => return Ok(QueryReport::unavailable(days, reason)),
+        };
+    let patterns =
+        match rows_or_denial_with::<Pattern>(ch, &patterns_sql, &params, "query_log").await? {
+            Ok(rows) => rows,
+            Err(reason) => return Ok(QueryReport::unavailable(days, reason)),
+        };
+    let failures =
+        match rows_or_denial_with::<Failure>(ch, &failures_sql, &params, "query_log").await? {
+            Ok(rows) => rows,
+            Err(reason) => return Ok(QueryReport::unavailable(days, reason)),
+        };
+    let load = match rows_or_denial_with::<LoadBucket>(ch, &load_sql, &params, "query_log").await? {
         Ok(rows) => rows,
         Err(reason) => return Ok(QueryReport::unavailable(days, reason)),
     };
@@ -448,6 +558,201 @@ pub async fn queries(ch: &Client, span: Span, limit: u64) -> Result<QueryReport>
         failures,
         load,
         bucket_seconds: step,
+    })
+}
+
+// ── Runs ───────────────────────────────────────────────────────────────────
+
+/// One statement, as a row in a list.
+///
+/// The shape rankings above are the right answer to "what is expensive here"
+/// and the wrong one to "which call was slow" — a shape has no `query_id`, and
+/// a `query_id` is the only thing that reaches a statement's own page. This is
+/// the list in between, and it exists because a filter needs somewhere to land.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Run {
+    pub query_id: String,
+    /// When the server wrote the row, which for a finished statement is when
+    /// it finished.
+    ///
+    /// Called `at` and not `event_time` because the statement below filters on
+    /// the *column* of that name: `toString(event_time) AS event_time` makes
+    /// the alias a String, and the `WHERE event_time > now() - INTERVAL`
+    /// beside it then compares a String with a DateTime, which ClickHouse
+    /// refuses outright — `NO_COMMON_TYPE`. The same shadowing the dataset API
+    /// was bitten by, in the one version where it fails loudly instead of
+    /// quietly returning the wrong rows.
+    pub at: String,
+    pub duration_ms: u64,
+    pub user: String,
+    pub kind: String,
+    pub read_rows: u64,
+    pub read_bytes: u64,
+    pub result_rows: u64,
+    pub memory_usage: u64,
+    pub exception_code: i32,
+    pub exception_name: String,
+    /// The first 300 characters. A page of two hundred statements carrying
+    /// their full text is a megabyte to answer a question that is one line per
+    /// row; the whole of it is on the statement's own page, one click away.
+    pub query: String,
+    /// Whether that text was cut, so the row can say so rather than ending in
+    /// a way that looks like the statement did.
+    ///
+    /// Read off `q.query`, qualified, and that is not decoration: with
+    /// `substring(query, 1, 300) AS query` beside it, `length(query)` resolves
+    /// to the *truncated* alias, whose length is exactly 300 — so every
+    /// clipped statement reported itself complete. Found by reading the JSON
+    /// of a real call rather than by any test, which is this shadowing's whole
+    /// character.
+    pub clipped: bool,
+    pub tables: Vec<String>,
+    pub hash: String,
+}
+
+/// How a page of runs is ordered.
+///
+/// Always one of these and never nothing: a `LIMIT` with no `ORDER BY` returns
+/// whichever rows the server happened to read first, and "the most recent 200"
+/// would be a claim about rows that were never sorted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Order {
+    Recent,
+    Slowest,
+    Heaviest,
+}
+
+impl Order {
+    /// Unknown words fall back to the newest rather than being refused: this
+    /// arrives from a query string somebody may have typed, and the page names
+    /// what it actually sorted by.
+    pub fn parse(word: Option<&str>) -> Self {
+        match word.unwrap_or("recent") {
+            "slowest" => Self::Slowest,
+            "heaviest" => Self::Heaviest,
+            _ => Self::Recent,
+        }
+    }
+
+    fn sql(self) -> &'static str {
+        match self {
+            Self::Recent => "event_time_microseconds DESC",
+            Self::Slowest => "query_duration_ms DESC",
+            Self::Heaviest => "read_bytes DESC",
+        }
+    }
+
+    fn word(self) -> &'static str {
+        match self {
+            Self::Recent => "recent",
+            Self::Slowest => "slowest",
+            Self::Heaviest => "heaviest",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RunsReport {
+    pub available: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    pub window_days: u64,
+    pub window_seconds: u64,
+    pub runs: Vec<Run>,
+    /// What they were sorted by, echoed back. The page prints it, because a
+    /// list of two hundred rows out of a million is only honest if it says
+    /// which two hundred.
+    pub order: String,
+    /// Whether the window holds more than this page. Asked for by reading one
+    /// row past the limit rather than by counting the whole window — the same
+    /// arrangement the audit trail settled on, and for the same reason: a
+    /// total nobody can reconstruct is worse than no total.
+    pub more: bool,
+}
+
+impl RunsReport {
+    fn unavailable(seconds: u64, order: Order, reason: impl Into<String>) -> Self {
+        Self {
+            available: false,
+            reason: Some(reason.into()),
+            window_days: seconds / 86_400,
+            window_seconds: seconds,
+            runs: Vec::new(),
+            order: order.word().to_string(),
+            more: false,
+        }
+    }
+}
+
+/// The individual statements a filter reaches, newest — or slowest, or
+/// heaviest — first.
+pub async fn runs(
+    ch: &Client,
+    span: Span,
+    limit: u64,
+    filter: &Filter,
+    order: Order,
+) -> Result<RunsReport> {
+    let seconds = span.as_secs();
+    if let Some(reason) = blocked(ch.reach("query_log").await?, "query_log") {
+        return Ok(RunsReport::unavailable(seconds, order, reason));
+    }
+    if let Some(why) = filter.usable(ch).await? {
+        return Ok(RunsReport::unavailable(seconds, order, why));
+    }
+
+    let limit = limit.clamp(1, 200);
+    let ours = excluding_flint(ch).await?;
+    let (narrow, params) = filter.sql();
+    let has_tables = ch.system_columns("query_log").await?.contains("tables");
+    let tables_expr = if has_tables { "tables" } else { "[]" };
+    let by = order.sql();
+
+    /* `type != 'QueryStart'` like every other reading of the log, with one
+    consequence worth knowing here rather than on the page: a statement that is
+    still running has only a start row, so it is *not* in this list. That is
+    the right answer for a list about what things cost — a duration that has
+    not finished is not a duration — and Health is the page for what is running
+    now. */
+    let sql = format!(
+        "SELECT query_id                                      AS query_id, \
+                toString(event_time)                          AS at, \
+                toUInt64(query_duration_ms)                   AS duration_ms, \
+                user                                          AS user, \
+                toString(query_kind)                          AS kind, \
+                toUInt64(read_rows)                           AS read_rows, \
+                toUInt64(read_bytes)                          AS read_bytes, \
+                toUInt64(result_rows)                         AS result_rows, \
+                toUInt64(memory_usage)                        AS memory_usage, \
+                toInt32(exception_code)                       AS exception_code, \
+                if(exception_code = 0, '', errorCodeToName(exception_code)) AS exception_name, \
+                substring(q.query, 1, 300)                    AS query, \
+                toBool(length(q.query) > 300)                 AS clipped, \
+                {tables_expr}                                 AS tables, \
+                toString(normalized_query_hash)               AS hash \
+         FROM system.query_log AS q \
+         WHERE type != 'QueryStart' AND event_time > now() - INTERVAL {seconds} SECOND \
+           {ours}{narrow}\
+         ORDER BY {by} \
+         LIMIT {}",
+        limit + 1
+    );
+
+    let mut rows = match rows_or_denial_with::<Run>(ch, &sql, &params, "query_log").await? {
+        Ok(rows) => rows,
+        Err(reason) => return Ok(RunsReport::unavailable(seconds, order, reason)),
+    };
+    let more = rows.len() as u64 > limit;
+    rows.truncate(limit as usize);
+
+    Ok(RunsReport {
+        available: true,
+        reason: None,
+        window_days: seconds / 86_400,
+        window_seconds: seconds,
+        runs: rows,
+        order: order.word().to_string(),
+        more,
     })
 }
 

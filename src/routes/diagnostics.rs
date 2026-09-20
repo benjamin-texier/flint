@@ -39,11 +39,102 @@ fn default_limit() -> u64 {
     40
 }
 
+/// What narrows a reading of the log, as a query string.
+///
+/// Flat on `Window` rather than a nested object: these arrive from the address
+/// bar, and `?user=etl&table=analytics.events` is a link somebody can send.
+/// Every one of them is optional and every one is bound on the way to the
+/// server — see `diagnostics::Filter`.
+#[derive(Deserialize, Default)]
+pub struct Narrow {
+    user: Option<String>,
+    table: Option<String>,
+    kind: Option<String>,
+    hash: Option<String>,
+    #[serde(default)]
+    failed: bool,
+}
+
+impl Narrow {
+    /// An empty string is *no filter*, not a filter for the empty value.
+    ///
+    /// A form that clears a box sends `user=`, and honouring that literally
+    /// would answer about ClickHouse's background work — which does have an
+    /// empty user name — for somebody who just pressed Clear. The one reader
+    /// who genuinely wants that row can still reach it: the runs list links it
+    /// as its own filter.
+    fn filter(self) -> diagnostics::Filter {
+        fn some(v: Option<String>) -> Option<String> {
+            v.map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+        }
+        diagnostics::Filter {
+            user: some(self.user),
+            table: some(self.table),
+            kind: some(self.kind),
+            hash: some(self.hash),
+            failed: self.failed,
+        }
+    }
+}
+
 pub async fn queries(
     Caller(ch): Caller,
     Query(w): Query<Window>,
+    Query(n): Query<Narrow>,
 ) -> Result<Json<diagnostics::QueryReport>> {
-    Ok(Json(diagnostics::queries(&ch, w.span(), w.limit).await?))
+    Ok(Json(
+        diagnostics::queries(&ch, w.span(), w.limit, &n.filter()).await?,
+    ))
+}
+
+/// The statements behind the rankings, one row each.
+#[derive(Deserialize)]
+pub struct Ordered {
+    order: Option<String>,
+}
+
+pub async fn runs(
+    Caller(ch): Caller,
+    Query(w): Query<Window>,
+    Query(n): Query<Narrow>,
+    Query(o): Query<Ordered>,
+) -> Result<Json<diagnostics::RunsReport>> {
+    Ok(Json(
+        diagnostics::runs(
+            &ch,
+            w.span(),
+            w.limit,
+            &n.filter(),
+            diagnostics::Order::parse(o.order.as_deref()),
+        )
+        .await?,
+    ))
+}
+
+/// How far back a statement is looked for.
+///
+/// Its own default, and a much longer one than a diagnostic window: somebody
+/// following a `query_id` out of an incident report a fortnight old is the
+/// ordinary case, and a page that answered "no such statement" because it only
+/// looked at today would send them to the wrong conclusion entirely.
+#[derive(Deserialize)]
+pub struct Lookup {
+    #[serde(default = "default_lookback")]
+    days: u64,
+}
+
+fn default_lookback() -> u64 {
+    30
+}
+
+pub async fn statement(
+    Caller(ch): Caller,
+    axum::extract::Path(query_id): axum::extract::Path<String>,
+    Query(l): Query<Lookup>,
+) -> Result<Json<crate::clickhouse::statement::StatementReport>> {
+    Ok(Json(
+        crate::clickhouse::statement::one(&ch, &query_id, l.days).await?,
+    ))
 }
 
 pub async fn traffic(

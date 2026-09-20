@@ -39,6 +39,7 @@ pub mod review;
 pub mod rows;
 pub mod settings;
 pub mod spend;
+pub mod statement;
 pub mod storage;
 pub mod streams;
 pub mod sysops;

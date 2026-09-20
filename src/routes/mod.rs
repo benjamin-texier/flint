@@ -362,6 +362,14 @@ pub fn router(state: AppState) -> Router {
         .route("/history", get(explorer::history))
         .route("/diagnostics/news", get(diagnostics::what_changed))
         .route("/diagnostics/queries", get(diagnostics::queries))
+        // The rankings say which shapes are expensive; these two say which
+        // *call* was, and what the log kept about it. One is the list a filter
+        // lands on, the other is where a `query_id` goes.
+        .route("/diagnostics/runs", get(diagnostics::runs))
+        .route(
+            "/diagnostics/statement/{query_id}",
+            get(diagnostics::statement),
+        )
         .route("/diagnostics/traffic", get(diagnostics::traffic))
         .route("/diagnostics/storage", get(diagnostics::storage))
         .route("/diagnostics/activity", get(diagnostics::activity))
