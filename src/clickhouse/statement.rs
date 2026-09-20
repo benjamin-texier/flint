@@ -50,7 +50,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use super::diagnostics::blocked;
+use super::diagnostics::{blocked, missing};
 use super::{Client, QueryOptions, Reach, Section, ATTACHED_SETTINGS};
 use crate::error::{Error, Result};
 
@@ -461,6 +461,32 @@ async fn stages(ch: &Client, id: &str) -> Result<Section<Stage>> {
                     .to_string(),
             ))
         }
+    }
+
+    // The columns are checked before the read rather than after it, which is
+    // the same courtesy every other reading here gives — and it matters more
+    // here than anywhere, because this is the branch no run has ever
+    // rendered: the table does not exist on the server Flint was built
+    // against, so a column named wrongly would first be discovered by
+    // somebody whose server does have it, as a page that 500s.
+    let gaps = missing(
+        ch,
+        "processors_profile_log",
+        &[
+            "name",
+            "elapsed_us",
+            "input_rows",
+            "input_bytes",
+            "output_rows",
+            "output_bytes",
+        ],
+    )
+    .await?;
+    if !gaps.is_empty() {
+        return Ok(Section::blocked(format!(
+            "this ClickHouse version's system.processors_profile_log has no {}",
+            gaps.join(", ")
+        )));
     }
 
     let rows: Vec<Stage> = ch
