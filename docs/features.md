@@ -2481,9 +2481,12 @@ somebody has once they have that answer — **this call was slow, why**. A shape
 has no `query_id`, so there was nothing to open.
 
 **The log can be narrowed now.** One account, one table, one kind of statement,
-one shape, or only what failed — applied to every panel on the page at once, so
-the summary, the rankings, the failures and the load band can never describe
-different populations. The filter lives in the address, which is the point
+one shape, or only what failed — applied to every reading on the page that is
+about *statements*, so the summary, the rankings, who the server works for,
+which tables are read, the failures and the load band can never describe
+different populations. It stops at one section, out loud: **Read by nothing**
+is about tables rather than statements, and a table no statement of one account
+read is not a table nothing read. The filter lives in the address, which is the point
 rather than a convenience: "the ETL account against `analytics.events` over
 seven days" is a thing one person sends another, and a page holding that in
 memory can only be described in words. What is narrowed is also shown as chips,

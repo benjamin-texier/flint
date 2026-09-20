@@ -74,6 +74,10 @@ export function DiagnosePage() {
   const days = Number(params.get('days')) || 7
   const narrow = narrowingFrom(params)
   const order = (params.get('order') ?? 'slowest') as 'recent' | 'slowest' | 'heaviest'
+  /** Whether anything on this page is narrowed. Several sections read
+   *  differently when it is — an empty one most of all, where "nothing ran"
+   *  and "nothing matched" send the reader to opposite conclusions. */
+  const narrowed = Object.values(narrow).some(Boolean)
 
   const set = (changes: Record<string, string | null>) => {
     const next = new URLSearchParams(params)
@@ -224,12 +228,12 @@ export function DiagnosePage() {
       ) : (
         <>
           <Load report={queries} days={days} />
-          <Spend report={spend} />
+          <Spend report={spend} narrowed={narrowed} />
           <Patterns report={queries} onShape={(hash) => set({ hash })} />
           <Runs report={runs} order={order} onOrder={(o) => set({ order: o })} />
           <Failures report={queries} />
-          <Traffic report={traffic} storage={storage.data} />
-          <Unused report={traffic} narrowed={Object.values(narrow).some(Boolean)} />
+          <Traffic report={traffic} storage={storage.data} narrowed={narrowed} />
+          <Unused report={traffic} narrowed={narrowed} />
         </>
       )}
     </div>
@@ -249,7 +253,7 @@ export function DiagnosePage() {
  *  worth a *finding* on a board; this is the page that owns the reading, and a
  *  page that hid the accounts below a quarter would be a ranking somebody cannot
  *  add up. The threshold still shows, as the mark on the rows that cross it. */
-function Spend({ report }: { report: Q<SpendReport> }) {
+function Spend({ report, narrowed }: { report: Q<SpendReport>; narrowed: boolean }) {
   const data = report.data
   const trust = data ? trustworthy(data) : null
   const loud = new Set(data ? notable(data).map((s) => s.user) : [])
@@ -311,8 +315,13 @@ function Spend({ report }: { report: Q<SpendReport> }) {
           </table>
         </Wide>
       ) : data ? (
-        <EmptyNote title="Nothing ran in this window">
-          The log covers the span above and holds no finished statement from it.
+        /* Which "nothing" this is matters once the page can be narrowed: an
+           empty window and an empty *filter* send the reader to two different
+           places, and only one of them is a fact about the server. */
+        <EmptyNote title={narrowed ? 'Nothing matching this filter' : 'Nothing ran in this window'}>
+          {narrowed
+            ? 'The log holds no finished statement from this window under the filter above. A statement that failed is not a finished one, so a narrowing that catches only failures lands here.'
+            : 'The log covers the span above and holds no finished statement from it.'}
         </EmptyNote>
       ) : null}
     </Section>
@@ -900,9 +909,11 @@ function Failures({ report }: { report: Q<QueryReport> }) {
 function Traffic({
   report,
   storage,
+  narrowed,
 }: {
   report: Q<TrafficReport>
   storage: StorageReport | undefined
+  narrowed: boolean
 }) {
   const rows = report.data?.traffic ?? []
   const sizeOf = new Map((storage?.tables ?? []).map((t) => [t.qualified, t.row_count]))
@@ -980,8 +991,10 @@ function Traffic({
           </tbody>
         </table>
       ) : (
-        <EmptyNote title="No table traffic logged">
-          Nothing has been read or written in this window.
+        <EmptyNote title={narrowed ? 'No table traffic matching' : 'No table traffic logged'}>
+          {narrowed
+            ? 'No statement matching the filter above named a table. A statement can name none — a SELECT with no FROM, or one that failed before it was planned.'
+            : 'Nothing has been read or written in this window.'}
         </EmptyNote>
       )}
     </Section>
