@@ -179,6 +179,109 @@ twice. These are one implementation with two façades, and reviews should say so
 
 ---
 
+## A backlog read against this one
+
+A features backlog arrived from outside this document: a ClickHouse control
+plane in some two hundred bullets, ordered into five phases of its own —
+observe, understand, build, explore, operate. Merging it is not appending it.
+That list is organised by *subject* and this one by *space*, and the whole
+value of the second organisation is that it settles where a feature may live
+before anybody argues about whether to build it. So every family in it was
+placed against the tree, and the table below is the placement.
+
+Three things came out of doing that, and none of them is the count.
+
+**The gaps cluster, and they cluster around two things.** Nearly everything
+genuinely missing is either *a hypothetical* — what would this cost if the
+schema were different — or *something a reader wrote down*: a dismissed
+finding, a proposed sorting key, a workload somebody named. The first is a
+measurement Flint does not take and A9 is about taking it. The second is reader
+state, and A0e already recorded that Flint has nowhere to keep reader state
+that is not the workspace. That is one dependency sitting under half the new
+work, and it is worth knowing before any of it is started rather than after:
+every one of those features is absent on a stateless Flint, the way `/home`'s
+inventory is.
+
+**What is built is built in pieces, and the pieces are not the product.** The
+backlog asks for a Query Profiler; Flint has the figures in `diagnostics.rs`,
+the plan as sentences in `lib/plan.ts`, the sampled stacks in `trace.rs` and no
+page that holds them around one `query_id`. It asks for an Optimization
+Advisor; Flint has the schema review, the projection advisor, the cold-column
+reading, the twins detector and the drift reading, each answering well on its
+own page, and `/checkup` — which is the composition, and which no version of
+this document has ever mentioned. Several rows below read *partly* for that reason alone: the
+measurement is there and the assembly is not.
+
+**One family is refused whole, and three items inside families that are
+otherwise built.** Cluster Management is provisioning under another name;
+`CREATE HANDLER` is not a statement ClickHouse has, and the custom handlers it
+does have are objects in the configuration files B7 declines to edit; the
+rolling upgrade assistant is provisioning again; and an explanation written by
+a model, standing beside a rule that is already a sentence somebody can argue
+with, is a second voice that can disagree with the first. All four are in
+*Deliberately not on this roadmap* with their reasons rather than quietly left
+out of the table.
+
+One correction to this document fell out of the reading. The backlog lists an
+Advisor as one section of a product, which sent me looking for where Flint's
+own front page for its advisors lives — and `/checkup` is in **neither space**,
+deliberately, with `spaces.ts` returning neither `data` nor `infra` for it and
+the nav lighting no tab. That is a real placement, made in code and argued for
+in a comment, and the tree in *The one rule* does not have it. It is recorded
+under *Placements still to settle* now.
+
+### The placement
+
+| family | state | where |
+| --- | --- | --- |
+| Query Log Explorer | partly | `/diagnose` ranks; it does not filter — A8 |
+| Query Profiler | partly | the parts exist, the page does not — A8 |
+| EXPLAIN Viewer | partly | four of the family in the editor — A8 |
+| EXPLAIN WHATIF | not built | A9 |
+| Instance Overview | built | B3, *Right now*, every figure against its ceiling |
+| System tables | partly | `crash_log`, S3Queue and `rocksdb` are B3's remainder |
+| Health Alerts | built | B3's firing banner, and `/checkup` |
+| Table Overview and its tabs | built | A0, A1 |
+| Column Storage Analysis | built | `cold.rs`, and *Mass* down to the column |
+| Advisor Core | partly | `/checkup` composes; nothing can be answered — A11 |
+| Projection Advisor | built | B4, with `Measure it` and `Weigh it` |
+| Index Advisor | not built | A10 |
+| ORDER BY Advisor | partly | diagnose says the key is not narrowing; nothing proposes one — A10 |
+| Compression Advisor | built | the schema review, weighed by `probe.rs` |
+| Partition Advisor | partly | the verdict is on the storage reading; the proposal is A10 |
+| Materialized View Explorer | built | B3 → Pipelines |
+| Dependency Graph | built | A0's *Flow*, and `…/impact` |
+| Materialized View Builder | not built | A12 |
+| Aggregation Builder | not built | A12 |
+| TTL & Retention Manager | partly | one clause is written by B4; a policy is B11 |
+| Storage Estimation | partly | *Time* and *Mass* hold today; growth is B11 |
+| Workload Manager | not built | B9 |
+| Geo & H3 Explorer | not built | A14 |
+| Dictionary Explorer | built | B3, including the state the status column hides |
+| Dictionary Advisor | not built | A10 |
+| JOIN Advisor | not built | A10 |
+| Column Profiling | built | `profile.rs`, `distribution.rs`, `relations.rs` |
+| Dataset Quality | partly | freshness, drift and copies are read; late data is A13 |
+| Time-Series Inspector | partly | A13 |
+| Cache Inspector | not built | B10 |
+| API Builder | built | the whole of A7 |
+| Data Dependency Graph | built | A0, and the blast radius in B4 |
+| Query Flow Map | partly | *Together* has the pairs; paths are A0's own open note |
+| Schema Evolution | built | B4, complete |
+| Backup & Restore | partly | B5 is complete except a schedule to run it on |
+| Replication & Keeper | built | B2, less `RESTORE REPLICA` and its reason |
+| Cluster Management | refused | provisioning — see the last section |
+| RBAC | built | B6, complete |
+| Advisor Rule Library | partly | the rules exist per page; the library is A11 |
+
+Thirty-nine families: **15 built, 14 partly, 9 not built, 1 refused**. Ten new
+sections carry what the last two columns point at and no existing section
+already owns — A8 through A14 on Data, B9 through B11 on Infrastructure. They
+are numbered into the tracks rather than gathered here, because a feature not
+filed under a space is a feature nobody has decided where to put.
+
+---
+
 ## Track A — Data
 
 The brief's own progression, continued. Nearly all of it is built; what follows
@@ -1597,6 +1700,267 @@ source column, a cursor offered where the next request would refuse it, a bucket
 colliding with a dimension. The type system had nothing to say about any of them,
 and a real request said it immediately.
 
+### A8. One statement, and everything known about it
+
+`/diagnose` ranks. The costliest shapes, the tables read, who spent the time,
+what failed — and the window is its only control. "What did the ETL account run
+against `analytics.events` on Tuesday" has to be answered by reading the
+rankings and hoping, because nothing on the page narrows by user, by table, by
+kind or by a range somebody chose. And having found the statement, there is
+nowhere to go: Flint has no page about *one* statement.
+
+Those are the same missing object seen from two ends, which is why they are one
+section. A statement page is the destination a filter needs; the filters are how
+anybody reaches the page.
+
+Almost everything it would hold is already measured and scattered. The figures
+live in `diagnostics.rs`, the plan read back as sentences in `lib/plan.ts` —
+today only for a statement the editor just ran — the sampled stacks in
+`trace.rs`, the tables and the settings in the log row itself. Assembling those
+around one `query_id` is the work. Measuring is not, and a section that
+re-measured any of it would be the second implementation A7.8 spent a release
+removing.
+
+Two things in the backlog's profiler are genuinely absent rather than scattered:
+
+- **`EXPLAIN ANALYZE`.** The editor offers four of the family — plan with
+  indexes, pipeline, estimate, and syntax through `viewExplain` — and every one
+  of them is free, because every one describes what the server *would* do.
+  `ANALYZE` runs the statement. That makes it the only member of the family
+  with a cost, so it cannot be a tab somebody lands on; it is a button, beside
+  the estimate that says what pressing it will spend, which is a judgement
+  `lib/cost.ts` already makes for the grid's own rewrites. And on a statement
+  that is already in the log it is usually the wrong offer anyway: it ran, and
+  its real figures are in the row. `ANALYZE` earns its place while somebody is
+  *writing* a statement, not while reading one somebody else ran.
+- **Rows, bytes and time per stage.** The backlog asks for all three and for
+  parallelism beside them, and `EXPLAIN PIPELINE` carries none of it — it is
+  the shape, not the traffic through it. The figures are in
+  `system.processors_profile_log`, which nothing in Flint reads. That table is
+  off by default on a stock server, which makes this the same kind of feature
+  as the error log: read it where it is on, and say which switch is off rather
+  than drawing an empty picture.
+
+**And the plan drawn rather than read out.** `plan.ts` turns `EXPLAIN PLAN
+indexes = 1` into sentences, and for the question it answers — how many granules
+were skipped, by which index, and whether the sorting key did any of it — the
+sentences are better than any diagram, because the answer is a number with a
+reason attached. They are worse for the shape: a stage that fans out to sixteen
+threads and rejoins is a shape, and a paragraph about it is a paragraph. The
+canvas exists (A0c already stopped the product having two diagrams with two sets
+of manners), so this is a layout over an existing renderer and not a new
+picture. The rule it inherits: the drawing may not become the only place a
+figure appears, because a sentence can be read aloud in a review and a diagram
+cannot.
+
+Data, by the URL rule and by the subject — what statements cost has been
+Data's since Diagnose was cut in two.
+
+### A9. A hypothetical, measured
+
+The backlog calls it EXPLAIN WHATIF: declare an index or a projection that does
+not exist, re-plan the query against it, and report the marks, rows and bytes it
+would have skipped. It is the one item in the whole list that Flint has no
+version of, and it is also the one that would change what every advisor in A10
+is allowed to say.
+
+ClickHouse has no such statement. So the honest shapes are two, and the
+difference between them is the whole design:
+
+- **Model it** — build the plan Flint thinks the server would choose and report
+  the arithmetic. Cheap, instant, and a prediction. B4's projection advisor
+  already refuses to do this: it ranks by the time the window actually spent and
+  never by a predicted saving, because the floor of `parts × index_granularity`
+  made a plausible model wrong by 164×.
+- **Measure it** — create the object on a copy of the rows, run the plan against
+  it, drop it. Expensive, slow, and a fact. That is what `Measure it` and `Weigh
+  it` already do for a projection, and what `probe.rs` does for a type change:
+  one scratch table in the workspace, the same rows, the same settings, one
+  thing different.
+
+Flint has chosen the second twice already and both times the choice was what
+made the feature trustworthy, so the third is not a fresh decision. What is
+fresh is that the scratch tables get larger — a skip index has to be built over
+enough rows to prune anything — and that the thing being measured is now a
+*plan* rather than a size. `EXPLAIN PLAN indexes = 1` against a scratch table
+carrying the hypothetical index gives the granule counts directly, which is why
+this belongs with A8 rather than beside it: the reading is the one `plan.ts`
+already knows how to say.
+
+It needs `FLINT_WORKSPACE_DATABASE`, like every other weighing, and it must
+state its sample rather than implying the whole table. A saving measured over a
+tenth of the rows is a saving over a tenth of the rows.
+
+### A10. The advisors the projection advisor is the first of
+
+Five more of them, and the argument for each is the same argument B4 already
+made for projections, which is why they are one section and not five: the
+backend counts against `system.*` and the workload, a pure module in
+`frontend/src/lib` decides what the numbers mean with a test per rule, and the
+DDL is handed to Infrastructure → Schema with the form filled in. No Data
+control changes structure as a side effect; the hand-over *is* the corollary
+working.
+
+- **A skip index.** `minmax`, `set`, a bloom filter, a token filter over text.
+  What makes this different from the projection advisor is that the evidence is
+  narrower: a filter on a column that is not in the sorting key and reads the
+  whole table every time. `plan.ts` already names the opposite finding — *the
+  skip index pruned nothing here* — so the detector for a *useless* index is
+  written and the proposer for a missing one is not. Both halves matter, and an
+  advisor that only adds grows a table's write cost forever.
+- **A sorting key.** The hardest of the five and the one to be most careful
+  with, because it cannot be applied: changing `ORDER BY` means rewriting the
+  table. Diagnose already says "the sorting key is not narrowing these queries";
+  what is missing is the proposal, the cost of getting there, and the refusal to
+  run it. This one produces a migration for a person to read, never a job.
+- **A codec.** The schema review proposes `DoubleDelta`, `Gorilla` and
+  `LowCardinality` today and `probe.rs` weighs the change on real rows, which is
+  the whole of the backlog's Compression Advisor except its last bullet: doing
+  it across a table rather than a column at a time, ranked by what each would
+  give back.
+- **A partition key.** Too many partitions, partitions too large, too many parts
+  in one, and pruning that never happens. Every figure is already on the storage
+  reading; none of them is yet a *proposal*, and the proposal is the hard part —
+  repartitioning is a rewrite, so this joins the sorting key in producing a
+  migration rather than a button.
+- **A dictionary, and a join.** The backlog splits these and they are one
+  detector: a small table joined often. `system.query_log` has the joins,
+  `meta.rs` has the sizes, and B3 already reads dictionaries well enough to say
+  what one would cost to keep. The join half adds the algorithm — `hash`,
+  `parallel_hash`, `grace_hash`, `full_sorting_merge`, `direct`, `ASOF` — which
+  is a *setting* rather than DDL, and therefore the one recommendation in this
+  section that an analyst can act on alone.
+
+The floor B4 set applies to all five and should be stated once: below eight
+granules' worth of rows there is no question. The first version of the
+projection advisor asked whether a five-row dictionary source wanted a
+projection, which is not a question anybody has.
+
+### A11. A finding somebody can answer
+
+`/checkup` is the advisor core the backlog asks for, and it has the two
+properties that list does not: every finding carries what acting gives back *in
+its own unit*, and there is no score, because a number nobody can reconstruct
+hides exactly the trade-off the reader came to make. What it has no version of
+is the other half of that list — dismiss, accept, a history, and a re-evaluation
+after the schema changes.
+
+All four are one feature: **a finding has to be able to be answered**. And
+answering is reader state, so this is the section where the workspace stops
+being optional for the advisors. The shape follows what the workspace already
+holds for saved statements and endpoints: a row per finding, keyed by something
+stable enough to survive the finding being recomputed.
+
+That key is the difficulty, and it should be said now rather than discovered.
+A finding is derived — "this column is cold", "this projection is never chosen"
+— and it is recomputed from scratch on every visit, which is what makes the
+advisors honest. Dismissing one has to mean *this judgement about this object*,
+not *this row of this report*, or the dismissal either evaporates the next time
+the numbers move or silences a genuinely new finding that happens to land in
+the same place. The same key is what makes re-evaluation meaningful: a
+dismissal that survives the schema change it was about is a dismissal that has
+outlived its reason, and the honest behaviour is to raise it again and say it
+was dismissed before.
+
+Deliberately out of scope here: a *rule library* as a configurable object.
+The backlog's Phase-5 rule families are already the modules in
+`frontend/src/lib`, one file each, arguable in a test — and a thresholds screen
+would move those arguments out of the tests and into somebody's configuration,
+where nothing checks them.
+
+### A12. A pipeline composed, not only read
+
+B3 reads materialized views well: source, target, dependencies, freshness, and
+the breakage that is invisible in the log because the insert failed before the
+view ran. What nothing does is *make* one, and the backlog wants two makers —
+a materialized view builder and an aggregation builder, which are one builder
+with the second knowing more about time.
+
+The placement is the interesting part and the one rule decides it cleanly. A
+materialized view is structure: it is `CREATE MATERIALIZED VIEW`, it creates a
+target table, and it is therefore Infrastructure → Schema, at `ddl`. But the
+*composition* — pick a source, a time bucket, dimensions, metrics, and the
+aggregations for each — is the query builder that already exists on `/query`,
+plus A7.1's inventory saying which column takes which aggregation. So: composed
+in Data, handed to Infrastructure with the DDL filled in, exactly as the
+projection advisor hands over its `ADD PROJECTION`. The precedent is set and
+this is its second use.
+
+Three things it must get right, each of which is a place ClickHouse punishes a
+guess:
+
+- **The target's schema is generated, and `AggregateFunction` states are not
+  optional knowledge.** A `quantile` state is a digest many times wider than the
+  `Float64` it finalizes to — B4 measured that when weighing projections — so a
+  builder offering `quantile` has to offer `quantileState` into the target and
+  `quantileMerge` on the way out, or the view is wrong in a way that still
+  returns numbers.
+- **A materialized view is a trigger on an insert, not a query over a table.**
+  It sees the rows of one insert, which is why a builder that previews by
+  running the `SELECT` shows a number the view will never produce. The preview
+  has to say that.
+- **A refreshable view is the other engine entirely** and has an interval, a
+  last run and a next one. B3 reads both kinds; a builder that offered one
+  control for both would be hiding the single decision that matters most.
+
+`FLINT_TIER` at `ddl`, and A7.2's sentence holds against the obvious temptation:
+Flint does not mint views on an analyst's behalf without the people who own the
+schema seeing the statement.
+
+### A13. The questions only a time column asks
+
+Flint measures a table over time in three places — `timeline.ts` draws the
+partitions, `drift.rs` cuts a table into periods and reports what moved,
+`news.rs` judges the newest period against the median of the six behind it —
+and every one of them is about *volume*. None of them is about the **sampling**,
+which is the axis a time series is actually wrong on: a gap, a duplicate
+timestamp, an event that arrived late, a series that has quietly stopped.
+
+The detection is arithmetic over one column, and the first step is the one that
+decides whether the rest is worth anything: **the expected interval has to be
+derived, not asked for**. A series sampled every five minutes and one sampled
+when something happens are both legitimate, and calling the second one
+"irregular" is Flint inventing a schedule nobody chose. So the modal gap is
+measured first, and where there is no mode there is no finding — the same rule
+A0e follows when a median of zero means it cannot judge.
+
+The generators are the other half and they are cheaper than they look, because
+ClickHouse already has them: `WITH FILL`, `INTERPOLATE`, `toStartOfInterval`,
+`lagInFrame`. `drift.rs` and `distribution.rs` already write `WITH FILL` into
+their own statements. What is missing is offering it to somebody composing a
+question — which lands in the editor's completion and the builder, not on a page
+of its own.
+
+Data throughout: it reads rows and writes nothing.
+
+### A14. Geo, and H3
+
+Nothing in Flint knows what a coordinate is. `chType.ts` has the type families
+and none of them is geographic, so a latitude and a longitude are two `Float64`
+columns that happen to be next to each other, and a `Point` is a tuple.
+
+Three pieces, in the order they pay off:
+
+- **Detection**, which is name-plus-range and has to be as narrow as A7.1's `id`
+  guess for the same reason. A `Float64` in [-90, 90] beside one in [-180, 180]
+  with the right names is a coordinate pair; anything looser and Flint will
+  announce that a temperature is a latitude. `profile.rs` already has the ranges,
+  so the measurement is there and only the rule is missing.
+- **H3**, which is a materialized column, an index or a projection — structure,
+  so Infrastructure runs it and Data composes it, per A12's split. The resolution
+  is the decision, and it is the one a builder must not make silently: cell size
+  at resolution 7 and resolution 9 differ by more than an order of magnitude, and
+  the wrong choice is a column that either buckets everything together or buckets
+  nothing.
+- **A map**, which is the first thing in this document that needs a rendering
+  Flint does not have. It is worth naming as a cost rather than sliding into it:
+  every other visual here is drawn from tokens on a canvas with no third-party
+  data, and a tile layer is a request to somebody else's server from a page that
+  has never made one.
+
+Honest about the order: this is the section with the weakest evidence behind it,
+because no fixture here has geographic data at all.
+
 ---
 
 ## Track B — Infrastructure
@@ -2824,6 +3188,126 @@ schema; an audit is read by whoever runs the server, about their own server, and
 `Not enough privileges … SELECT on system.users` is the answer rather than a
 leak.
 
+### B9. Workloads
+
+The backlog wants queries filed into named classes — `interactive`, `api`,
+`reports`, `batch` — with a priority, a concurrency, and CPU, I/O and memory
+ceilings per class, and users, roles or query patterns assigned to them.
+
+Recent ClickHouse has the statements for most of it: `CREATE WORKLOAD` and
+`CREATE RESOURCE`, a hierarchy of workloads under a root, and a `workload`
+setting a statement can carry. Nothing in Flint reads any of it, and the first
+task is not the page — it is finding out what *this* server has, the way the
+Keeper work did. A workload tree on a build that scheduled nothing would be a
+screen of controls with no effect, which is the one failure mode `run_as` and
+`SYSTEM STOP MERGES` have both already taught this codebase to check for first.
+
+The overlap has to be stated before any of it is drawn, because two systems
+that both look like "limits per account" will be read as one. B6 already writes
+**quotas** (how much an account may consume over an interval) and **settings
+profiles** (what it runs with, including `max_memory_usage` and
+`max_threads`). A workload is neither: it is how the server *schedules* work
+that is already permitted, and it arbitrates between statements rather than
+capping one. The page has to say that, or somebody will set a ceiling in two
+places and wonder which won.
+
+Infrastructure, at `admin`. It operates the server, it hands one class of user
+the machine ahead of another, and the tier line has said since it was written
+that the server's own operation sits there.
+
+### B10. The caches, as a subject
+
+Five of them — mark, uncompressed, query, query condition, and the filesystem
+cache over object storage — and Flint says something about exactly one: B3's
+history draws the mark cache hit rate as a line, because it is one of the five
+figures that predicts a slow morning.
+
+What makes this a section rather than five more rows on Health is the second
+half of the backlog's entry, which is the interesting one: **which queries
+would be served from a cache and are not**. Two detectors, both of them reads
+of the query log Flint already makes:
+
+- **A repeated statement whose answer cannot have changed.** The costliest
+  shapes are ranked today; the same ranking plus a count of identical runs is
+  the query cache's whole argument.
+- **A statement that cannot be cached because of how it was written.** A
+  `now()` in a `WHERE` makes every run a different question and ClickHouse
+  declines to cache non-deterministic queries by default, so a dashboard
+  refreshing every thirty seconds pays in full forever. The fix is a rounded
+  bucket — `toStartOfFiveMinute(now())` — and it is a sentence Flint can write
+  because it already parses enough of a statement to know a time column when it
+  sees one.
+
+The rule this section inherits from B3 and must not break: a hit rate with no
+ceiling beside it is a number with no scale, and a cache at 100% of a size
+nobody chose is not a finding. Every figure gets the configured size next to
+it, and a cache that is switched off is said to be off rather than drawn at
+zero.
+
+Infrastructure → Health. It is the server's own memory, and nothing here reads
+a row of anybody's data.
+
+### B11. Retention, as a policy rather than a clause
+
+B4 writes a TTL: set one, remove one, at `admin` because a TTL deletes rows
+already past it. That is one clause on one table. What the backlog asks for is
+the *policy* — hot for thirty days, warm for a year, gone after three — which
+is `TTL … TO DISK`, `TO VOLUME` and `DELETE` in one expression, plus the
+reading that tells somebody what each stage is currently holding.
+
+Two things stand between here and there, and both are honest costs rather than
+work nobody has got to:
+
+- **A move needs somewhere to move to.** B4 left `MOVE PARTITION TO
+  DISK|VOLUME` out for exactly this reason — the development server has one
+  disk, and a control for moving data between volumes that has never moved any
+  is not a control worth shipping. `storage.rs` reads `system.storage_policies`
+  already, so the reading half works the day a server has two volumes. The
+  fixture is closer than it was: B5's MinIO compose file and its S3 disk are
+  most of a second volume, and what is missing is a storage *policy* over the
+  two rather than a backup destination beside them.
+- **Growth is measured, not forecast.** "Estimate annual storage growth" is a
+  curve fit, and this codebase has refused that class of claim twice — the
+  projection advisor ranks by time actually spent rather than predicted saving,
+  and `probe.rs` weighs a type change rather than guessing at 70%. The
+  defensible version is the observed rate with its own window named — *this
+  table has taken 4.2 GB a week for the last eight weeks* — and the arithmetic
+  left in the open beside it. A number labelled "annual" that came from eight
+  weeks is the same overreach as the 571× multiplier A0e refused to print.
+
+Infrastructure → Schema, at `admin`, for the same reason a TTL is: the stages
+end in a deletion.
+
+### Two sections the backlog reopens
+
+**B5 gains a line, not a section.** Scheduled backups are in the list, and B5
+says it is complete — which it is, for a backup somebody presses. The schedule
+it lacks is not a new component: the report runner already does work with
+nobody's browser open, on B1's job runner, and a backup is a job. What makes
+this one line rather than a feature is the half that cannot be built.
+**Retention on a backup disk was measured impossible** — a backup disk cannot
+be listed from SQL (`filesystem()` is confined to `user_files_path` and answers
+`DATABASE_ACCESS_DENIED` outside it) and there is no `SYSTEM DROP BACKUP` — so
+a nightly backup Flint takes and cannot remove is a disk that fills, silently,
+until an insert fails somewhere unrelated. A schedule without a retention is a
+feature that breaks a server slowly. Both, or neither.
+
+**Versions is still the eighth section, and the backlog sharpens what it is
+for.** B7 reads which ClickHouse this is, down to the build flags and the
+timezone database. What the list asks for beyond that — highlight available
+upgrades, compatibility checks, a rolling upgrade assistant — divides on one
+line, and the line is not difficulty. Knowing that 26.8 exists means asking
+somebody who is not this ClickHouse, and this process dials exactly one address:
+the server it was given, vetted by `src/target.rs` and fenced by
+`FLINT_TARGETS`. An outbound call to a release feed is a new kind of thing for
+this binary to do, it is wrong in every air-gapped deployment, and it would
+have to be off by default — which makes it a configuration decision before it
+is a feature. Compatibility checking needs no such call and is the half worth
+having: B7 already reads the `compatibility` setting, the obsolete settings and
+the build flags, and "what would change if this server were upgraded" is a
+question those three answer between them. The assistant that performs the
+upgrade is provisioning, and it is refused below.
+
 ---
 
 ## Placements still to settle
@@ -2913,6 +3397,19 @@ Honest gaps in the tree above, rather than decisions quietly made in code later.
   stored alert: drop the table and the same alert becomes unplaceable — which is
   also how the list now shows an alert that is *on* and cannot run.
 
+- **The checkup belongs to neither space, and the tree does not say so.**
+  `/checkup` does not live under `/infra`, so by the membership rule it is
+  Data — and it is not: `spaces.ts` answers neither space for it, the nav
+  lights no tab and draws no section row beneath it. That is deliberate and it
+  is right, because the page reports on the schema, the workload, the machine
+  and what is not covered, and filing the machine's own condition under Data
+  would break the one rule on the page most likely to be somebody's first. What
+  is wrong is that it was decided in code and never written down here. Two
+  things now stand outside the tree in *The one rule* for the same reason — the
+  checkup, and A0d's console, which answers the objection by not being a page
+  at all. Both are about the whole server rather than about one of its halves,
+  and the tree has no way to say so.
+
 ---
 
 ## Sequencing two tracks
@@ -2939,6 +3436,18 @@ a choice between them rather than between the tracks.
 **A7.5's naming is built**, so what is left on Data is A5 alone — the write side
 of the APIs, and the one feature here that still needs a background component to
 land on rather than a page.
+
+**And then the backlog above landed ten sections in the two tracks**, which
+overtakes that paragraph in turn: A5 is no longer the last thing on Data. The
+order inside the new work is not free either, and it is worth stating once
+because the tempting order is the wrong one. **A9 before A10**: a measured
+hypothetical is what lets five new advisors claim anything, and without it they
+are five models of a plan, which is the thing B4 measured its way out of.
+**A11 before A10 as well**: an answerable finding is what stops a page of
+verdicts becoming a list nobody can ever clear. Those two, then the advisors, is one
+release with a shape. Taking A10 first ships five more voices with no way to
+quiet any of them, on a page that is already the first thing a new reader
+sees.
 
 ---
 
@@ -3004,7 +3513,25 @@ about everything else.
   looking at the screen, not to every client of the wire.
 - **Provisioning.** Flint will not create a ClickHouse. Where the server runs in
   Kubernetes that belongs to the operator's CRDs, and reading them is the most
-  Flint should ever do.
+  Flint should ever do. **Adding or removing a node, and driving a rolling
+  upgrade, are the same refusal** under two other names: both change what the
+  cluster *is*, from a process that is a client of one member of it. Reading
+  shard and replica membership is B2's and is built; version and build identity
+  is B7's and is built. Acting on either is the deployment's job.
+- **Custom HTTP handlers in the server.** There is no `CREATE HANDLER`
+  statement; ClickHouse's custom handlers are declared in the configuration
+  files, which B7 reads and refuses to edit. Flint already has an answer to
+  "turn a query into an HTTP endpoint", it is the whole of A7, and it is
+  Flint's own surface with Flint's own identity, audit and expiry on it.
+  Generating XML for somebody's `config.d` would be a second answer with none
+  of those.
+- **An explanation written by a model.** The Advisor stays deterministic, which
+  the backlog itself asks for — and the optional explainer it allows on top is
+  the part to decline. Every rule in `frontend/src/lib` is already a sentence
+  somebody can disagree with, sitting next to the test that fixes its
+  threshold. A generated paragraph beside it is a second voice with no test,
+  free to be more confident than the rule and to disagree with it on the one
+  reading nobody checked.
 - **Editing server configuration files.** See B7.
 - **Inline cell editing.** See A1. The engine does not support the gesture, and
   imitating it would be a lie.
