@@ -46,6 +46,7 @@ pub mod sysops;
 pub mod timeline;
 pub mod trace;
 pub mod twins;
+pub mod whatif;
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;

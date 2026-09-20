@@ -364,6 +364,14 @@ pub fn router(state: AppState) -> Router {
         // Where every finding stands, and what was said about one. Under
         // `/checkup` rather than `/diagnostics` because it is reader state
         // about the advisors rather than a reading of `system.*`.
+        // What an index would have done, measured on a copy. Under the table
+        // it is about, beside the probe that weighs a type change the same
+        // way — one scratch table in Flint's own database, one thing
+        // different, and the real table untouched.
+        .route(
+            "/databases/{database}/tables/{table}/whatif",
+            post(explorer::table_whatif),
+        )
         .route("/checkup/answers", get(saved::answers).post(saved::answer))
         .route("/checkup/answers/history", get(saved::answer_history))
         .route("/diagnostics/queries", get(diagnostics::queries))

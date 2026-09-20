@@ -1289,6 +1289,31 @@ struct Named {
     said: String,
 }
 
+/// One filter, rendered for a caller building a statement of its own.
+///
+/// The published face and the dataset API both reach `predicate` through a
+/// whole shaped statement; this is the door for something that wants a single
+/// `WHERE` fragment and the values it binds — the what-if measurement, which
+/// plans a statement Flint composes rather than one anybody asked for.
+///
+/// Exported rather than copied, and that is the point: a second grammar would
+/// be a second set of refusals, and this one already knows that `like` on an
+/// `Int32` matches nothing and that `isnull` on a column that cannot be null
+/// is a filter somebody wrote by mistake. A7.8 spent a release removing the
+/// last place this product had two query languages.
+pub fn one_predicate(
+    columns: &[ColumnMeta],
+    filter: &Filter,
+    prefix: &str,
+) -> Result<(String, Vec<(String, String)>), String> {
+    let mut binder = Binder {
+        prefix: prefix.to_string(),
+        params: Vec::new(),
+    };
+    let sql = predicate(&mut binder, columns, filter)?;
+    Ok((sql, binder.params))
+}
+
 fn predicate(
     binder: &mut Binder,
     columns: &[ColumnMeta],

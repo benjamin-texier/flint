@@ -903,6 +903,30 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+  /** What a skip index would have done, measured on a copy of one partition.
+   *
+   *  A POST because it writes — a scratch table in Flint's own database, the
+   *  index built on it, both dropped again. The table it is about is never
+   *  touched, and the `ALTER` that would touch it is handed back rather than
+   *  run: Data measures, Infrastructure writes structure. */
+  whatIf: (
+    db: string,
+    table: string,
+    body: {
+      column: string
+      kind: 'minmax' | 'set' | 'bloom_filter' | 'tokenbf_v1'
+      argument?: number
+      granularity?: number
+      filter_column: string
+      filter_op: string
+      filter_values: string[]
+      partition?: string
+    },
+  ) =>
+    request<import('./whatif').Outcome>(
+      `/databases/${enc(db)}/tables/${enc(table)}/whatif`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
   /** The schema review. `verify` reads every row instead of a prefix, which is
    *  the difference between a hypothesis and a verdict — and between a free
    *  query and a full scan, so it is never the default. */

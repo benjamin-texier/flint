@@ -5,7 +5,7 @@ use serde_json::{json, Value};
 
 use crate::clickhouse::{
     affinity, compare, connect, distribution, drift, graph, mass, meta, outside, probe, profile,
-    projection, relations, review, streams, timeline, QueryOptions, TableResult,
+    projection, relations, review, streams, timeline, whatif, QueryOptions, TableResult,
 };
 use crate::error::{Error, Result};
 
@@ -457,6 +457,30 @@ pub async fn table_probe(
     })?;
     Ok(Json(
         probe::probe(&ch, workspace, &database, &table, &request).await?,
+    ))
+}
+
+/// What a skip index would have done, measured on a copy of one partition.
+///
+/// A POST because it writes: a scratch table in Flint's own database, the index
+/// built on it, and both dropped again. It never touches the table it is about
+/// — and it never writes structure there either, which is why this is Data at
+/// all. The statement that would is handed back for Infrastructure to run.
+pub async fn table_whatif(
+    State(state): State<AppState>,
+    Caller(ch): Caller,
+    Path((database, table)): Path<(String, String)>,
+    Json(request): Json<whatif::Request>,
+) -> Result<Json<whatif::Outcome>> {
+    let workspace = state.config.workspace_database.as_deref().ok_or_else(|| {
+        crate::error::Error::BadRequest(
+            "Flint is running without a workspace, so it has nowhere to build the copy that \
+             measuring an index needs. Set FLINT_WORKSPACE_DATABASE."
+                .into(),
+        )
+    })?;
+    Ok(Json(
+        whatif::measure(&ch, workspace, &database, &table, &request).await?,
     ))
 }
 

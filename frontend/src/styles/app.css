@@ -5504,6 +5504,56 @@ tr:hover .stratum__fill {
   color: var(--text-muted);
 }
 
+/* ═══ Would an index help ═════════════════════════════════════════════════
+ * A form and a reading, in the shape the projection advisor already uses for
+ * the same kind of answer: the question above, the measurement below it, and
+ * the statement it produced at the bottom next to where it is run. */
+.wif {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.wif__head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}
+
+.wif__title {
+  font-size: var(--size-body);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.wif__form {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--s3);
+  flex-wrap: wrap;
+}
+
+.wif__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  min-width: 0;
+}
+
+.wif__reading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.wif__acts {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex-wrap: wrap;
+}
+
 /* "Nothing yet" and "nothing to say" are different answers, so they do not
  * look the same. */
 .checkup__waiting {

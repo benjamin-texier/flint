@@ -42,6 +42,7 @@ import { Compare } from '../components/Compare'
 import { Drift } from '../components/Drift'
 import { Relations } from '../components/Relations'
 import { ProjectionAdvisor } from '../components/ProjectionAdvisor'
+import { IndexWhatIf } from '../components/IndexWhatIf'
 import { SchemaReview } from '../components/SchemaReview'
 import { EmptyNote, ErrorNote, Loading } from '../components/Note'
 import { Dash } from '../components/Dash'
@@ -66,6 +67,7 @@ const TABS = [
   'review',
   'partitions',
   'projections',
+  'indexes',
   'ddl',
 ] as const
 type Tab = (typeof TABS)[number]
@@ -209,6 +211,11 @@ export function TableView({ database, table }: { database: string; table: string
     ...((stores || tab === 'projections'
       ? [['projections', 'Projections', t.projections.length || null]]
       : []) as [Tab, string, number | null][]),
+    /* Only where the table stores rows. An index on a view is not a thing,
+       and offering to measure one would be a form that cannot be answered. */
+    ...((stores || tab === 'indexes')
+      ? ([['indexes', 'Indexes', null]] as [Tab, string, number | null][])
+      : []),
     ['ddl', 'DDL', null],
   ]
 
@@ -374,6 +381,7 @@ export function TableView({ database, table }: { database: string; table: string
             size is a question for all of these tabs at once rather than one for
             whichever was added last. */}
         {tab === 'projections' ? <ProjectionAdvisor database={database} table={table} /> : null}
+        {tab === 'indexes' ? <IndexWhatIf database={database} table={table} /> : null}
         {tab === 'ddl' ? (
           <div className="stack">
             {/* The definition is *what* it is; the record underneath is *how*. */}

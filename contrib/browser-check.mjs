@@ -207,6 +207,11 @@ async function discover() {
          same way the review's is, and it carries the one warning colour on the
          page — a caveat that fails AA is a caution nobody reads. */
       { path: `${at}?tab=projections`, wait: 'main' },
+      /* The index what-if: a form that spends real work when pressed, so this
+         walks the page it opens on rather than the answer. Its reading shares
+         `planread` with the editor and the statement page, and is checked
+         there. */
+      { path: `${at}?tab=indexes`, wait: '.wif__form' },
       { path: `${at}?tab=ddl`, wait: 'main' },
     ]
   } catch {
