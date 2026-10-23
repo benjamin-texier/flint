@@ -323,18 +323,23 @@ export function ArrivalPage() {
         {covered ? <p className="arrival__covered">{covered}</p> : null}
       </header>
 
+      {/* Each card says what is on the other side of it in this product's
+          words, because the first version said it in nobody's: "Check server
+          health" led to the checkup, while Health is a page of its own one
+          space over, and a first click that lands somewhere other than where it
+          said is the click that teaches somebody not to trust the next one. */}
       <nav className="arrival-actions" aria-label="Get started">
         <Link className="arrival-actions__card" to="/explore">
           <span className="arrival-actions__title">Explore your data <span aria-hidden="true">→</span></span>
-          <span>Browse databases, tables and their relationships.</span>
+          <span>Every database, drawn: what feeds what, and what weighs most.</span>
         </Link>
         <Link className="arrival-actions__card" to="/query">
           <span className="arrival-actions__title">Run a query <span aria-hidden="true">→</span></span>
-          <span>Write SQL or start with a suggested question.</span>
+          <span>Write SQL, or start from a question about one of your tables.</span>
         </Link>
         <Link className="arrival-actions__card" to="/checkup">
-          <span className="arrival-actions__title">Check server health <span aria-hidden="true">→</span></span>
-          <span>Review findings and opportunities to improve performance.</span>
+          <span className="arrival-actions__title">Read the full checkup <span aria-hidden="true">→</span></span>
+          <span>Each finding, what to do about it, and what came back clear.</span>
         </Link>
       </nav>
 
