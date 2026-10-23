@@ -363,8 +363,11 @@ export function DatabasePage({ database }: { database: string }) {
             ? [
                 {
                   value: bytes(disk.bytes),
+                  /* "of 65 of 68" was two prepositions for one fact and read
+                     as a typo; the count is of the tables that reported a
+                     size, so it says that. */
                   label: disk.silent
-                    ? `on disk, of ${disk.known} of ${disk.known + disk.silent}`
+                    ? `on disk · ${disk.known} of ${disk.known + disk.silent} weighed`
                     : 'on disk',
                 },
               ]
