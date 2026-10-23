@@ -1286,8 +1286,9 @@
 
 .schema__head {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: var(--s3);
+  gap: var(--s2) var(--s3);
   margin-bottom: var(--s3);
 }
 
@@ -1297,9 +1298,30 @@
 }
 
 .schema__sub {
+  /* A sentence needs a measure before it needs to stay on the title's line.
+     Held to one line beside six readings, it was handed what they left over —
+     on a phone, sixty pixels, one word to a line for nine lines — so below
+     about twenty characters' worth of room it takes a line of its own and the
+     readings take the next. */
+  flex: 1 1 20ch;
+  min-width: 0;
   margin: 0;
   font-size: var(--size-data);
   color: var(--chalk-faint);
+}
+
+/* And the readings scroll inside their own box rather than off the page's
+   edge, which is where the sixth of them was going at 390px. They push
+   themselves right instead of a spacer doing it: a spacer grows as much as the
+   sentence does, and took half the line the sentence had just been given. */
+.schema__head > .panel__spacer {
+  display: none;
+}
+.schema__head > .segmented {
+  max-width: 100%;
+  margin-left: auto;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 
 /* ═══ Diagram frame ══════════════════════════════════════════════════════
