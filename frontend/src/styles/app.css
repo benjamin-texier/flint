@@ -8049,6 +8049,14 @@ tr:hover .stratum__fill {
   padding-right: var(--s3);
   font-family: var(--font-sans);
   cursor: pointer;
+  /* A select is as wide as its longest option, and these are menus whose face
+     is a verb — "Explain…", "Send to…" — over options that are sentences. Sized
+     to the options, Explain was 159px wide for a seven-letter label, and with
+     Send to it was the 60px that pushed the editor's drawers onto a second row
+     at 1440px, the commonest laptop there is. Sized to what it shows, the bar
+     is one row there. Where `field-sizing` is not supported the select keeps
+     the old width, and the bar still wraps as it was built to. */
+  field-sizing: content;
 }
 
 .editor__pick {
