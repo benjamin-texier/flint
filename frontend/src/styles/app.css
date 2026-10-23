@@ -12686,12 +12686,40 @@ button.acol__val:hover {
 }
 
 .board__row {
+  position: relative;
   display: flex;
   align-items: baseline;
   gap: var(--s3);
   padding: var(--s3) var(--s4);
   border-left: 3px solid transparent;
   border-bottom: 1px solid var(--line);
+  transition: background var(--motion-fast) var(--ease);
+}
+
+/* Each row is a way into its section, and only the section's name was the way:
+   a word in body weight with nothing to say it could be pressed, beside the
+   sentence somebody had actually been reading when they decided to go there.
+   The link now covers its row — one target, still one link for a screen reader
+   and one tab stop — and the row takes the ground the product gives a hovered
+   row, with the arrow that says where the press goes. */
+.board__name::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+.board__row:hover {
+  background: var(--fill);
+}
+.board__row::after {
+  content: '→';
+  margin-left: auto;
+  color: var(--chalk-faint);
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease);
+}
+.board__row:hover::after,
+.board__row:focus-within::after {
+  opacity: 1;
 }
 
 .board__row:last-child {
