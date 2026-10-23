@@ -5865,8 +5865,6 @@ tr:hover .stratum__fill {
    it, with the action beside it. */
 .saveform--bare {
   border-bottom: none;
-  padding-left: 0;
-  padding-right: 0;
 }
 .saveform--bare .saveform__name {
   flex: 0 1 34ch;
@@ -6821,6 +6819,21 @@ tr:hover .stratum__fill {
 .saveform__name {
   flex: 1;
   min-width: 0;
+}
+/* It borrows the search box's frame, and with it the 30px kept on the left for
+   a magnifying glass. No form that names something draws one, so every name
+   was typed a glass's width in from its own border. */
+.frame__input.saveform__name {
+  padding-left: var(--s3);
+}
+
+/* After `.saveform` rather than beside the other dashboard rules, and that is
+   the whole fix: at equal weight the later rule wins, and `.saveform`'s own
+   padding further down the sheet was putting back the 12px this takes away —
+   the Dashboards page's one field sat 12px in from the heading over it. */
+.saveform--bare {
+  padding-left: 0;
+  padding-right: 0;
 }
 
 .savedrow {
