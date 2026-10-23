@@ -750,6 +750,12 @@
   overflow: hidden;
 }
 .objnode__head {
+  /* Room for a letter and the ellipsis, always. Squeezed narrower than the
+     ellipsis itself — the rail at 232px, beside a chevron, a mark and a row
+     count — the browser drops the ellipsis rather than the letters, and
+     `orders_by_account_hourly` was shown as `o_hourly`: a shortened
+     name with nothing to say so, which reads as a different table. */
+  min-width: 3ch;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -10243,6 +10249,7 @@ button.acol__val:hover {
 }
 
 .objnode__line {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--s1);
@@ -10280,16 +10287,31 @@ button.acol__val:hover {
   gap: var(--s2);
   flex: 1;
   min-width: 0;
+  /* The line carries the hover ground, so the button's own inset was 12px of
+     nothing taken from the one thing on the row that runs short. */
+  padding-inline: 0;
   text-align: left;
   color: inherit;
 }
 
 /* Only on hover: the arrow is the second thing anybody wants here, and a
- * column of arrows down a 155-row rail is noise. */
+ * column of arrows down a 155-row rail is noise.
+ *
+ * And over the row rather than in it. Invisible, it still held its 20px in
+ * every row, and the name is what pays for room on this rail: at 232px a table
+ * name had 85px, which is `r… _occupan` — both ends of it cut. Laid over the
+ * end of the line on the line's own hover ground, it costs the name nothing and
+ * covers the row count only while the pointer is on the row. */
 .objnode__open {
-  flex: none;
+  position: absolute;
+  inset-block: 0;
+  right: var(--s1);
+  display: flex;
+  align-items: center;
   opacity: 0;
-  padding: 0 var(--s1);
+  padding: 0 var(--s1) 0 var(--s2);
+  border-radius: var(--radius-sm);
+  background: var(--slab-hover);
   color: var(--chalk-faint);
   transition:
     opacity var(--motion-fast) var(--ease),
