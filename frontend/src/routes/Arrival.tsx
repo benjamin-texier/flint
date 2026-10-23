@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { Fragment, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 
@@ -32,6 +32,7 @@ import {
   fromStorage,
   fromTraffic,
   fromTwins,
+  follows,
   type Cleared,
   type Finding,
 } from '../lib/checkup'
@@ -260,6 +261,10 @@ export function ArrivalPage() {
      the difference has `/checkup`, where the put-away ones are counted on
      their own. */
   const hidden = open.length - ordered.length + away.length
+  const hiddenUnsure =
+    open.filter((f) => f.urgency !== 'now' && f.tentative).length -
+    ordered.filter((f) => f.urgency !== 'now' && f.tentative).length
+  const hiddenSure = hidden - hiddenUnsure
   const covered = saysRead(readings)
 
   /* The scale of the thing, from the two cheapest reads on the page. Both are
@@ -445,15 +450,42 @@ export function ArrivalPage() {
           <>
             <ul className="strata">
               {ordered.map((f, i) => (
-                <Stratum key={f.id} finding={f} heaviest={heaviest} index={i} />
+                <Fragment key={f.id}>
+                  {/* Where the sure findings end, said once, with the count
+                      and the reason — so the headline above, which counts only
+                      the sure ones, can still be reconciled with this list. */}
+                  {f.tentative && !ordered[i - 1]?.tentative ? (
+                    <li className="strata__band">
+                      {(() => {
+                        const n = ordered.filter((g) => g.tentative).length
+                        return `${n === 1 ? 'One more' : `${n} more`} the log is too short to be sure of — ${f.tentative}.`
+                      })()}
+                    </li>
+                  ) : null}
+                  <Stratum finding={f} heaviest={heaviest} index={i} follows={follows(ordered, i)} />
+                </Fragment>
               ))}
             </ul>
             {/* The count follows the list, and names where the rest are. A
                 header that counted them would be a header nobody can
                 reconcile against what is under it. */}
+            {/* Split in two, because the headline counts only the sure ones:
+                "13 things here are worth changing" over "13 more on the
+                checkup" — one of them sure findings, the other mostly not —
+                was two equal numbers about different things. */}
             {hidden > 0 ? (
               <p className="says says--wide">
-                {exact(hidden)} more on <Link className="link" to="/checkup">the checkup</Link>.
+                {hiddenSure > 0 ? (
+                  <>
+                    {exact(hiddenSure)} more on <Link className="link" to="/checkup">the checkup</Link>
+                    {hiddenUnsure > 0 ? `, and ${exact(hiddenUnsure)} the log is too short to be sure of` : ''}.
+                  </>
+                ) : (
+                  <>
+                    {exact(hiddenUnsure)} more on <Link className="link" to="/checkup">the checkup</Link> that
+                    the log is too short to be sure of.
+                  </>
+                )}
               </p>
             ) : null}
           </>
@@ -525,10 +557,14 @@ function Stratum({
   finding,
   heaviest,
   index,
+  follows,
 }: {
   finding: Finding
   heaviest: Record<string, number>
   index: number
+  /** About the same table as the row above, which it is set as a continuation
+   *  of — see `together` in `lib/checkup`. */
+  follows: boolean
 }) {
   const gain = finding.gain
   /* A share of the heaviest of its own kind, floored so the smallest finding on
@@ -538,7 +574,9 @@ function Stratum({
     gain.kind === 'none' ? 0 : Math.max(0.08, gain.n / Math.max(1, heaviest[gain.kind] ?? gain.n))
   return (
     <li
-      className={`strata__row strata__row--${finding.urgency}`}
+      className={`strata__row strata__row--${finding.urgency}${follows ? ' strata__row--follows' : ''}${
+        finding.tentative ? ' strata__row--tentative' : ''
+      }`}
       style={{ '--i': index, '--weight': `${Math.round(weight * 100)}%` } as React.CSSProperties}
     >
       <span className="strata__weight" aria-hidden="true" />

@@ -427,3 +427,59 @@ describe('growth fills the axis', () => {
     expect(spread.bars.map((b) => b.bucket)).toEqual(['2026-01', '2026-02', '2026-03', '2026-04'])
   })
 })
+
+describe('what the log is too short to settle', () => {
+  const done: Reading[] = [{ label: 'the disks', state: 'read' }]
+  const unsure = (id: string, area: Area, gain: number): Finding => ({
+    ...finding(id, area, 'worth', gain),
+    tentative: 'system.query_log only goes back 11 hours',
+  })
+
+  it('is not dealt among the sure ones, however heavy', () => {
+    const said = inOrder([
+      unsure('unread', 'queries', 10_000_000_000),
+      finding('column', 'schema', 'worth', 5_000_000_000),
+      finding('shape', 'queries', 'worth', 1),
+    ])
+    // Dealt in area order — the workload, then the schema — and the unsure one
+    // after both, though it is twice the heaviest of them.
+    expect(said.map((f) => f.id)).toEqual(['shape', 'column', 'unread'])
+  })
+
+  it('only takes the room the sure ones left', () => {
+    const said = inOrder(
+      [unsure('u', 'queries', 9), finding('a', 'schema', 'worth', 2), finding('b', 'server', 'worth', 1)],
+      2,
+    )
+    expect(said.map((f) => f.id)).toEqual(['b', 'a'])
+  })
+
+  it('stays out of the headline count', () => {
+    const said = plain(verdict([unsure('u', 'queries', 9), finding('a', 'schema', 'worth', 2)], done))
+    expect(said).toBe('One thing here is worth changing.')
+  })
+
+  it('does not let a page of unsure findings call itself clear', () => {
+    // Nor claim them: "nothing is asking to be changed" would be the sure
+    // verdict, and "one thing is worth changing" the count of an unsure one.
+    expect(plain(verdict([unsure('u', 'queries', 9)], done))).toBe('Nothing here is clearly worth changing yet.')
+  })
+})
+
+describe('one table, read once', () => {
+  it('brings a second finding about a table up beside the first', () => {
+    const on = (id: string, area: Area, gain: number, object: string): Finding => ({
+      ...finding(id, area, 'worth', gain),
+      object,
+    })
+    const said = inOrder([
+      on('unread', 'queries', 9e9, 'default.events'),
+      on('other', 'schema', 8e9, 'default.orders'),
+      on('column', 'schema', 5e9, 'default.events'),
+      on('server', 'server', 1, 'x'),
+    ])
+    // Dealt server, workload, schema, so `other` would be third and `column`
+    // fifth; `column` is about the table `unread` is, and follows it instead.
+    expect(said.map((f) => f.id)).toEqual(['server', 'unread', 'column', 'other'])
+  })
+})

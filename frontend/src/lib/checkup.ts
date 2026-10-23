@@ -34,7 +34,7 @@
  *  trade-off. Hence `urgency`, which has two values and not five. */
 
 import type { Heavy } from './api'
-import { saysCost, saysTable, trustworthy, type ColdReport } from './cold'
+import { saysCost, saysSpan, saysTable, trustworthy, type ColdReport } from './cold'
 import { bytes, exact } from './format'
 import { nameOf, notable, saysCaveat, saysSpender, type SpendReport } from './spend'
 import {
@@ -118,6 +118,14 @@ export interface Finding {
    *  page reports, and the page that owns the action owns its confirmation,
    *  its tier and its wording. */
   act?: { to: string; label: string }
+  /** Set when the claim rests on less than it needs, and saying what it lacks
+   *  — "system.query_log only goes back 11 hours". A tentative finding is
+   *  still shown, because it is still true of the window it was read over; it
+   *  is ranked after every confident one, kept out of the headline count, and
+   *  set apart under a line that says why. Saying the caveat in the sentence
+   *  and then ranking the finding by its gigabytes as if it were sure is the
+   *  combination this field exists to end. */
+  tentative?: string
 }
 
 /* ── The judges ─────────────────────────────────────────────────────────────
@@ -253,6 +261,13 @@ export function fromQueries(report: QueryReport): Finding[] {
  *  back. */
 export function fromTraffic(report: TrafficReport, floorBytes = 100 * 1024 * 1024): Finding[] {
   if (!report.available) return []
+  /* An absence is only as long as the log it was looked for in. Under a day,
+     "nothing has read this" cannot tell a table nobody needs from one nobody
+     needed this morning — the same line `lib/cold` holds, for the same reason —
+     so the claim is made tentatively and in the span it actually covers. */
+  const covered = report.covered_seconds ?? report.window_seconds
+  const span = saysSpan(covered / 86400)
+  const short = covered < TENTATIVE_BELOW_SECONDS
   return (report.unused ?? [])
     .filter((t) => t.bytes >= floorBytes)
     .sort((a, b) => b.bytes - a.bytes)
@@ -261,11 +276,16 @@ export function fromTraffic(report: TrafficReport, floorBytes = 100 * 1024 * 102
       id: `queries:unused:${t.qualified}`,
       area: 'queries',
       urgency: 'worth' as const,
-      title: `Nothing has read ${t.qualified}`,
+      title: short
+        ? `Nothing has read ${t.qualified} in the ${span} the log keeps`
+        : `Nothing has read ${t.qualified}`,
       /* Deliberately not "so drop it". The query log has a TTL and a window,
          and a table read by a monthly report is unread in a week — which is
          the mistake this finding would cost somebody their data over. */
-      why: 'Not in the window the query log covers. A table read by something monthly looks exactly like this, so the log is where to check before anything else.',
+      why: short
+        ? 'Too short a log to say more than that: a table read once a day, or once a month, looks exactly like this. Worth asking again once the log holds a few days.'
+        : 'Not in the window the query log covers. A table read by something monthly looks exactly like this, so the log is where to check before anything else.',
+      ...(short ? { tentative: `system.query_log only goes back ${span}` } : {}),
       evidence: `${exact(t.row_count)} rows, ${bytes(t.bytes)} on disk. Last written ${t.last_write}.`,
       gain: { kind: 'bytes', n: t.bytes },
       object: t.qualified,
@@ -586,6 +606,9 @@ export function rank(findings: Finding[]): Finding[] {
   const weight = (g: Gain) => (g.kind === 'none' ? -1 : g.n)
   return [...findings].sort((a, b) => {
     if (a.urgency !== b.urgency) return a.urgency === 'now' ? -1 : 1
+    /* Sure before unsure, whatever the gigabytes: a tentative 10 GiB leading
+       the page is the page being louder than its evidence. */
+    if (Boolean(a.tentative) !== Boolean(b.tentative)) return a.tentative ? 1 : -1
     if (a.urgency === 'now') return 0
     if (a.gain.kind !== b.gain.kind) return a.gain.kind === 'none' ? 1 : -1
     return weight(b.gain) - weight(a.gain)
@@ -593,7 +616,55 @@ export function rank(findings: Finding[]): Finding[] {
 }
 
 export function inArea(findings: Finding[], area: Area): Finding[] {
-  return rank(findings.filter((f) => f.area === area))
+  return together(rank(findings.filter((f) => f.area === area)))
+}
+
+/** Below this much log, an absence is a tentative claim. A day: the shortest
+ *  span over which a daily job would have shown up. The same line `lib/cold`'s
+ *  `NEEDS_DAYS` holds. */
+export const TENTATIVE_BELOW_SECONDS = 86400
+
+/** The same order, with findings about one table brought together.
+ *
+ *  Ranked by gain alone, two findings about the same table land wherever their
+ *  figures put them — "nothing has read `events`" first, "`payload` in
+ *  `events` holds 5.7 GiB" four rows down — and the reader meets one table
+ *  twice as if it were two problems. Each later finding is moved up to follow
+ *  the first one about its table, so a table is read once.
+ *
+ *  Only within a band: never across `now` and `worth`, which would let a
+ *  saving jump ahead of a failure, and never across sure and tentative, which
+ *  would put an unsure claim back among the sure ones. The first finding of a
+ *  group keeps its place; nothing moves down. */
+export function together(findings: Finding[]): Finding[] {
+  const band = (f: Finding) => `${f.urgency}:${f.tentative ? 't' : 's'}`
+  const out: Finding[] = []
+  for (const f of findings) {
+    const key = f.object ? `${band(f)}|${f.object}` : null
+    let at = -1
+    if (key !== null) {
+      for (let i = out.length - 1; i >= 0; i--) {
+        const g = out[i]!
+        if (g.object && `${band(g)}|${g.object}` === key) {
+          at = i
+          break
+        }
+      }
+    }
+    if (at === -1) out.push(f)
+    else out.splice(at + 1, 0, f)
+  }
+  return out
+}
+
+/** Whether a finding continues the group the one before it started. The
+ *  renderer's question, answered here so both pages answer it the same way. */
+export function follows(findings: Finding[], index: number): boolean {
+  const f = findings[index]
+  const prev = findings[index - 1]
+  return Boolean(
+    f?.object && prev?.object === f.object && f.urgency === prev.urgency && Boolean(f.tentative) === Boolean(prev.tentative),
+  )
 }
 
 /** The lead sentence: what the report found, in one line.
@@ -604,8 +675,14 @@ export function inArea(findings: Finding[], area: Area): Finding[] {
  *  grade. */
 export function saysReport(findings: Finding[], stillReading: number): string {
   const now = findings.filter((f) => f.urgency === 'now').length
-  const worth = findings.length - now
-  const tail = stillReading > 0 ? ` ${stillReading} more still reading.` : ''
+  const unsure = findings.filter((f) => f.urgency !== 'now' && f.tentative).length
+  const worth = findings.length - now - unsure
+  const tail =
+    (unsure > 0 ? ` ${unsure} more the log is too short to be sure of.` : '') +
+    (stillReading > 0 ? ` ${stillReading} more still reading.` : '')
+  if (now === 0 && worth === 0 && unsure > 0) {
+    return `Nothing is clearly worth changing yet.${tail}`
+  }
   if (findings.length === 0) {
     return stillReading > 0
       ? `Reading ${stillReading} things about this server.`

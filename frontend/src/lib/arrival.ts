@@ -30,7 +30,7 @@
  */
 
 import type { Area, Finding } from './checkup'
-import { AREAS, rank } from './checkup'
+import { AREAS, rank, together } from './checkup'
 import { bytes } from './format'
 import { bucketOf, bucketSequence, GRAIN_LABEL, parseStamp, type Grain } from './timeline'
 
@@ -60,11 +60,15 @@ export interface Reading {
 export function inOrder(findings: Finding[], cap = 8): Finding[] {
   const ranked = rank(findings)
   const now = ranked.filter((f) => f.urgency === 'now')
+  /* The unsure ones are not dealt. A tour of the server is a tour of what is
+     known about it; what the log is too short to settle goes after, in its own
+     band, and only into whatever room the sure ones left. */
+  const unsure = ranked.filter((f) => f.urgency !== 'now' && f.tentative)
 
   /* One queue per area, each already in the order its own page would use, so
      dealing from them cannot produce an order that page would disagree with. */
   const queues = new Map<Area, Finding[]>(
-    AREAS.map((a) => [a.id, ranked.filter((f) => f.urgency !== 'now' && f.area === a.id)]),
+    AREAS.map((a) => [a.id, ranked.filter((f) => f.urgency !== 'now' && !f.tentative && f.area === a.id)]),
   )
 
   const dealt: Finding[] = []
@@ -84,7 +88,11 @@ export function inOrder(findings: Finding[], cap = 8): Finding[] {
     if (!handed) break
   }
 
-  return [...now, ...dealt]
+  const room = Math.max(0, cap - now.length - dealt.length)
+  /* Brought together last, so a table met in two areas is read once — see
+     `together`. It only ever moves a finding up beside one already chosen, so
+     the cap and the dealing above are untouched by it. */
+  return together([...now, ...dealt, ...unsure.slice(0, room)])
 }
 
 /** One run of the verdict sentence.
@@ -121,7 +129,11 @@ export function plain(said: Said[]): string {
 export function verdict(findings: Finding[], readings: Reading[]): Said[] {
   const pending = readings.filter((r) => r.state === 'reading').length
   const now = findings.filter((f) => f.urgency === 'now').length
-  const worth = findings.length - now
+  /* The headline is the sentence people repeat, so it counts only what Flint
+     is sure of. The tentative ones are on the list under a line of their own,
+     which is what keeps the count reconcilable with what is shown. */
+  const unsure = findings.filter((f) => f.urgency !== 'now' && f.tentative).length
+  const worth = findings.length - now - unsure
 
   /* "One" stays prose. It is a word here, not a measurement — nobody reads
      `1 thing` as a figure they might act on, and setting it in the data face
@@ -140,6 +152,7 @@ export function verdict(findings: Finding[], readings: Reading[]): Said[] {
       : [{ text: String(worth), figure: true }, { text: ' things here are worth changing.' }]
   }
   if (pending > 0) return [{ text: 'Reading this server.' }]
+  if (unsure > 0) return [{ text: 'Nothing here is clearly worth changing yet.' }]
 
   /* Nothing found — but "nothing is wrong" is only as wide as the readings
      behind it, and on a locked-down account most of them never happened. Found

@@ -795,6 +795,12 @@ pub struct TrafficReport {
     /// the two cannot disagree — and a session, which is minutes, has a
     /// `window_days` of zero and is phrased from this instead.
     pub window_seconds: u64,
+    /// How much of that window `system.query_log` actually holds, to the
+    /// second, and never more than the window. "Nothing read this table in
+    /// seven days" and "nothing read it in the eleven hours the log keeps" are
+    /// different claims, and only this tells them apart: a log with a one-day
+    /// TTL answers a seven-day question without a word of complaint.
+    pub covered_seconds: u64,
     pub traffic: Vec<TableTraffic>,
     pub unused: Vec<UnusedTable>,
 }
@@ -806,6 +812,7 @@ impl TrafficReport {
             reason: Some(reason.into()),
             window_days: days,
             window_seconds: days * 86_400,
+            covered_seconds: 0,
             traffic: Vec::new(),
             unused: Vec::new(),
         }
@@ -932,11 +939,34 @@ pub async fn traffic(
         Err(reason) => return Ok(TrafficReport::unavailable(days, reason)),
     };
 
+    /* Asked last and on its own, and over the whole log rather than the
+    filtered statements: what the unused list rests on is how far back the log
+    goes, whoever ran what in it. Already past the grant check above, so a
+    refusal here is not expected — and if one comes, the window stands in for
+    it, which is what every report claimed before this was measured. An empty
+    log is zero rather than `min()` of nothing, which is 1970 and would read as
+    the whole window. */
+    #[derive(Deserialize)]
+    struct Covered {
+        covered_seconds: u64,
+    }
+    let covered_sql = format!(
+        "SELECT if(count() = 0, 0, toUInt64(least({seconds}, greatest(0, \
+                    dateDiff('second', min(event_time), now()))))) AS covered_seconds \
+         FROM system.query_log \
+         WHERE event_time > now() - INTERVAL {seconds} SECOND"
+    );
+    let covered_seconds = match rows_or_denial::<Covered>(ch, &covered_sql, "query_log").await? {
+        Ok(rows) => rows.first().map_or(0, |c| c.covered_seconds),
+        Err(_) => seconds,
+    };
+
     Ok(TrafficReport {
         available: true,
         reason: None,
         window_days: days,
         window_seconds: seconds,
+        covered_seconds,
         traffic,
         unused,
     })

@@ -14,6 +14,8 @@ import {
   fromQueries,
   fromStorage,
   fromTraffic,
+  follows,
+  together,
   couldHaveBeen,
   rank,
   saysReport,
@@ -726,5 +728,74 @@ describe('ms', () => {
      as a workload that took no time. */
   it('never prints a bare 0 for a positive reading', () => {
     for (const n of [0.04, 0.4, 0.9, 4.9]) expect(ms(n)).not.toBe('0 ms')
+  })
+})
+
+describe('a log too short to settle an absence', () => {
+  const unused = { qualified: 'default.events', engine: 'MergeTree', row_count: 10, bytes: 9e9, last_write: 'then' }
+  const report = (covered: number | undefined) =>
+    ({
+      available: true,
+      window_days: 7,
+      window_seconds: 7 * 86400,
+      ...(covered === undefined ? {} : { covered_seconds: covered }),
+      unused: [unused],
+    }) as unknown as Parameters<typeof fromTraffic>[0]
+
+  it('makes the claim tentatively, in the span it covers', () => {
+    const [f] = fromTraffic(report(11 * 3600))
+    expect(f!.tentative).toBe('system.query_log only goes back 11 hours')
+    expect(f!.title).toBe('Nothing has read default.events in the 11 hours the log keeps')
+  })
+
+  it('makes it plainly once the log holds a day', () => {
+    const [f] = fromTraffic(report(3 * 86400))
+    expect(f!.tentative).toBeUndefined()
+    expect(f!.title).toBe('Nothing has read default.events')
+  })
+
+  it('reads a report from before coverage was measured as covering its window', () => {
+    expect(fromTraffic(report(undefined))[0]!.tentative).toBeUndefined()
+  })
+
+  it('ranks it after every sure finding, whatever it weighs', () => {
+    const out = rank([
+      finding({ id: 'unsure', gain: { kind: 'bytes', n: 1e12 }, tentative: 'short' }),
+      finding({ id: 'sure', gain: { kind: 'bytes', n: 1 } }),
+    ])
+    expect(out.map((f) => f.id)).toEqual(['sure', 'unsure'])
+  })
+
+  it('is counted apart in the lead sentence', () => {
+    expect(saysReport([finding({ tentative: 'short' }), finding({ id: 'y' })], 0)).toBe(
+      '1 is worth doing. 1 more the log is too short to be sure of.',
+    )
+    expect(saysReport([finding({ tentative: 'short' })], 0)).toBe(
+      'Nothing is clearly worth changing yet. 1 more the log is too short to be sure of.',
+    )
+  })
+})
+
+describe('together', () => {
+  const on = (id: string, object: string, over: Partial<Finding> = {}) => finding({ id, object, ...over })
+
+  it('moves a later finding up to follow the first about its table', () => {
+    const out = together([on('a', 't1'), on('b', 't2'), on('c', 't1'), on('d', 't1')])
+    expect(out.map((f) => f.id)).toEqual(['a', 'c', 'd', 'b'])
+    expect(out.map((_, i) => follows(out, i))).toEqual([false, true, true, false])
+  })
+
+  it('never lets a saving join a failure about the same table', () => {
+    const out = together([on('fail', 't1', { urgency: 'now' }), on('other', 't2', { urgency: 'now' }), on('save', 't1')])
+    expect(out.map((f) => f.id)).toEqual(['fail', 'other', 'save'])
+  })
+
+  it('never puts an unsure finding back among the sure ones', () => {
+    const out = together([on('sure', 't1'), on('x', 't2'), on('unsure', 't1', { tentative: 'short' })])
+    expect(out.map((f) => f.id)).toEqual(['sure', 'x', 'unsure'])
+  })
+
+  it('leaves alone what is about no table', () => {
+    expect(together([finding({ id: 'a' }), finding({ id: 'b' })]).map((f) => f.id)).toEqual(['a', 'b'])
   })
 })

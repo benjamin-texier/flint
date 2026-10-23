@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 
 import { api } from '../lib/api'
 import { bytes as fmtBytes, count, relativeTime } from '../lib/format'
@@ -24,6 +24,7 @@ import {
   fromStorage,
   fromTraffic,
   fromTwins,
+  follows,
   SESSION_KEY,
   inArea,
   saysReport,
@@ -446,14 +447,27 @@ function AreaSection({
 
       {open.length > 0 ? (
         <ul className="checkup__list">
-          {open.map((f) => (
-            <FindingRow
-              key={f.id}
-              finding={f}
-              standing={standingOf(f, answers.get(f.id))}
-              onAnswer={onAnswer}
-              busy={answering === f.id}
-            />
+          {open.map((f, i) => (
+            <Fragment key={f.id}>
+              {/* The same line the arrival draws, for the same reason: what
+                  follows rests on less, and says how much less before it is
+                  read. Counted over this area's own list. */}
+              {f.tentative && !open[i - 1]?.tentative ? (
+                <li className="checkup__band">
+                  {(() => {
+                    const n = open.filter((g) => g.tentative).length
+                    return `${n === 1 ? 'One more' : `${n} more`} the log is too short to be sure of — ${f.tentative}.`
+                  })()}
+                </li>
+              ) : null}
+              <FindingRow
+                finding={f}
+                standing={standingOf(f, answers.get(f.id))}
+                onAnswer={onAnswer}
+                busy={answering === f.id}
+                follows={follows(open, i)}
+              />
+            </Fragment>
           ))}
         </ul>
       ) : null}
@@ -507,6 +521,7 @@ export function FindingRow({
   standing,
   onAnswer,
   busy,
+  follows = false,
 }: {
   finding: Finding
   /** Where it stands. Absent on the arrival board, which lists findings and
@@ -515,6 +530,8 @@ export function FindingRow({
   standing?: Standing
   onAnswer?: Answering
   busy?: boolean
+  /** About the same table as the row above — see `together` in `lib/checkup`. */
+  follows?: boolean
 }) {
   /* The note is asked for rather than assumed. A dismissal with no reason is
      the one that somebody else finds six weeks later and cannot evaluate —
@@ -547,7 +564,9 @@ export function FindingRow({
 
   return (
     <li
-      className={`checkup__row checkup__row--${finding.urgency}${
+      className={`checkup__row checkup__row--${finding.urgency}${follows ? ' checkup__row--follows' : ''}${
+        finding.tentative ? ' checkup__row--tentative' : ''
+      }${
         standing && standing.kind !== 'open' ? ` checkup__row--${standing.kind}` : ''
       }`}
     >

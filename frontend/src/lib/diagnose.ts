@@ -104,6 +104,10 @@ export interface TrafficReport {
   reason?: string
   window_days: number
   window_seconds: number
+  /** How much of the window the log actually holds. Optional because a report
+   *  from before it was measured has none, and is read as covering its whole
+   *  window — which is what it claimed. */
+  covered_seconds?: number
   traffic: TableTraffic[]
   unused: UnusedTable[]
 }

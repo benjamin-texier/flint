@@ -5384,6 +5384,38 @@ tr:hover .stratum__fill {
   border-left-color: var(--danger);
 }
 
+/* A second finding about the table the card above is about, joined to it: the
+   gap between them closes and the seam squares off, so two cards read as one
+   table with two things to change. */
+.checkup__row--follows {
+  margin-top: calc(-1 * var(--s2) - 1px);
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+.checkup__list > :has(+ .checkup__row--follows) {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+/* Where the sure findings end, in this area. See `.strata__band`. */
+.checkup__band {
+  padding: var(--s3) 0 0;
+  font-size: var(--size-label);
+  line-height: 1.55;
+  color: var(--chalk-faint);
+}
+
+/* Unsure: the card keeps its words and gives up its weight — no surface of its
+   own, a dashed edge, the figure in the dim ink. */
+.checkup__row--tentative {
+  background: transparent;
+  border-style: dashed;
+  border-left-style: solid;
+}
+.checkup__row--tentative .checkup__worth {
+  color: var(--chalk-dim);
+}
+
 .checkup__head {
   display: flex;
   align-items: baseline;
@@ -15977,6 +16009,36 @@ button.acol__val:hover {
  * keeps is that urgency is an edge and never a wash. */
 .strata__row--now .strata__weight {
   background: var(--alarm);
+}
+
+/* A second finding about the table the band above is about. It continues that
+   band rather than opening one: no hairline over it, and it sits close, so the
+   eye reads one table with two things to say rather than two tables. */
+.strata__row--follows {
+  padding-top: 0;
+  border-top-color: transparent;
+}
+
+/* Where the sure findings end. Set like the labels over a list, because it is
+   one: what follows is the same kind of finding with less under it, and the
+   line says how many and why before any of them is read. */
+.strata__band {
+  padding: var(--s5) 0 var(--s2);
+  border-top: 1px solid var(--line);
+  font-size: var(--size-label);
+  line-height: 1.55;
+  color: var(--chalk-faint);
+}
+
+/* An unsure finding keeps its words and gives up its weight. The gutter is
+   drawn as the empty track — a mark measured against sure findings would rank
+   it among them, which is the one thing the band above says it is not — and its
+   figure steps down to the dim ink. */
+.strata__row--tentative .strata__weight {
+  background: var(--bar-ghost);
+}
+.strata__row--tentative .strata__figure {
+  color: var(--chalk-dim);
 }
 
 .strata__what {
