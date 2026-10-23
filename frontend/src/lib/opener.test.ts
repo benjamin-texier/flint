@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { openers, serverOpeners } from './opener'
+import { openers, recentStatements, serverOpeners } from './opener'
 
 const COLS = [
   { name: 'login', type: 'String' },
@@ -131,5 +131,35 @@ describe('serverOpeners', () => {
       expect(o.sql).toMatch(/^SELECT /)
       expect(o.sql).not.toContain('undefined')
     }
+  })
+})
+
+describe('recentStatements', () => {
+  const run = (query: string, exception = '') => ({ query, exception })
+
+  it('lists a statement run three times once, and counts the runs', () => {
+    const out = recentStatements(
+      [run('SELECT * FROM events LIMIT 200'), run('SELECT 1'), run('SELECT * FROM events LIMIT 200'), run('SELECT * FROM events LIMIT 200')],
+      6,
+    )
+    expect(out.map((e) => [e.sql, e.runs])).toEqual([
+      ['SELECT * FROM events LIMIT 200', 3],
+      ['SELECT 1', 1],
+    ])
+  })
+
+  it('treats a statement reflowed over lines as the same statement', () => {
+    const out = recentStatements([run('SELECT a\nFROM orders'), run('SELECT  a FROM   orders')], 6)
+    expect(out).toHaveLength(1)
+    expect(out[0]!.runs).toBe(2)
+  })
+
+  it('keeps counting a fold after the list is full', () => {
+    const out = recentStatements([run('SELECT 1'), run('SELECT 2'), run('SELECT 1')], 1)
+    expect(out.map((e) => [e.sql, e.runs])).toEqual([['SELECT 1', 2]])
+  })
+
+  it('leaves out a run that failed', () => {
+    expect(recentStatements([run('SELECT nope', 'Code: 47'), run('SELECT 1')], 6).map((e) => e.sql)).toEqual(['SELECT 1'])
   })
 })

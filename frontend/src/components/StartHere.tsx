@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import { api } from '../lib/api'
 import { relativeTime } from '../lib/format'
-import { openers, serverOpeners } from '../lib/opener'
+import { openers, recentStatements, serverOpeners } from '../lib/opener'
 
 /** The query page with nothing on it yet.
  *
@@ -69,9 +69,7 @@ export function StartHere({
     queryFn: () => api.history(100),
     staleTime: 15_000,
   })
-  const recent = (history.data?.available ? history.data.entries : [])
-    .filter((e) => !e.exception)
-    .slice(0, 6)
+  const recent = recentStatements(history.data?.available ? history.data.entries : [], 6)
 
   return (
     <div className="start">
@@ -112,7 +110,7 @@ export function StartHere({
           <p className="start__intro">Select a query to run it again.</p>
           <ul className="start__recent">
             {recent.map((e) => (
-              <li key={e.query_id + e.event_time}>
+              <li key={e.sql}>
                 <button
                   className="start__row"
                   onClick={() => onRun(e.query)}
@@ -120,7 +118,12 @@ export function StartHere({
                   title="Runs this statement"
                 >
                   <span className="start__when">{relativeTime(e.event_time)}</span>
-                  <code className="start__sql">{e.query.replace(/\s+/g, ' ').trim()}</code>
+                  <code className="start__sql">{e.sql}</code>
+                  {e.runs > 1 ? (
+                    <span className="start__runs" title={`Run ${e.runs} times lately`}>
+                      ×{e.runs}
+                    </span>
+                  ) : null}
                 </button>
               </li>
             ))}

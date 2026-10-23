@@ -16245,7 +16245,9 @@ button.acol__val:hover {
 }
 
 .start__sql {
-  flex: 1;
+  /* Its own width rather than the row's, so a fold's count sits beside the
+     statement it counts instead of at the far edge of the card. */
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -16256,6 +16258,16 @@ button.acol__val:hover {
 }
 .start__row:hover .start__sql {
   color: var(--chalk);
+}
+
+/* How many runs a folded row stands for. After the statement rather than
+   before it: the statement is what is being recognised, the count is a
+   footnote to it. */
+.start__runs {
+  flex: none;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
 }
 
 .start__hint {
@@ -16527,7 +16539,10 @@ button.acol__val:hover {
   color: var(--chalk);
   font-weight: 600;
 }
-.start__row { min-height: 44px; }
+/* A touch target's height, with the line in the middle of it: aligned to the
+   baseline the text sat at the top of 44px and each row read as a line with a
+   blank one under it. */
+.start__row { min-height: 44px; align-items: center; }
 .chrome__find { min-height: 32px; }
 @media (max-width: 720px) {
   .arrival-actions { grid-template-columns: 1fr; }

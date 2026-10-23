@@ -157,3 +157,33 @@ export function openers(
 
   return out
 }
+
+/** The statements this server ran lately, once each.
+ *
+ *  `system.query_log` keeps a row per run, so the same `SELECT … LIMIT 200`
+ *  pressed three times from a table's preview filled three of the six places
+ *  with one statement — the list was the log, when what somebody wants back is
+ *  the *thing they asked*. Folded on the statement with its whitespace
+ *  collapsed, newest run first, and every fold keeps its count so the row can
+ *  say how many runs it stands for rather than hide them. Failed runs are left
+ *  out: offering to repeat an error is offering the error. */
+export function recentStatements<T extends { query: string; exception: string }>(
+  entries: T[],
+  limit: number,
+): (T & { sql: string; runs: number })[] {
+  const out: (T & { sql: string; runs: number })[] = []
+  const at = new Map<string, number>()
+  for (const e of entries) {
+    if (e.exception) continue
+    const sql = e.query.replace(/\s+/g, ' ').trim()
+    const seen = at.get(sql)
+    if (seen !== undefined) {
+      out[seen]!.runs += 1
+      continue
+    }
+    if (out.length >= limit) continue
+    at.set(sql, out.length)
+    out.push({ ...e, sql, runs: 1 })
+  }
+  return out
+}
