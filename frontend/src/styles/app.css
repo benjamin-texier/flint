@@ -14610,6 +14610,14 @@ button.acol__val:hover {
   left: calc(var(--rail-w) + var(--s5));
 }
 
+/* Where the rail stacks above the page it has no width to step past, and the
+   offset above put the launcher in the middle of a phone's screen. */
+@media (max-width: 820px) {
+  .shell--railed .cfab {
+    left: var(--s5);
+  }
+}
+
 .cfab:hover,
 .cfab:focus-visible {
   color: var(--chalk);
