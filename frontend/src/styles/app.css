@@ -997,6 +997,17 @@
   max-width: 2100px;
 }
 
+/* Alerts, Reports and APIs are neighbours in the bar and the same kind of page
+   — a head, a list, a form — and they had three caps between them (940, 1080,
+   1000), so stepping across them walked the title along the row by 70px at a
+   time. One measure for all three. It is the width the work area has beside the
+   rail on a 1440px screen, so there, the commonest screen, their left edge is
+   also Dashboards' and Explore's. The cap is on the page box, padding included,
+   so the padding is added back for the content to get its 1080. */
+:root {
+  --measure-list: calc(1080px + 2 * var(--s7));
+}
+
 .page__head {
   margin-bottom: var(--s6);
 }
@@ -7041,9 +7052,17 @@ tr:hover .stratum__fill {
 /* ── Diagnostics ───────────────────────────────────────────────────────────
    A console of sections that each answer one question and each know how to be
    unavailable, because on a locked-down role most of them are. */
-.page--diagnose {
+.page--diagnose,
+.page--board,
+.page--checkup {
   max-width: 1180px;
 }
+
+/* The board and the checkup take the same measure as every section the board
+   points at. Infrastructure's board was `page--wide` and the checkup had no cap
+   at all, so moving along the bar from Home to Health moved the title 130px to
+   the right and the first table's edge with it: the same chrome, the same
+   space, and a page that seemed to have been laid out by somebody else. */
 
 .diag__filter {
   display: flex;
@@ -7358,7 +7377,7 @@ tr:hover .stratum__fill {
 /* ── Alerts ────────────────────────────────────────────────────────────────
    One screen: the list, one form, and the log of what changed. */
 .page--alerts {
-  max-width: 940px;
+  max-width: var(--measure-list);
 }
 
 .page__lead {
@@ -7570,7 +7589,7 @@ tr:hover .stratum__fill {
    A dashboard shows now; a report keeps then. So the editions are as prominent
    as the definitions, and opening one shows what it found at the time. */
 .page--reports {
-  max-width: 1080px;
+  max-width: var(--measure-list);
 }
 
 .rsections {
@@ -7693,7 +7712,7 @@ tr:hover .stratum__fill {
    Two facts have to be unmissable: which parameters a caller must supply, and
    whether the address alone is enough to get the data. */
 .page--publish {
-  max-width: 1000px;
+  max-width: var(--measure-list);
 }
 
 .pub__url {

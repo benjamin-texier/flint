@@ -226,7 +226,7 @@ export function OverviewPage() {
   const said = headline(rows)
 
   return (
-    <article className="page page--wide">
+    <article className="page page--board">
       <header className="page__head">
         <p className="eyebrow">Infrastructure</p>
         <h1 className="page__title page__title--hero">How it stands</h1>
