@@ -8429,6 +8429,9 @@ tr:hover .stratum__fill {
   flex-direction: column;
   gap: var(--s3);
   margin-top: var(--s2);
+  /* The list's own indent, which nothing resets for a `ul`: every card sat
+     40px in from the "5 USERS" over it and from the section's own heading. */
+  padding: 0;
   list-style: none;
 }
 
@@ -8472,6 +8475,22 @@ tr:hover .stratum__fill {
 
 .acc__grants {
   margin-top: var(--s2);
+  /* One split for every card on the page. Each grantee's table is its own
+     table, so under automatic layout each one put the line between "On" and
+     "May" wherever its own longest scope ended — 471px on one card, 416 on the
+     next, 832 on a third — and reading down the page the privileges zig-zagged.
+     A fixed share for the scope and a fixed width for the flag lines them up;
+     a scope longer than its share wraps rather than moving the line. */
+  table-layout: fixed;
+}
+.acc__grants th:first-child {
+  width: 32%;
+}
+.acc__grants th:nth-child(3) {
+  width: 10rem;
+}
+.acc__grants td {
+  overflow-wrap: anywhere;
 }
 
 /* ── The whole path ────────────────────────────────────────────────────────
