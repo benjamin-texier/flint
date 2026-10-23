@@ -3074,7 +3074,13 @@ tr:hover .stratum__fill {
   align-items: center;
   gap: 6px;
   white-space: nowrap;
-  padding: var(--s3) var(--s3);
+  /* 8px a side rather than 12. Fourteen tabs at 12 came to 1184px against the
+     1080 a table page has beside the rail on a 1440px screen, so the last two —
+     Indexes and DDL — sat behind the shade on the commonest laptop there is,
+     and a destination scrolled out of sight is one nobody knows is there.
+     Measured, with 8px of room left at 1440; a fifteenth tab means measuring
+     again, and below that width the strip scrolls under its shade as before. */
+  padding: var(--s3) var(--s2);
   font-size: var(--size-body);
   color: var(--chalk-dim);
   border-bottom: 2px solid transparent;
