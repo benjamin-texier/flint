@@ -3559,6 +3559,54 @@ and the partition key are the two that cannot be applied — both produce a
 migration for a person to read rather than a job — and that is the next real
 design question rather than the next piece of code.
 
+
+### A proposal: deepen the judgement before widening the surface — **proposed, not decided**
+
+Written after a pass over every page in a browser, and offered as an argument
+for the next release rather than a change of plan: what goes into it is the
+owner's call.
+
+**What the pass found.** Nearly every defect it fixed was a symptom of breadth
+rather than of a wrong decision: three widths for three neighbouring pages, a
+rule beaten by the order of a 16,000-line file, a form field carrying the
+padding of a search box it was copied from, a tab strip that fit only until
+the fourteenth tab. Each surface was right when it was built; there are now
+enough of them that they drift apart faster than anyone looks at them side by
+side. Meanwhile the one surface no other ClickHouse tool has, a page that
+*judges* the server, had its loudest finding resting on twelve hours of log
+and ranked by gigabytes as if it were sure.
+
+**What that argues for.** The product's difference is the judgement: the
+checkup, the arrival, the advisors, Diagnose. The parts that make Flint also
+a small Grafana, a small Metabase and an API gateway are useful, and they are
+also where better-funded tools already are. So, for the next release:
+
+- **Take first** what makes a verdict more trustworthy or more answerable:
+  - A10's remaining advisors, in the shape the index advisor set: read the
+    workload, judge in a tested module, measure rather than model.
+  - A13, because sampling (gaps, late rows, a series that stopped) is a
+    judgement about data nothing else on the server makes.
+  - The `tentative` mark (see `lib/checkup`) carried to every judge that reads
+    the log, not only the unread-table one. The share of the workload a
+    statement shape takes is true of twelve hours and says less than it seems
+    to.
+- **Hold** what widens the surface without deepening it: A5's ingestion API,
+  A6's email and PDF delivery, A12's builder, A14's geography. None is wrong.
+  Each is a new surface to keep consistent with the others, and the pass
+  measured what that costs.
+- **Finish the primitives before the next surface.** The stylesheet is one
+  file per surface and the page widths are named measures now. The form field
+  (`.input` with `.bfield`, `.frame__input`, the picker's select — the first
+  and the last side by side in Diagnose's narrowing row, where they had to be
+  forced to one height) and the row list (the board, the strata, the checkup
+  cards, the cleared list) are still a primitive each per page that uses them.
+
+**What would make this wrong.** If the people using Flint mostly come for the
+dashboards and the APIs, the argument inverts. The audit trail (B8) already
+says which endpoints are called and which datasets are read; which pages are
+opened it does not record, and that is the one measurement this proposal would
+need before anyone's taste settles it.
+
 ---
 
 ## Starting without a server — **built**
