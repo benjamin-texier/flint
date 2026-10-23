@@ -35,7 +35,7 @@
 
 import type { Heavy } from './api'
 import { saysCost, saysTable, trustworthy, type ColdReport } from './cold'
-import { bytes } from './format'
+import { bytes, exact } from './format'
 import { nameOf, notable, saysCaveat, saysSpender, type SpendReport } from './spend'
 import {
   notable as notableTwins,
@@ -266,7 +266,7 @@ export function fromTraffic(report: TrafficReport, floorBytes = 100 * 1024 * 102
          and a table read by a monthly report is unread in a week — which is
          the mistake this finding would cost somebody their data over. */
       why: 'Not in the window the query log covers. A table read by something monthly looks exactly like this, so the log is where to check before anything else.',
-      evidence: `${t.row_count} rows, ${t.bytes} bytes on disk. Last written ${t.last_write}.`,
+      evidence: `${exact(t.row_count)} rows, ${bytes(t.bytes)} on disk. Last written ${t.last_write}.`,
       gain: { kind: 'bytes', n: t.bytes },
       object: t.qualified,
       act: { to: '/infra/schema', label: 'Schema' },
@@ -294,7 +294,7 @@ export function fromStorage(report: StorageReport): Finding[] {
       urgency: 'now' as const,
       title: `${p.qualified} — ${p.parts} parts in one partition`,
       why: v.says,
-      evidence: `Partition ${p.partition}: ${p.parts} parts, ${p.row_count} rows, ${p.bytes} bytes. The server delays inserts at ${report.thresholds.delay_insert} and refuses them at ${report.thresholds.throw_insert}.`,
+      evidence: `Partition ${p.partition}: ${p.parts} parts, ${exact(p.row_count)} rows, ${bytes(p.bytes)}. The server delays inserts at ${report.thresholds.delay_insert} and refuses them at ${report.thresholds.throw_insert}.`,
       gain: { kind: 'none' as const },
       object: p.qualified,
       act: { to: '/infra/health', label: 'Merges and parts' },
@@ -318,7 +318,7 @@ export function fromDetached(report: DetachedReport): Finding[] {
       urgency: 'now',
       title: `${report.quarantined} part${report.quarantined === 1 ? '' : 's'} the server quarantined`,
       why: 'ClickHouse detached these itself, which it does when a part is broken or unexpected. Each one is rows that are on the disk and not in the table.',
-      evidence: `${report.total} detached parts altogether, ${report.total_bytes} bytes.`,
+      evidence: `${report.total} detached parts altogether, ${bytes(report.total_bytes)}.`,
       gain: { kind: 'none' },
       act: { to: '/infra/health', label: 'Detached parts' },
     })
@@ -331,7 +331,7 @@ export function fromDetached(report: DetachedReport): Finding[] {
       urgency: 'worth',
       title: `${byHand} part${byHand === 1 ? '' : 's'} detached by hand`,
       why: 'Somebody detached these deliberately. They still occupy the disk, and nothing reads them until they are attached again.',
-      evidence: `${report.total_bytes} bytes across ${report.total} detached parts.`,
+      evidence: `${bytes(report.total_bytes)} across ${report.total} detached parts.`,
       gain: { kind: 'bytes', n: report.total_bytes },
       act: { to: '/infra/health', label: 'Detached parts' },
     })

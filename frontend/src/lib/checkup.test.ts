@@ -214,6 +214,14 @@ describe('fromTraffic', () => {
     expect(out[0]!.why).not.toMatch(/drop/i)
     expect(out[0]!.why).toContain('monthly')
   })
+
+  it('gives its figures at a size somebody can read', () => {
+    // "336972495 rows, 10429416057 bytes" is exact and unreadable: nobody can
+    // tell that from 33 million without counting digits.
+    const big = { ...unused('a.big', 10429416057), row_count: 336972495 }
+    const [out] = fromTraffic(report([big]))
+    expect(out!.evidence).toBe('336,972,495 rows, 9.7 GiB on disk. Last written then.')
+  })
 })
 
 describe('fromBackups', () => {
