@@ -5424,6 +5424,19 @@ tr:hover .stratum__fill {
   flex-wrap: wrap;
 }
 
+/* The two answers in the act's own size and in ink. `.linkish` is the accent,
+   and here it came twice a finding — forty green words down a page whose one
+   colour rule is the danger edge, and a size up from the link beside them, so
+   "Put away" outweighed the thing the finding asks you to go and do. Still
+   underlined: that is what says they can be pressed. */
+.checkup__acts .linkish {
+  font-size: var(--size-label);
+  color: var(--chalk-dim);
+}
+.checkup__acts .linkish:hover {
+  color: var(--chalk);
+}
+
 /* An answered row is quieter than an open one, and only in weight — no wash,
  * no second colour. The page's one colour rule is the danger edge on what is
  * already happening, and an answer must not compete with it. */
