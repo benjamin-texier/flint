@@ -7071,6 +7071,24 @@ tr:hover .stratum__fill {
   margin-top: var(--s3);
 }
 
+/* One row of four controls that had come from three places: the form builder's
+   fields, which carry the 8px under them that a stacked form wants, the
+   database picker's select, mono and 28px, and a segmented button. Side by side
+   the boxes sat 4px above the select and the label broke over two lines to
+   make room for them. Here they are one height on one centre line, and the
+   label keeps to its own. */
+.diag__filter > .label {
+  flex: none;
+  white-space: nowrap;
+}
+.diag__filter .bfield {
+  margin-bottom: 0;
+}
+.diag__filter .picker__select {
+  height: 30px;
+  font-family: var(--font-sans);
+}
+
 .diag__filternote {
   font-size: var(--size-label);
   color: var(--text-muted);
