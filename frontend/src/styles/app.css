@@ -14454,9 +14454,15 @@ button.acol__val:hover {
   z-index: 60;
   display: inline-flex;
   align-items: center;
-  gap: var(--s2);
+  /* No gap: the label and the key are collapsed to zero width at rest, and a
+     flex gap is spent between them anyway — three of them turned a caret into
+     an 84px pill with nothing in its right half, sitting over the last line of
+     every page. The spacing travels with the parts that are shown instead, so
+     at rest it is the caret and its padding and nothing else. */
+  gap: 0;
   height: 38px;
-  padding: 0 var(--s4);
+  min-width: 38px;
+  padding: 0 var(--s3);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-pill);
   background: var(--slab-raised);
@@ -14536,33 +14542,45 @@ button.acol__val:hover {
 .cfab__label,
 .cfab__key {
   max-width: 0;
+  margin-left: 0;
   overflow: hidden;
   white-space: nowrap;
   opacity: 0;
   transition:
     max-width var(--motion-panel) var(--ease),
+    margin-left var(--motion-panel) var(--ease),
     opacity var(--motion-fast) var(--ease);
 }
 
 .cfab:hover .cfab__label,
 .cfab:focus-visible .cfab__label {
   max-width: 6rem;
+  margin-left: var(--s2);
   opacity: 1;
 }
 
 .cfab:hover .cfab__key,
 .cfab:focus-visible .cfab__key {
   max-width: 3rem;
+  margin-left: var(--s2);
   opacity: 1;
 }
 
 .cfab__key {
-  padding: 1px var(--s2);
-  border: 1px solid var(--line);
+  /* Its padding and border would survive a zero max-width and hold 18px of
+     the resting pill open, so they arrive with the key rather than before it. */
+  padding: 1px 0;
+  border: 0 solid var(--line);
   border-radius: var(--radius-sm);
   color: var(--chalk-faint);
   font-family: inherit;
   font-size: var(--size-label);
+}
+
+.cfab:hover .cfab__key,
+.cfab:focus-visible .cfab__key {
+  padding: 1px var(--s2);
+  border-width: 1px;
 }
 
 /* A statement is running behind a hidden console. The one thing the launcher
