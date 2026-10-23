@@ -1,9 +1,7 @@
 /* ── Reports ───────────────────────────────────────────────────────────────
    A dashboard shows now; a report keeps then. So the editions are as prominent
-   as the definitions, and opening one shows what it found at the time. */
-.page--reports {
-  max-width: var(--measure-list);
-}
+   as the definitions, and opening one shows what it found at the time. Its
+   measure is in page.css, with the others. */
 
 .rsections {
   margin-top: var(--s2);

@@ -18,15 +18,39 @@
   max-width: 2100px;
 }
 
-/* Alerts, Reports and APIs are neighbours in the bar and the same kind of page
-   — a head, a list, a form — and they had three caps between them (940, 1080,
-   1000), so stepping across them walked the title along the row by 70px at a
-   time. One measure for all three. It is the width the work area has beside the
-   rail on a 1440px screen, so there, the commonest screen, their left edge is
-   also Dashboards' and Explore's. The cap is on the page box, padding included,
-   so the padding is added back for the content to get its 1080. */
+/* ── The measures ──────────────────────────────────────────────────────────
+   Every width a page may take, here and nowhere else. They were a cap per page,
+   each written in the page's own section — 940, 1000, 1080, 1180, uncapped —
+   and neighbouring pages in one bar drifted apart until stepping along it
+   walked the title across the screen. A page picks a measure by its class; a
+   page that needs a new one adds it here, beside the others, where the next
+   person will see what it is departing from.
+
+   The caps are on the page box, padding included, so a measure meant for the
+   content adds the padding back. */
 :root {
+  /* Alerts, Reports and APIs: neighbours in the bar and the same kind of page —
+     a head, a list, a form. The width the work area has beside the rail on a
+     1440px screen, so there, the commonest screen, their left edge is also
+     Dashboards' and Explore's. */
   --measure-list: calc(1080px + 2 * var(--s7));
+  /* Infrastructure's sections, its board, the checkup and Diagnostics: pages of
+     sections somebody works through. The board and the checkup take the
+     sections' measure because they point at them — on a different one, Home to
+     Health moved the title 130px. */
+  --measure-sections: 1180px;
+}
+
+.page--alerts,
+.page--reports,
+.page--publish {
+  max-width: var(--measure-list);
+}
+
+.page--diagnose,
+.page--board,
+.page--checkup {
+  max-width: var(--measure-sections);
 }
 
 .page__head {

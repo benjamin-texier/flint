@@ -1,8 +1,6 @@
 /* ── Alerts ────────────────────────────────────────────────────────────────
-   One screen: the list, one form, and the log of what changed. */
-.page--alerts {
-  max-width: var(--measure-list);
-}
+   One screen: the list, one form, and the log of what changed. Its measure is
+   in page.css, with the others. */
 
 .page__lead {
   margin-top: var(--s2);

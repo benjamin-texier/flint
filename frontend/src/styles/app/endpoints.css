@@ -1,9 +1,7 @@
 /* ── Published endpoints ───────────────────────────────────────────────────
    Two facts have to be unmissable: which parameters a caller must supply, and
-   whether the address alone is enough to get the data. */
-.page--publish {
-  max-width: var(--measure-list);
-}
+   whether the address alone is enough to get the data. Its measure is in
+   page.css, with the others. */
 
 .pub__url {
   display: flex;

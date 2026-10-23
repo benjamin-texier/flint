@@ -1,17 +1,7 @@
 /* ── Diagnostics ───────────────────────────────────────────────────────────
    A console of sections that each answer one question and each know how to be
-   unavailable, because on a locked-down role most of them are. */
-.page--diagnose,
-.page--board,
-.page--checkup {
-  max-width: 1180px;
-}
-
-/* The board and the checkup take the same measure as every section the board
-   points at. Infrastructure's board was `page--wide` and the checkup had no cap
-   at all, so moving along the bar from Home to Health moved the title 130px to
-   the right and the first table's edge with it: the same chrome, the same
-   space, and a page that seemed to have been laid out by somebody else. */
+   unavailable, because on a locked-down role most of them are. Its measure is
+   in page.css, with the others. */
 
 .diag__filter {
   display: flex;
