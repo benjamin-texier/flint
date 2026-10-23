@@ -1,0 +1,1050 @@
+/* ═══ Schema canvas ══════════════════════════════════════════════════════
+ * The hero. A ClickHouse schema is a pipeline, so it is drawn as one: sources
+ * on the left, what consumes them to the right, data flowing along the edges.
+ * The flow is the single piece of ambient motion in the product — everything
+ * else moves only in response to a pointer. */
+
+.schema {
+  margin-top: var(--s8);
+}
+
+.schema__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s2) var(--s3);
+  margin-bottom: var(--s3);
+}
+
+.schema__title {
+  font-size: var(--size-head);
+  color: var(--chalk);
+}
+
+.schema__sub {
+  /* A sentence needs a measure before it needs to stay on the title's line.
+     Held to one line beside six readings, it was handed what they left over —
+     on a phone, sixty pixels, one word to a line for nine lines — so below
+     about twenty characters' worth of room it takes a line of its own and the
+     readings take the next. */
+  flex: 1 1 20ch;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--size-data);
+  color: var(--chalk-faint);
+}
+
+/* And the readings scroll inside their own box rather than off the page's
+   edge, which is where the sixth of them was going at 390px. They push
+   themselves right instead of a spacer doing it: a spacer grows as much as the
+   sentence does, and took half the line the sentence had just been given. */
+.schema__head > .panel__spacer {
+  display: none;
+}
+.schema__head > .segmented {
+  max-width: 100%;
+  margin-left: auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+/* ═══ Diagram frame ══════════════════════════════════════════════════════
+ * One instrument rather than three things stacked on a page: the caption, the
+ * toolbar, the canvas and the details panel are rows and columns of a single
+ * card, divided by hairlines. They travel together, so going full screen takes
+ * the diagram *and* the controls that steer it. */
+
+.frame {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+}
+
+.frame:fullscreen {
+  border: none;
+  border-radius: 0;
+  background: var(--bg-surface);
+}
+.frame:fullscreen .canvas {
+  flex: 1;
+  height: auto;
+}
+
+/* The canvas and its details panel sit side by side, so inspecting an object
+ * never costs you the view you built up. Both are the same height: a short
+ * diagram beside a long panel used to leave a hole under the canvas. */
+.frame__body {
+  display: flex;
+  min-height: 0;
+  /* Not animated: the diagram re-fits itself against this height, and a value
+   * that is still moving is a value it fits to wrongly. */
+  height: var(--body-h);
+}
+.frame__body > .canvas {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: none;
+  border-radius: 0;
+}
+.frame:fullscreen .frame__body {
+  flex: 1;
+  height: auto;
+}
+
+/* The two header rows: what is drawn, then how it is drawn. */
+.frame__lead,
+.frame__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  padding: var(--s3) var(--s4);
+  border-bottom: 1px solid var(--divider);
+}
+
+.frame__lead {
+  background: var(--bg-surface-2);
+}
+
+.frame__search,
+.searchbox {
+  position: relative;
+  flex: 0 1 240px;
+}
+.searchbox {
+  flex: 0 1 220px;
+}
+
+.frame__glass,
+.searchbox__glass {
+  position: absolute;
+  left: 11px;
+  top: 9px;
+  width: 13px;
+  height: 13px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.frame__input,
+.searchbox__input {
+  width: 100%;
+  height: 32px;
+  padding: 0 var(--s3) 0 30px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  font-size: 13px;
+  transition: border-color var(--motion-fast) var(--ease);
+}
+.frame__input::placeholder,
+.searchbox__input::placeholder {
+  color: var(--text-muted);
+}
+.frame__input:focus,
+.searchbox__input:focus {
+  border-color: var(--accent);
+}
+.frame__input:focus:not(:focus-visible),
+.searchbox__input:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.frame__bar .segmented__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ── Database boxes ─────────────────────────────────────────────────────
+ * Kiali boxes a mesh graph by namespace; the same idea for a schema that
+ * reaches across databases, where the boundary is itself information. */
+.gbox {
+  position: absolute;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--text-muted) 4%, transparent);
+  pointer-events: none;
+}
+
+.gbox__label {
+  position: absolute;
+  top: 5px;
+  left: 12px;
+  font-family: var(--font-mono);
+  font-size: var(--size-label);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+}
+
+/* ── Node details panel ────────────────────────────────────────────────── */
+.npanel {
+  flex: 0 0 320px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  padding: var(--s4);
+  max-height: 100%;
+  overflow-y: auto;
+  background: var(--bg-surface);
+  border-left: 1px solid var(--border);
+  animation: panelIn var(--motion-base) var(--ease) both;
+}
+
+@keyframes panelIn {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+}
+
+.npanel__head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+}
+
+.npanel__title {
+  flex: 1;
+  min-width: 0;
+}
+
+.npanel__name {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 500;
+  word-break: break-word;
+  color: var(--text-primary);
+}
+
+.npanel__kind {
+  margin: 2px 0 0;
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+.npanel__close {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-sm);
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--text-muted);
+}
+.npanel__close:hover {
+  color: var(--text-primary);
+  background: var(--fill);
+}
+
+.npanel__lead {
+  margin: 0;
+  font-size: var(--size-label);
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.npanel__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2) var(--s4);
+  margin: 0;
+  padding: var(--s3) 0;
+  border-top: 1px solid var(--divider);
+  border-bottom: 1px solid var(--divider);
+}
+
+.npanel__statval {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+.npanel__statval.is-accent {
+  color: var(--accent);
+}
+
+.npanel__statlabel {
+  margin-top: 1px;
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.npanel__shape {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.npanel__key {
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.npanel__value {
+  margin: 1px 0 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  word-break: break-word;
+  color: var(--text-primary);
+}
+
+.npanel__section {
+  border-top: 1px solid var(--divider);
+  padding-top: var(--s3);
+}
+
+.npanel__sectiontitle {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin-bottom: var(--s2);
+  font-size: var(--size-label);
+  font-weight: 600;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.npanel__n {
+  font-family: var(--font-mono);
+  font-weight: 500;
+}
+
+.npanel__none {
+  margin: 0;
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+.npanel__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.npanel__link {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 4px 6px;
+  margin-left: -6px;
+  border-radius: var(--radius-sm);
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.npanel__link:hover {
+  background: var(--fill);
+  color: var(--text-primary);
+}
+
+.npanel__linkname {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.npanel__linkdb {
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+.npanel__actions {
+  position: sticky;
+  bottom: calc(-1 * var(--s4));
+  display: flex;
+  gap: var(--s2);
+  margin: auto calc(-1 * var(--s4)) calc(-1 * var(--s4));
+  padding: var(--s3) var(--s4) var(--s4);
+  background: var(--bg-surface);
+  border-top: 1px solid var(--divider);
+}
+
+/* ── The first row, in the panel ────────────────────────────────────────
+ * Turned on its side: field names down the left, the values beside them. A
+ * 320px column cannot hold a grid, but it holds a record comfortably. */
+.sample {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+}
+
+.sample__field {
+  display: grid;
+  grid-template-columns: minmax(0, 11ch) minmax(0, 1fr);
+  gap: var(--s2);
+  align-items: baseline;
+}
+
+.sample__col,
+.sample__val {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-data);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.sample__col {
+  color: var(--text-muted);
+}
+
+.sample__val {
+  margin: 0;
+  color: var(--text-primary);
+}
+/* A NULL and an empty string are absences, and should not read as loudly as a
+   value. */
+.sample__val.is-void {
+  color: var(--text-muted);
+}
+
+.sample__note {
+  margin: var(--s2) 0 0;
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+/* ── Node context menu ─────────────────────────────────────────────────
+ * Fixed to the cursor rather than to the diagram: the canvas clips and
+ * transforms its own contents, and a menu belongs to the screen. */
+.nmenu {
+  position: fixed;
+  z-index: 40;
+  min-width: 168px;
+  padding: var(--s1);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--slab-raised);
+  box-shadow: var(--shadow-3);
+  animation: popIn var(--motion-fast) var(--ease) both;
+}
+
+.nmenu__head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  padding: var(--s1) var(--s2) var(--s2);
+  border-bottom: 1px solid var(--divider);
+}
+
+.nmenu__name {
+  min-width: 0;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+
+.nmenu__kind {
+  margin-left: auto;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.nmenu__item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 28px;
+  margin-top: 2px;
+  padding: 0 var(--s2);
+  border-radius: var(--radius-sm);
+  text-align: left;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.nmenu__item:hover,
+.nmenu__item:focus-visible {
+  background: var(--slab-hover);
+  color: var(--text-primary);
+}
+
+/* Sits over the canvas rather than replacing it, so the toolbar stays put and
+ * you can widen the filter without the frame jumping. */
+.canvas__nomatch {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: var(--s2);
+  text-align: center;
+  background: color-mix(in srgb, var(--bg-canvas) 82%, transparent);
+}
+
+/* The controls above a focused schema: what it is centred on, how far out it
+ * reaches, and the way back to the whole thing. */
+/* A caption for the diagram, not a toolbar over it. It says which slice you are
+   looking at; the two controls that change that slice sit at the end of the
+   sentence rather than in a panel of their own. */
+.focusbar {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  flex: 1;
+  padding: 0 2px;
+  font-size: var(--size-data);
+  color: var(--chalk-dim);
+}
+
+.focusbar__rest {
+  color: var(--chalk-faint);
+}
+
+.focusbar__unit {
+  margin-left: calc(var(--s3) * -1 + var(--s1));
+}
+
+/* The name of the centre *is* the picker. A real `select` lies invisible over
+   the name, so the keyboard and the screen reader get a proper listbox while
+   the width comes from the one name on show rather than from the longest of a
+   hundred and seventy. */
+.focusbar__centre {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+}
+.focusbar__centre:hover {
+  background: var(--fill);
+}
+.focusbar__centre:focus-within {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.focusbar__name {
+  max-width: 30ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-data);
+  font-weight: 500;
+  color: var(--chalk);
+}
+
+.focusbar__caret {
+  width: 0;
+  height: 0;
+  border-left: 3.5px solid transparent;
+  border-right: 3.5px solid transparent;
+  border-top: 4px solid var(--chalk-faint);
+}
+
+.focusbar__select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.canvas {
+  position: relative;
+  height: min(58vh, 620px);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-canvas);
+  cursor: grab;
+  touch-action: none;
+  contain: paint;
+}
+.canvas:active {
+  cursor: grabbing;
+}
+
+.canvas--empty,
+.canvas--loading {
+  display: grid;
+  place-content: center;
+  gap: var(--s2);
+  text-align: center;
+  cursor: default;
+  height: 280px;
+}
+
+.canvas__emptytitle {
+  margin: 0;
+  font-size: var(--size-head);
+  color: var(--chalk-dim);
+}
+.canvas__emptyhint {
+  margin: 0;
+  max-width: 46ch;
+  font-size: var(--size-data);
+  color: var(--chalk-faint);
+}
+
+.canvas__stage {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  /* The dot grid scales with the view, so zooming reads as moving through
+   * space rather than resizing a picture. */
+  background-image: radial-gradient(var(--grid-dot) 1px, transparent 1px);
+  background-size: var(--grid, 26px) var(--grid, 26px);
+}
+
+.canvas__edges {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.canvas__band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, var(--line-strong), transparent 92%);
+}
+
+.canvas__bandlabel {
+  position: absolute;
+  top: 8px;
+  left: 0;
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+.canvas__hud {
+  position: absolute;
+  inset: auto var(--s3) var(--s3) var(--s3);
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--s3);
+  pointer-events: none;
+}
+
+.canvas__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1) var(--s3);
+  padding: 6px var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--slab) 88%, transparent);
+  backdrop-filter: blur(6px);
+}
+
+/* A legend that is also the filter, so it has to look pressable without
+   becoming a row of buttons under the picture — and it has to *be* clickable,
+   which a span in a `pointer-events: none` HUD did not need to be. */
+.lgd {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  font-size: var(--size-label);
+  color: var(--chalk-dim);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--motion-fast) var(--ease-out),
+    background var(--motion-fast) var(--ease-out);
+}
+.lgd:hover {
+  color: var(--chalk);
+  background: var(--slab-hover);
+}
+/* The one legend entry that is not a filter: it names an encoding rather than
+   a set of objects, so it does not offer to hide anything. */
+.lgd--folds {
+  cursor: default;
+  color: var(--chalk-faint);
+}
+.lgd--folds:hover {
+  color: var(--chalk-dim);
+  background: none;
+}
+
+/* Neither is the flow pair: they name an encoding and a count, and there is
+   nothing to filter down to. `--severed` keeps the alarm ink of the edges it
+   counts — it is the one entry in this legend a reader may have to act on. */
+.lgd--flow,
+.lgd--severed {
+  cursor: default;
+}
+.lgd--flow:hover,
+.lgd--severed:hover {
+  background: none;
+}
+.lgd--severed {
+  color: var(--danger-text);
+}
+.lgd--severed:hover {
+  color: var(--danger-text);
+}
+
+/* Switched off: still counted, still clickable, plainly not drawn. */
+.lgd.is-off {
+  color: var(--chalk-faint);
+  opacity: 0.55;
+}
+.lgd.is-off .glyph {
+  filter: grayscale(1);
+}
+
+.lgd .glyph {
+  width: 7px;
+  height: 7px;
+}
+/* The rail mark is a bar, not a dot: it keeps its shape at legend size. */
+.lgd .glyph--folds {
+  width: 3px;
+  height: 9px;
+}
+/* The flow marks are lines, not dots: they keep their length at legend size. */
+.lgd .glyph--flow,
+.lgd .glyph--severed {
+  width: 12px;
+  height: 2px;
+}
+
+.canvas__zoom {
+  display: flex;
+  gap: 1px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--slab) 88%, transparent);
+  backdrop-filter: blur(6px);
+  pointer-events: auto;
+}
+
+.iconbtn {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 22px;
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  line-height: 1;
+  color: var(--chalk-dim);
+  transition: color var(--motion-fast) var(--ease-out), background var(--motion-fast) var(--ease-out);
+}
+.iconbtn:hover {
+  color: var(--chalk);
+  background: var(--slab-hover);
+}
+.iconbtn--wide {
+  width: auto;
+  padding: 0 var(--s2);
+  font-size: var(--size-label);
+}
+
+.canvas__hint {
+  position: absolute;
+  top: var(--s3);
+  right: var(--s3);
+  margin: 0;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--motion-base) var(--ease-out);
+}
+.canvas:hover .canvas__hint {
+  opacity: 1;
+}
+
+/* ── Nodes ─────────────────────────────────────────────────────────────── */
+
+.gnode {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px 11px 9px 13px;
+  text-align: left;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--slab-raised);
+  box-shadow: var(--shadow-1), var(--lip);
+  overflow: hidden;
+  animation: nodeIn var(--motion-chart) var(--ease) both;
+  animation-delay: var(--delay, 0ms);
+  transition: transform var(--motion-fast) var(--ease), box-shadow var(--motion-fast) var(--ease),
+    border-color var(--motion-fast) var(--ease), opacity var(--motion-base) var(--ease-out);
+}
+
+/* The kind stripe down the leading edge: the diagram's colour key. */
+/* The rail carries two facts at once, and they are kept in different channels
+   on purpose. Its *colour* is the object's kind — table, view, materialized
+   view, dictionary — and nothing else may use that palette. Its *pattern* is
+   what the engine does with rows: see `engineBehaviour`. Colour answers "what
+   is this", pattern answers "and how does it behave", and neither has to be
+   read through the other. */
+.gnode {
+  --gnode-ink: var(--k-table);
+}
+.gnode--view {
+  --gnode-ink: var(--k-view);
+}
+.gnode--materialized_view {
+  --gnode-ink: var(--k-matview);
+}
+.gnode--dictionary {
+  --gnode-ink: var(--k-dictionary);
+}
+
+.gnode::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--gnode-ink);
+}
+
+/* Folds several rows into one as parts merge — Replacing, Summing,
+   Aggregating, Collapsing. Drawn as a rail cut into segments, because that is
+   the shape of the thing: what arrives in pieces leaves as fewer. */
+.gnode--folds::before {
+  background: repeating-linear-gradient(
+    180deg,
+    var(--gnode-ink) 0 6px,
+    transparent 6px 10px
+  );
+}
+
+/* Stores nothing here — Distributed, Kafka, Buffer, a view. The rail is washed
+   out rather than absent: the node is still of its kind, it simply has no rows
+   of its own to stand on. */
+.gnode--passes::before {
+  background: color-mix(in srgb, var(--gnode-ink) 48%, transparent);
+}
+
+.gnode:hover,
+.gnode:focus-visible {
+  transform: translateY(-2px);
+  border-color: var(--spark-line);
+  box-shadow: var(--shadow-2), var(--lip);
+  /* The lift says "this one"; the ring says "and the keyboard is here". */
+  outline-offset: 2px;
+}
+
+.gnode.is-focused {
+  border-color: var(--spark);
+  box-shadow: var(--shadow-2), 0 0 0 3px var(--spark-wash), var(--lip);
+}
+
+/* Where you came from, on a path drawn from an object's own page. A standing
+ * ring rather than the hover treatment: hovering has to stay legible on top of
+ * it, so this reads through the accent's wash and leaves the lift to hover. */
+.gnode.is-here {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-1), 0 0 0 2px var(--accent-weak), var(--lip);
+}
+
+.gnode.is-dim {
+  opacity: 0.26;
+  box-shadow: none;
+}
+
+.gnode--external {
+  border-style: dashed;
+}
+
+.gnode__top {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.gnode__name {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  font-weight: 500;
+  color: var(--chalk);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gnode__db {
+  flex: none;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.gnode__engine {
+  font-size: var(--size-label);
+  letter-spacing: 0.02em;
+  color: var(--chalk-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* `Replacing` in `ReplacingMergeTree`. Every table on the diagram ends in the
+   same nine letters, so the qualifier is the only part worth reading first —
+   the family stays beside it in the quieter ink, and the full name is still
+   there to be read. */
+.gnode__enginekey {
+  font-weight: 600;
+  color: var(--chalk-dim);
+}
+
+.gnode__enginefam {
+  color: var(--chalk-faint);
+}
+
+.gnode__facts {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: auto;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-dim);
+}
+
+.gnode__sep {
+  width: 1px;
+  height: 9px;
+  background: var(--line-strong);
+}
+
+@keyframes nodeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+}
+
+/* ── Edges ─────────────────────────────────────────────────────────────── */
+
+.gedge {
+  transition: opacity var(--motion-base) var(--ease-out);
+}
+
+.gedge__line {
+  fill: none;
+  stroke: var(--edge);
+  stroke-width: 1.5;
+  opacity: 0.9;
+}
+
+.gedge__head {
+  fill: var(--edge);
+  stroke: none;
+}
+
+/* The one ambient motion in the product, and the only thing on the page that
+ * moves without being asked — so it had better be saying something. It is: a
+ * dot on an edge is rows that actually went through that pipe inside the
+ * window, read out of `system.query_views_log` (see `lib/flow.ts`). An edge
+ * with no dots on it moved nothing, and an edge that never had a chance to —
+ * a plain view's SELECT, a dictionary's source — has none by construction.
+ *
+ * The spacing carries the volume and the speed is constant, because two curves
+ * of different lengths cannot be compared by how fast something crosses them,
+ * and a fast dot reads as urgency rather than as quantity. `--gap` comes from
+ * the reading; the pace is `--flow-speed`, one physics for every pipe. */
+.gedge__flow {
+  --dot: 2;
+  /* The fallback lives in the `var()` rather than in a declaration here: a
+     `--gap` of its own on this element would *beat* the one the reading sets on
+     the group above it, and every pipe would be drawn at the same spacing —
+     which is the bug this whole reading exists to remove. */
+  --period: calc(var(--dot) + var(--gap, 23));
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2.25;
+  stroke-linecap: round;
+  stroke-dasharray: calc(var(--dot) * 1px) calc(var(--gap, 23) * 1px);
+  opacity: 0.75;
+  /* token-exempt: `* 1s` is the unit conversion that turns a unitless --period
+     into a time, not a duration somebody chose. */
+  animation: flow calc(var(--period) / var(--flow-speed) * 1s) linear infinite;
+}
+@keyframes flow {
+  to {
+    stroke-dashoffset: calc(var(--period) * -1px);
+  }
+}
+/* Past the scale: drawn at the densest spacing it can be drawn at, and
+   brightened so it reads as a pipe running off the top of the scale rather
+   than as the top of it. The legend counts these. */
+.gedge.is-past .gedge__flow {
+  opacity: 1;
+  stroke: var(--accent-2);
+}
+.gedge--writes .gedge__line {
+  stroke-width: 2;
+}
+
+/* Severed: the view cannot run at all. The only edge state that changes the
+   line itself, because it is the only one a reader has to act on — and the gap
+   in the stroke is the point, a pipe with a piece missing. Both of the view's
+   edges get it, the source's included: a dropped target fails the insert one
+   hop before the view is reached. */
+.gedge--broken .gedge__line {
+  stroke: var(--alarm);
+  stroke-dasharray: 5 4;
+  opacity: 0.85;
+}
+.gedge--broken .gedge__head {
+  fill: var(--alarm);
+}
+
+.gedge.is-lit .gedge__line {
+  stroke: var(--accent);
+}
+.gedge.is-lit .gedge__head {
+  fill: var(--spark);
+}
+/* Tracing a lineage brightens the dots; it does not speed them up. The pace is
+   the scale's unit — a hover that moved it would make the same pipe read as
+   two different volumes. */
+.gedge.is-lit .gedge__flow {
+  opacity: 1;
+}
+.gedge.is-lit.gedge--broken .gedge__line {
+  stroke: var(--alarm);
+}
+
+.gedge.is-dim {
+  opacity: 0.12;
+}
+.gedge.is-dim .gedge__flow {
+  opacity: 0;
+}

@@ -12,7 +12,8 @@ Its own file rather than a heredoc inside the hook, because `git show … |
 python3 - <<PY` hands python the *heredoc* as its program and the piped content
 never arrives. That mistake made this pass on everything.
 
-Reads the file on stdin; prints what it found and exits 1, or exits 0.
+Reads the file on stdin, and its name as the one argument for the message;
+prints what it found and exits 1, or exits 0.
 """
 import re
 import sys
@@ -62,9 +63,11 @@ def findings(src):
 
 
 def main():
+    # The file's name, for the message only: the content is always stdin.
+    name = sys.argv[1] if len(sys.argv) > 1 else "app.css"
     bad = findings(sys.stdin.read())
     for line, what, text in bad:
-        print(f"app.css:{line}: {what} where a token belongs", file=sys.stderr)
+        print(f"{name}:{line}: {what} where a token belongs", file=sys.stderr)
         print(f"  {text[:96]}", file=sys.stderr)
     if bad:
         print(

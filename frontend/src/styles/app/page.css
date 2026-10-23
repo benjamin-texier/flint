@@ -1,0 +1,189 @@
+/* ═══ Page scaffolding ═══════════════════════════════════════════════════ */
+
+/* The cap is there to protect reading: 1560px keeps a paragraph and a metric
+   line at a sane measure. What it must not do is pile every leftover pixel into
+   one void on the right — on a 2560px screen that was 736px of nothing on one
+   side and none on the other, which reads as a broken layout rather than as
+   margin. Centred, the same leftover becomes two gutters. */
+.page {
+  max-width: 1560px;
+  margin-inline: auto;
+  padding: var(--s7) var(--s7) var(--s8);
+}
+
+/* A page whose content is a diagram and a nine-column table has no line length
+   to protect, so it takes the room the text cap gives up. Bounded all the same:
+   without a limit the diagram frame becomes a letterbox on an ultrawide. */
+.page--wide {
+  max-width: 2100px;
+}
+
+/* Alerts, Reports and APIs are neighbours in the bar and the same kind of page
+   — a head, a list, a form — and they had three caps between them (940, 1080,
+   1000), so stepping across them walked the title along the row by 70px at a
+   time. One measure for all three. It is the width the work area has beside the
+   rail on a 1440px screen, so there, the commonest screen, their left edge is
+   also Dashboards' and Explore's. The cap is on the page box, padding included,
+   so the padding is added back for the content to get its 1080. */
+:root {
+  --measure-list: calc(1080px + 2 * var(--s7));
+}
+
+.page__head {
+  margin-bottom: var(--s6);
+}
+
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin: 0 0 var(--s2);
+  font-size: var(--size-label);
+  font-weight: 500;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+.eyebrow__sep {
+  color: var(--chalk-faint);
+  opacity: 0.5;
+}
+
+.page__titlerow {
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
+  flex-wrap: wrap;
+}
+
+/* The name of the thing you opened, in the editorial voice — a database, a
+ * server, a page's own title. This is the second of the two places the serif is
+ * spent, and the rationing is deliberate: section headings below it stay in the
+ * sans (`--font-display`), so the register change marks the top of the page
+ * rather than decorating every heading on it.
+ *
+ * `-0.025em` was tracking tuned for the geometric sans. Fraunces is drawn with
+ * its own fit and reads cramped at that figure, so it opens to -0.01em, the
+ * same value the verdict settles on. */
+.page__title {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  font-family: var(--font-voice);
+  font-weight: 500;
+  font-size: var(--size-hero);
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+}
+.page__title--hero {
+  font-size: 2.375rem;
+}
+
+/* Pushed to the far end of the row: an action set immediately after the name,
+   at the same weight, competes with it — and the name is what the reader came
+   to read. */
+.page__actions {
+  display: flex;
+  gap: var(--s2);
+  margin-left: auto;
+}
+
+.page__sub {
+  margin: var(--s2) 0 0;
+  font-size: var(--size-body);
+  color: var(--chalk-dim);
+}
+
+/* The one-sentence answer to "what am I looking at". Wide measure, relaxed
+ * leading — it is prose, not a label. */
+.page__lead {
+  margin: var(--s3) 0 0;
+  max-width: 62ch;
+  font-size: var(--size-body);
+  line-height: 1.65;
+  color: var(--chalk-dim);
+}
+
+.section {
+  margin-top: var(--s8);
+}
+
+.section__bar {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s4);
+  margin-bottom: var(--s4);
+}
+
+.section__title {
+  margin-bottom: var(--s4);
+  font-size: var(--size-head);
+  color: var(--chalk);
+}
+.section__title--bare {
+  flex: 1;
+  margin: 0;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+}
+
+.segmented {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--fill);
+}
+
+.segmented__item {
+  height: 26px;
+  padding: 0 var(--s3);
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: 500;
+  /* A segmented control never wraps. A two-word label broke across two lines the
+     first time one appeared beside a long sentence — `A week` over two rows in a
+     26px pill, which reads as a rendering fault rather than as a choice. */
+  white-space: nowrap;
+  color: var(--text-secondary);
+  transition: color var(--motion-fast) var(--ease),
+    background var(--motion-fast) var(--ease);
+}
+.segmented__item:hover {
+  color: var(--text-primary);
+}
+.segmented__item.is-on {
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-card);
+}
+/* A direction that cannot be taken. It keeps its label and its tooltip — the
+ * sentence on it is the explanation — and stops looking pressable. */
+.segmented__item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.segmented__item:disabled:hover {
+  color: var(--text-secondary);
+}
+
+/* The name and the headline figures are one band, closed by a hairline; the
+ * schema and the object list are the work below it. Without the rule the
+ * figures floated between the two and belonged to neither. */
+.page--database .page__head {
+  margin-bottom: var(--s5);
+}
+.page--database .metrics {
+  padding-bottom: var(--s5);
+  border-bottom: 1px solid var(--border);
+}
+.page--database .schema {
+  margin-top: var(--s5);
+}
+.page--database .section {
+  margin-top: var(--s6);
+}

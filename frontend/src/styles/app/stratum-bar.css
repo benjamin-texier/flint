@@ -1,0 +1,61 @@
+/* ═══ Stratum bar: storage, drawn as columns ══════════════════════════════
+ * Ghost outline = uncompressed extent, solid fill = bytes on disk, both scaled
+ * to the largest column. A long ghost with a sliver of fill is a column that
+ * compresses beautifully; a solid bar is what your disk actually is. */
+
+.stratum {
+  position: relative;
+  height: 9px;
+  width: 100%;
+}
+
+/* A column past the scale: the bar is full width, and this edge says it does
+ * not stop there. Accent-coloured because it is the one thing in the bar that
+ * is a statement about the scale rather than about the data. */
+.stratum.is-over::after {
+  content: '';
+  position: absolute;
+  top: -1px;
+  right: 0;
+  bottom: -1px;
+  width: 2px;
+  background: var(--spark);
+}
+
+.stratum__ghost,
+.stratum__fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: 2px;
+}
+
+.stratum__ghost {
+  background: var(--bar-ghost);
+}
+
+.stratum__fill {
+  background: var(--bar);
+  transition: background var(--motion-fast) var(--ease-out);
+}
+
+/* A bar that carries a verdict. Only the two loud levels take a colour: a bar
+ * that is always tinted teaches nobody anything, and `ok` is the answer most
+ * bars have most of the time. */
+.stratum__fill--watch {
+  background: var(--warning);
+}
+
+.stratum__fill--delay,
+.stratum__fill--throw {
+  background: var(--alarm);
+}
+
+.stratum--empty {
+  visibility: hidden;
+}
+
+tr:hover .stratum__fill {
+  background: var(--spark);
+}

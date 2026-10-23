@@ -1,0 +1,74 @@
+/* ═══ Tabs ═══════════════════════════════════════════════════════════════ */
+
+/* Thirteen tabs need about 1080px, and the column they sit in is 1078px at
+   1440 and 820px at 1100. Left as a plain flex row they did the two worst
+   things a tab strip can do at once: the labels that hold two words broke
+   across two lines — "Write / rows", "Schema / review" — giving a strip with a
+   ragged baseline and half again the height, and once the words stopped
+   shrinking the row simply overflowed its container with `overflow: visible`,
+   putting Projections and DDL past the right edge of the *document*. Below
+   1440px the DDL tab could not be reached at all, by pointer or by scroll, and
+   nothing on the page said it was there. So: the strip scrolls sideways, the
+   labels never wrap, and the `.wide` wrapper shades whichever side has more on
+   it — the same treatment the wide tables get, for the same reason. */
+.tabs {
+  position: relative;
+  display: flex;
+  gap: var(--s1);
+  margin-top: var(--s7);
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+  /* The strip's own scrollbar would sit on the rule that separates it from the
+     panel below, which reads as a broken border rather than as a control. The
+     shade at the edge is what says there is more, and it says it without
+     taking a pixel of the border. */
+  scrollbar-width: none;
+}
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+
+/* Thirteen tabs in the muted tier read as thirteen disabled controls — the row
+   that holds everything worth opening on this page looked like the one thing on
+   it you could not touch. Rest is the dim tier, hover is full ink, and the
+   underline arrives under the pointer before the click rather than after. */
+.tabs__tab {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  /* 8px a side rather than 12. Fourteen tabs at 12 came to 1184px against the
+     1080 a table page has beside the rail on a 1440px screen, so the last two —
+     Indexes and DDL — sat behind the shade on the commonest laptop there is,
+     and a destination scrolled out of sight is one nobody knows is there.
+     Measured, with 8px of room left at 1440; a fifteenth tab means measuring
+     again, and below that width the strip scrolls under its shade as before. */
+  padding: var(--s3) var(--s2);
+  font-size: var(--size-body);
+  color: var(--chalk-dim);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color var(--motion-fast) var(--ease-out), border-color var(--motion-fast) var(--ease-out);
+}
+.tabs__tab:hover {
+  color: var(--chalk);
+  border-bottom-color: var(--line-strong);
+}
+.tabs__tab.is-active:hover {
+  border-bottom-color: var(--spark);
+}
+.tabs__tab.is-active {
+  color: var(--chalk);
+  border-bottom-color: var(--spark);
+}
+
+.tabs__n {
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.tabpanel {
+  padding-top: var(--s5);
+}

@@ -1,0 +1,191 @@
+/* ═══ History panel ══════════════════════════════════════════════════════ */
+
+.btn.is-on {
+  color: var(--chalk);
+  border-color: var(--chalk-faint);
+}
+
+.history {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--slab);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.history__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s2) var(--s3);
+  border-bottom: 1px solid var(--line);
+}
+
+.history__title {
+  flex: 1;
+  font-size: var(--size-label);
+  font-weight: 500;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+.history__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--s2);
+}
+
+.saveform {
+  display: flex;
+  gap: var(--s2);
+  padding: var(--s3);
+  border-bottom: 1px solid var(--divider);
+}
+
+.saveform__name {
+  flex: 1;
+  min-width: 0;
+}
+/* It borrows the search box's frame, and with it the 30px kept on the left for
+   a magnifying glass. No form that names something draws one, so every name
+   was typed a glass's width in from its own border. */
+.frame__input.saveform__name {
+  padding-left: var(--s3);
+}
+
+/* After `.saveform` rather than beside the other dashboard rules, and that is
+   the whole fix: at equal weight the later rule wins, and `.saveform`'s own
+   padding further down the sheet was putting back the 12px this takes away —
+   the Dashboards page's one field sat 12px in from the heading over it. */
+.saveform--bare {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.savedrow {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 5px var(--s2);
+  border-radius: var(--radius-sm);
+  border-left: 2px solid transparent;
+}
+.savedrow:hover {
+  background: var(--bg-surface-2);
+  border-left-color: var(--accent);
+}
+.savedrow.is-editing {
+  border-left-color: var(--accent);
+  background: var(--accent-weak);
+}
+
+.savedrow__open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  text-align: left;
+}
+
+.savedrow__name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.savedrow__sql {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+.savedrow__meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--size-label);
+  color: var(--text-secondary);
+}
+
+.savedrow__when {
+  color: var(--text-muted);
+}
+
+.savedrow__act {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  line-height: 1;
+  color: var(--text-muted);
+}
+.savedrow__act:hover {
+  color: var(--text-primary);
+  background: var(--fill);
+}
+.savedrow__act--del:hover {
+  color: var(--danger-text);
+}
+
+.histrow {
+  display: grid;
+  grid-template-columns: 6em 1fr auto;
+  gap: var(--s3);
+  align-items: baseline;
+  width: 100%;
+  padding: 6px var(--s2);
+  text-align: left;
+  border-radius: var(--radius-sm);
+  border-left: 2px solid transparent;
+}
+.histrow:hover {
+  background: var(--slab-hover);
+  border-left-color: var(--spark);
+}
+
+.histrow__when {
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.histrow__sql {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk-dim);
+}
+.histrow:hover .histrow__sql {
+  color: var(--chalk);
+}
+
+.histrow__facts {
+  display: flex;
+  gap: var(--s3);
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+  white-space: nowrap;
+}
+
+.histrow--failed .histrow__sql {
+  color: var(--chalk-faint);
+}
+
+.histrow__failed {
+  color: var(--alarm-text);
+}

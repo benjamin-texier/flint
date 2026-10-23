@@ -1,0 +1,289 @@
+/* ═══ The co-access matrix ═════════════════════════════════════════════════
+ * Which tables get read in one statement. A matrix rather than a graph on
+ * purpose: co-access is undirected and full of cycles, so the layered layout
+ * the schema diagram uses does not apply, and a force layout would throw away
+ * the ordering that makes a picture readable. A matrix has no layout to get
+ * wrong — rows and columns in one order, read along either.
+ *
+ * It borrows the partition grid's frame and sticky first column: the two are
+ * the same kind of object and should not be two kinds of thing to learn.
+ *
+ * *Borrows* literally: nine rule bodies the two grids agree on are written once,
+ * against both selectors, up in the partition grid's section — the frame, the
+ * caption, the cell padding, the scroll box. What is left below is only what this
+ * matrix does differently: wider columns, because a table name is longer than a
+ * date; a row that gives up ten pixels, because it carries no sparkline; and the
+ * ring, which is its own idea.
+ *
+ * Both names are kept rather than folded into a third: `.ptime__row` says which
+ * grid you are reading, and a shared `.gridframe__row` would say only that some
+ * grid somewhere claims it. What must not be duplicated is the *value*, which is
+ * what drifts, and a value written once behind two selectors is not duplicated. */
+
+.paff {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+
+
+
+/* The word in the legend carries the mark it names, so the sentence and the
+ * cell do not have to be matched up by memory. */
+.paff__ringword {
+  box-shadow: inset 0 0 0 1.5px var(--spark);
+  border-radius: 3px;
+  padding: 0 4px;
+}
+
+
+
+.paff__corner,
+.paff__row {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--slab);
+  text-align: left;
+  font-weight: 400;
+  padding: var(--s2) var(--s3);
+  min-width: 190px;
+  max-width: 260px;
+  border-right: 1px solid var(--line);
+}
+
+.paff__corner {
+  z-index: 2;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.paff__corner,
+.paff__col {
+  position: sticky;
+  top: 0;
+  border-bottom: 1px solid var(--line);
+}
+
+/* The column head is the same name as the row head, so it is set in the same
+ * type and clipped rather than rotated: a rotated label costs the reader more
+ * than the 20px it saves, and this matrix is read across as much as down. */
+.paff__col {
+  z-index: 1;
+  background: var(--slab);
+  padding: var(--s2) 2px;
+  font-weight: 400;
+  font-family: var(--font-data);
+  color: var(--text-muted);
+  width: 62px;
+  max-width: 62px;
+  overflow: hidden;
+}
+
+.paff__collabel {
+  display: block;
+  width: 58px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  letter-spacing: -0.02em;
+}
+
+.paff__row .objlink {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.paff__rowsub {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+
+.paff__table tbody tr:hover .paff__row,
+.paff__table tbody tr:hover .paff__cell {
+  background: var(--slab-hover);
+}
+
+/* A cell: how often the pair was named in one statement, against the busiest
+ * pair. Same ink and same floor as the partition grid — one physics for the
+ * product, and two grids that shade differently would be two things to learn. */
+.amark {
+  display: inline-block;
+  width: 56px;
+  height: 22px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--cell-ink) calc(var(--fill, 0) * 100%), transparent);
+}
+
+/* The schema already declares this pair. Ringed rather than tinted: the count
+ * is the quantity and this is a fact about it, so it must not compete with the
+ * shade that carries the number. */
+.amark--declared {
+  box-shadow: inset 0 0 0 1.5px var(--spark);
+}
+
+.amark--past {
+  border-right: 2px solid var(--spark);
+}
+
+/* Never read together. Left empty, unlike the partition grid's absent cell —
+ * and for the same reason that one is outlined. There, absence is rare and is
+ * the finding; here it is the overwhelming majority, and drawing a box around
+ * every one of a hundred and seventy of them buries the nine cells that are the
+ * answer. The row and column headers carry the structure instead. */
+.amark--never {
+  background: none;
+}
+
+/* The diagonal: a table with itself, which is not a fact about anything. Drawn
+ * as a hairline so the eye can find it and read outwards, not as a value. */
+.amark--self {
+  background: none;
+  border-top: 1px solid var(--line-strong);
+  height: 22px;
+  width: 56px;
+}
+
+/* Codecs, weighed. A short table rather than prose: four numbers compared is
+ * what the reader came for, and the smallest is first. */
+.rcodec {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.rcodec__head,
+.rcodec__note {
+  margin: 0;
+  max-width: 78ch;
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--chalk-faint);
+}
+
+.rcodec__list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rcodec__row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  padding: 2px var(--s2);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+.rcodec__row:hover {
+  background: var(--slab-hover);
+}
+
+/* The one that costs more than what the column has now. Marked, never hidden. */
+.rcodec__row.is-worse .rcodec__ratio {
+  color: var(--warning);
+}
+
+.rcodec__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-ligatures: none;
+}
+
+.rcodec__bytes {
+  flex: none;
+  min-width: 9ch;
+  text-align: right;
+}
+
+.rcodec__ratio {
+  flex: none;
+  min-width: 12ch;
+  color: var(--chalk-dim);
+}
+
+.rcodec__copy {
+  flex: none;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+.rcodec__copy:hover {
+  color: var(--spark);
+}
+
+/* Quotas, profiles and policies. */
+
+.lim__interval {
+  margin-top: var(--s3);
+}
+
+/* What a table's policies mean together, in the order the server applies them.
+ * A list rather than a paragraph: each line is one step of the composition, and
+ * the last is the one people get wrong. */
+.lim__reading {
+  margin: var(--s2) 0 var(--s3);
+  padding-left: var(--s4);
+  font-size: var(--size-label);
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.lim__else {
+  color: var(--text);
+}
+
+/* A ceiling and what has been spent against it. Same measurements as
+ * `.nullbar`, which draws the same kind of fact on the profile — one physics
+ * for the product. */
+.gauge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  justify-content: flex-end;
+}
+
+.gauge__value {
+  font-variant-numeric: tabular-nums;
+}
+
+.gauge__track {
+  width: 44px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--bar-ghost);
+  overflow: hidden;
+}
+
+/* `--bar`, the neutral fill the storage bars use, rather than the warm one the
+ * null bar uses: consumption below its ceiling is a quantity, not a concern, and
+ * a sliver of alarm colour at half a percent reads as one. The warm colours
+ * arrive with the bands that earn them. */
+.gauge__fill {
+  display: block;
+  height: 100%;
+  background: var(--bar);
+}
+
+.gauge__fill--close {
+  background: var(--warning);
+}
+
+.gauge__fill--spent {
+  background: var(--danger);
+}

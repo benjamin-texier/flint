@@ -1,0 +1,140 @@
+/* ── The shape of a column ──────────────────────────────────────────────────
+   Opened under its own row in the profile. The bars are scaled to the tallest
+   of them rather than to the table, which is what makes a small column's shape
+   visible at all — and is why the figure beside them says what the full height
+   is, the same contract the sparklines keep. */
+.dist__open {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dist__open:hover {
+  color: var(--spark);
+}
+
+.dist__row > td {
+  padding: 0 var(--s3) var(--s3);
+  background: var(--slab-raised);
+}
+
+.dist {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: var(--s3) 0 0;
+}
+
+.dist__says {
+  margin: 0;
+  max-width: 78ch;
+  /* The panel opens inside a table cell, which sets the data face. This is
+     prose. */
+  font-family: var(--font-sans);
+  font-size: var(--size-body);
+  color: var(--chalk);
+}
+
+.dist__bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 92px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dist__bar {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  flex: 1 1 0;
+  /* Capped, or a tally of five draws five three-hundred-pixel slabs and reads
+     as a wall rather than as a shape. Sixteen bins fill the room; five do not
+     have to. */
+  max-width: 72px;
+  min-width: 0;
+  height: 100%;
+}
+
+/* A bucket holding nothing draws nothing — a hairline where there are no rows
+   would read as "a few", which is the one thing an empty bucket is not. */
+.dist__fill {
+  display: block;
+  width: 100%;
+  border-radius: 2px 2px 0 0;
+  background: var(--bar);
+}
+
+/* Values get their own colour, ranges do not: a tally is a set of things and a
+   histogram is one continuous quantity cut up. */
+.dist__bars--tally .dist__fill,
+.dist__bars--top .dist__fill {
+  background: var(--chart-2);
+}
+
+.dist__tick {
+  overflow: hidden;
+  margin-top: 3px;
+  font-family: var(--font-data);
+  font-size: 10px;
+  line-height: 1.2;
+  color: var(--chalk-faint);
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dist__note {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+/* A marked-up identifier inside a sentence — the one place the data face is
+   right in the middle of prose. */
+.ident {
+  font-family: var(--font-data);
+  font-size: 0.95em;
+  color: var(--chalk);
+}
+
+.rel__col {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--text-primary);
+}
+
+.rel__says {
+  color: var(--text-secondary);
+}
+
+/* The suggestion, set apart from the finding: one is what the rows hold and the
+ * other is an opinion about it. */
+.rel__then {
+  margin: 6px 0 0;
+  font-size: var(--size-label);
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+.rel__caption {
+  margin: 0;
+  max-width: 92ch;
+  font-size: var(--size-label);
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.rel__left {
+  color: var(--text-muted);
+}

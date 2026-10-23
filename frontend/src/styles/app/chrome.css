@@ -1,0 +1,396 @@
+/* ═══ Chrome ══════════════════════════════════════════════════════════════ */
+
+.chrome {
+  display: flex;
+  align-items: center;
+  gap: var(--s5);
+  height: var(--chrome-h);
+  flex: none;
+  padding: 0 var(--s4) 0 var(--s5);
+  background: var(--rail);
+  border-bottom: 1px solid var(--line);
+  position: relative;
+  z-index: 3;
+}
+
+.chrome__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  color: var(--spark);
+}
+
+.mark {
+  width: 15px;
+  height: 15px;
+}
+
+.chrome__word {
+  font-size: 1.0625rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+/* Two levels in one bar. The switcher says which half of Flint you are in —
+ * Data works on rows, Infrastructure works on structure and on the server — and
+ * the tray beside it says where in that half. `lib/spaces` holds the line and
+ * the reasoning behind it.
+ *
+ * The tray keeps the pill it has always had, so a deployment with Infrastructure
+ * switched off looks exactly as it did before there was anything to switch. */
+.chrome__nav {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.chrome__spaces {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+}
+
+/* Heavier than a section link, and deliberately not a pill: the filled pill is
+ * the mark of the page you are on, and two filled things in one bar would
+ * compete for that one meaning. A rule under the word instead — the same
+ * gesture a tab uses, for the same reason. */
+.chrome__space {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 var(--s2);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-secondary);
+  border-bottom: 2px solid transparent;
+  transition: color var(--motion-fast) var(--ease),
+    border-color var(--motion-base) var(--ease);
+}
+.chrome__space:hover {
+  color: var(--text-primary);
+}
+/* The space you are in, and the section you are in, were both saying so in the
+   accent — two marks for one fact, a hand's width apart. The coarser of the two
+   gives it up: full ink against secondary, under a rule in that same ink, is
+   enough to read as current, and it leaves the filled pill beside it as the one
+   place the eye is told to look. */
+.chrome__space.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--text-primary);
+}
+
+/* The tray behind the section pills, on `--slab-raised` (`--bg-surface-2`) and
+ * not `--fill`. The same correction as `.shell__main` and for the same reason:
+ * `--fill` is the ground of a *hovered row*, a colour that means "the pointer is
+ * here", and spending it on a permanent tray both wastes the signal and sinks
+ * the one group of controls that is on every screen. Dashfile's own nav track is
+ * `--bg-surface-2`; this is the step that was missed, not a new value. */
+.chrome__sections {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  padding: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--slab-raised);
+}
+
+.chrome__navsep {
+  width: 1px;
+  height: 16px;
+  margin: 0 var(--s2);
+  background: var(--line-strong);
+}
+
+.chrome__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 var(--s4);
+  border-radius: var(--radius-pill);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  transition: color var(--motion-fast) var(--ease),
+    background var(--motion-base) var(--ease);
+}
+.chrome__link:hover {
+  color: var(--text-primary);
+}
+/* Inverted rather than accented. The palette Flint is drawn to spends the spark
+   once per view, on the thing you are being asked to do — and a filled green
+   pill sitting a hand's width from the page's primary button was spending it
+   twice, on the louder of the two, for the one that is not an action at all.
+   Ink on ink says "here" at least as plainly and says nothing else.
+
+   Tried the other way round in Sep 2026, with Dashfile open beside this bar,
+   because Dashfile *does* give its nav bubble the accent fill and reads better
+   for it. It failed `contrib/browser-check.mjs`'s `sparks` scene on `/`,
+   `/alerts` and `/query` — "lights the accent 2 times at rest — chrome__link,
+   btn" — which is this rule enforced, not merely commented. Dashfile can afford
+   the accented bubble because its primary action is a white button carrying an
+   accent *mark* (the teal triangle on `Présentation`) rather than an accent
+   fill; porting the bubble alone spends the spark twice and porting both is a
+   product-wide decision about every primary button in Flint. Left as it was
+   until that decision is actually made. */
+.chrome__link.active {
+  color: var(--rail);
+  background: var(--chalk);
+}
+
+.chrome__spacer {
+  flex: 1;
+}
+
+.chrome__facts {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  /* Never squeezed: `localhost:81` is worse than nothing at all, so the block
+   * keeps its natural width and the media queries below decide what it still
+   * contains. The thresholds are measured, not guessed. */
+  flex: none;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.chrome__fact {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The facts give way one at a time as the bar narrows, least useful first: the
+ * uptime, then the version, then the user. The host stays longest — it is the
+ * one thing on this bar you cannot work out from the page you are looking at.
+ * All of it is on the Diagnose page in full.
+ *
+ * Re-measured 2026-08-25, in a browser, sweeping 1600px down to 1000px in
+ * twenty-pixel steps and reading the document's own overflow at each: every
+ * rung was about 150px late, because the nav has gained destinations since the
+ * thresholds were first taken and the facts were being kept in a bar that no
+ * longer had room for them. The effect was a page that scrolled sideways at
+ * every laptop width from 1000px to 1460px — visible only in a browser, and
+ * only if you looked at the horizontal scrollbar rather than at the page.
+ *
+ * Re-measured again when Data gained `Home`, the same way, in five-pixel steps.
+ * One destination is about fifty pixels, and every rung moved by roughly that —
+ * which is the standing lesson here: these four numbers are a property of the
+ * nav, so adding a section to `lib/spaces` means measuring them again. Data is
+ * now the fullest bar of the two and sets all four; Infrastructure fits in
+ * 40–60px less and so gives its facts up a little earlier than it must, the
+ * same harmless direction a deployment with `FLINT_INFRASTRUCTURE=false` errs
+ * in.
+ *
+ * Re-measured a third time, in one-pixel steps, after the repo's own browser
+ * check began reporting fifteen pixels of sideways scroll on *every* page at
+ * 1500px. The cause is worth writing down, because it is not what the two
+ * earlier measurements assumed: **the attention badges are part of the width.**
+ * A badge is 17px, and the bar carries up to four of them — one on each space,
+ * one on Alerts, one on Reports — so the same build is 33px wider on a server
+ * with things to report than on a quiet one. The thresholds had been taken on a
+ * quiet server, which is why they were right in development and late in use.
+ *
+ * Re-measured a fourth time when Infrastructure gained its own `Home` — the
+ * board had been reachable only by clicking the space's name, so a page inside
+ * the space had no tab back out to it. That put Infrastructure at nine
+ * destinations against Data's eight, and with the longer labels it is now the
+ * fullest bar of the two by 33px at every rung. It sets all four; Data gives
+ * its facts up that much early, the same harmless direction.
+ *
+ * So the figures below are the widths at which each state stopped fitting on
+ * the *fullest* bar a deployment can show: both spaces, every destination, and
+ * a badge on everything that can carry one. A server with nothing to report
+ * gives its facts up a little early, which is the harmless direction. */
+@media (max-width: 1626px) {
+  .chrome__fact--uptime {
+    display: none;
+  }
+}
+/* Version and user go together: at this width the pair no longer fits beside
+ * the host without one of them being clipped. */
+@media (max-width: 1576px) {
+  .chrome__fact--version,
+  .chrome__fact--user {
+    display: none;
+  }
+}
+/* Below this even the host cannot be shown without pushing the nav off the bar,
+ * and the nav is what the bar is for. All of it is on the Diagnose page. */
+@media (max-width: 1429px) {
+  .chrome__facts {
+    display: none;
+  }
+}
+/* Below this the destinations no longer fit on one line even with the facts
+ * gone, so the bar takes a second one rather than cutting the last of them off.
+ * The rule only *allows* the second line — a bar whose contents still fit keeps
+ * to one — so the threshold is the width at which wrapping first becomes
+ * necessary rather than the width at which it always happens. */
+@media (max-width: 1306px) {
+  .chrome {
+    height: auto;
+    flex-wrap: wrap;
+    row-gap: var(--s2);
+    padding-top: var(--s2);
+    padding-bottom: var(--s2);
+  }
+}
+/* And below this the *first* wrapped line no longer fits either: the brand, the
+ * two space names and the pill of destinations come to 1029px on
+ * Infrastructure's nine, and `.chrome__nav` holds the last two as one flex item
+ * that cannot break. So it is allowed to — the spaces keep their line and the
+ * pill takes the next — which is what put a 1024px window, the commonest narrow
+ * one there is, back inside the viewport. */
+@media (max-width: 1028px) {
+  .chrome__nav {
+    flex-wrap: wrap;
+    row-gap: var(--s2);
+  }
+}
+/* And where it has actually broken, the rule between them goes. It divides two
+ * things side by side; at the end of a line it divides nothing and is only a
+ * mark — the same reason the facts strip carries its separators on the facts
+ * rather than between them.
+ *
+ * Its own threshold rather than the one above, measured the same way: the nav
+ * takes a second line at 1023px on Infrastructure and 990px on Data, and
+ * between there and 1028px it still fits on one, where the rule is doing its
+ * job and should stay. */
+@media (max-width: 1022px) {
+  .chrome__navsep {
+    display: none;
+  }
+}
+/* And at the bottom, the pill of destinations does not fit on a line by itself:
+ * Infrastructure's nine come to 769px, so below about 792px there is nowhere
+ * left for the bar to give. It wraps inside the pill rather than scrolling the
+ * page sideways — the house rule is that wide content scrolls inside its own
+ * box, and a nav is the one thing that must not, because a destination scrolled
+ * out of sight is a destination nobody knows is there.
+ *
+ * Wrapped, the pill is no longer a pill: a two-line capsule reads as a mistake,
+ * so it takes the ordinary radius and behaves as the panel it has become. This
+ * floor moved 50px up when Infrastructure gained `Home` — it was 742px before
+ * — which is what put it in reach of being measured at all. */
+@media (max-width: 791px) {
+  .chrome__sections {
+    flex-wrap: wrap;
+    row-gap: 3px;
+    border-radius: var(--radius-md);
+  }
+}
+/* The text step, not the fill: `--alarm` is 3.3:1 as a label on this bar. The
+   fact only turns red when something is wrong, which is exactly the moment it
+   has to be readable. */
+.chrome__fact--warn {
+  color: var(--alarm-text);
+}
+
+.chrome__sep {
+  width: 1px;
+  height: 11px;
+  background: var(--line-strong);
+}
+
+.chrome__theme {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  color: var(--chalk-faint);
+  font-size: 0.9375rem;
+  line-height: 1;
+}
+.chrome__theme:hover {
+  color: var(--chalk);
+  background: var(--slab-raised);
+}
+
+/* The stateless note. A pill, because it is a fact about the deployment and it
+ * sits with the other one; a popover, because the fact is useless without the
+ * line that changes it and that line does not fit in a bar. Quiet colours
+ * throughout — this is a mode, not an alarm, and `--warning` here would say
+ * something is wrong with a Flint that is working as configured. */
+.stateless {
+  position: relative;
+  flex: none;
+}
+
+.stateless__pill {
+  gap: 5px;
+  border: 1px dashed var(--line-strong);
+  background: transparent;
+  color: var(--chalk-dim);
+  cursor: pointer;
+  transition: color var(--motion-fast) var(--ease),
+    border-color var(--motion-fast) var(--ease);
+}
+.stateless__pill:hover,
+.stateless__pill[aria-expanded='true'] {
+  color: var(--chalk);
+  border-color: var(--chalk-faint);
+}
+
+/* Hollow, and the only ring in the bar: what it marks is an absence. */
+.stateless__dot {
+  width: 6px;
+  height: 6px;
+  border: 1px solid currentcolor;
+  border-radius: var(--radius-pill);
+}
+
+.stateless__panel {
+  position: absolute;
+  top: calc(100% + var(--s2));
+  right: 0;
+  z-index: 20;
+  width: 320px;
+  padding: var(--s4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--slab);
+  box-shadow: var(--shadow-2);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.stateless__title {
+  font-size: var(--size-head);
+  font-weight: 650;
+  color: var(--chalk);
+  margin-bottom: var(--s2);
+}
+
+.stateless__note {
+  font-size: var(--size-body);
+  line-height: 1.5;
+  color: var(--chalk-dim);
+}
+.stateless__note + .stateless__note {
+  margin-top: var(--s2);
+}
+
+.stateless__lede {
+  margin-top: var(--s3);
+  font-size: var(--size-body);
+  color: var(--chalk);
+}
+
+.stateless__env {
+  margin: var(--s2) 0;
+  padding: var(--s2) var(--s3);
+  border-radius: var(--radius-sm);
+  background: var(--slab-sunk);
+  border: 1px solid var(--line);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+  overflow-x: auto;
+}

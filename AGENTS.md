@@ -29,7 +29,8 @@ identifier is quoted by the server rather than by us.
   piece of logic can be tested without a DOM, it belongs here rather than in a
   component.
 - **`frontend/src/components/` + `routes/`** — React 19, no component library,
-  no CSS-in-JS. One stylesheet (`styles/app.css`) over the tokens.
+  no CSS-in-JS. One stylesheet over the tokens, a file per surface in
+  `styles/app/`; `styles/app.css` lists them, and its order is the cascade.
 
 ## Commands
 

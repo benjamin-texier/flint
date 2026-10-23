@@ -1,0 +1,150 @@
+/* ── Find anything ─────────────────────────────────────────────────────────
+   A rail filter finds a table in the database you are already in. On a server
+   with forty databases that is the wrong question. */
+.chrome__find {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  margin-left: var(--s3);
+  padding: 4px var(--s3) 4px var(--s2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface);
+  font-family: var(--font-sans);
+  font-size: var(--size-label);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: border-color var(--motion-fast) var(--ease-out);
+}
+.chrome__find:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.chrome__glass {
+  width: 13px;
+  height: 13px;
+  color: var(--text-muted);
+}
+
+/* Under a laptop's width the bar has to choose, and eight destinations beat two
+ * words: Find keeps its glass and gives up its label. The shortcut goes with
+ * it — a hint nobody can read is width spent on nothing. */
+@media (max-width: 1100px) {
+  .chrome__find {
+    padding: 4px var(--s2);
+  }
+  .chrome__findlabel,
+  .chrome__findkbd {
+    display: none;
+  }
+}
+
+.pal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  justify-content: center;
+  /* Row direction means the cross axis is vertical, so the default `stretch`
+     pulled the box to the full viewport height and it sat at its own ceiling
+     with nine results in it. */
+  align-items: flex-start;
+  padding-top: 12vh;
+  background: color-mix(in srgb, var(--solid) 32%, transparent);
+  backdrop-filter: blur(2px);
+}
+
+.pal__box {
+  display: flex;
+  flex-direction: column;
+  width: min(680px, 92vw);
+  max-height: 70vh;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-pop);
+}
+
+.pal__input {
+  padding: var(--s4);
+  border: none;
+  border-bottom: 1px solid var(--divider);
+  background: transparent;
+  font-family: var(--font-sans);
+  font-size: 17px;
+  color: var(--text-primary);
+}
+.pal__input::placeholder {
+  color: var(--chalk-faint);
+}
+.pal__input:focus-visible {
+  outline: none;
+}
+
+.pal__empty {
+  padding: var(--s4);
+  max-width: 62ch;
+  font-size: var(--size-label);
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+.pal__list {
+  /* Grow only as far as the results need, shrink when there are more than fit.
+     `flex: 1` stretched the box to its full ceiling and left half of it empty
+     under nine rows. */
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--s2);
+  list-style: none;
+}
+
+.pal__hit {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  width: 100%;
+  padding: 6px var(--s3);
+  border-radius: var(--radius-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.pal__hit.is-on {
+  background: var(--accent-weak);
+}
+
+/* The kind first and in a fixed column: it is what tells you whether the row
+   you are about to open is the table or one of its columns. */
+.pal__kind {
+  flex: none;
+  width: 11ch;
+  font-family: var(--font-sans);
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+.pal__label {
+  font-family: var(--font-mono);
+  font-size: var(--size-data);
+  color: var(--text-primary);
+}
+
+.pal__context {
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: var(--size-label);
+  color: var(--text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pal__foot {
+  padding: var(--s2) var(--s4);
+  border-top: 1px solid var(--divider);
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}

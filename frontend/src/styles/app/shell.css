@@ -1,0 +1,40 @@
+/* ═══ Shell ═══════════════════════════════════════════════════════════════
+ * Two persistent surfaces: a rail that never navigates away, and a work area.
+ * That shape is what makes Flint a workspace rather than a website. */
+
+.shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.shell__body {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+}
+
+/* The ground the content actually stands on, and it is `--slab-sunk`
+ * (`--bg-canvas`, #f7f5f2) rather than `--ground` (`--bg-page`, #eceae6).
+ *
+ * Both values are Dashfile's and neither changed here — what was wrong was
+ * which one Flint painted. Dashfile reserves `--bg-page` for what sits *behind*
+ * a scroller and gives the scroller the lighter cream; Flint had been handing
+ * the reading surface the darker step, one whole value below its sibling, on
+ * every page. Sampled off two screenshots side by side it is the difference
+ * between #f7f5f2 and #eceae6 under every sentence in the product, and it is
+ * most of what made identical palettes read as muddier here. `--ground` keeps
+ * its job on the body beneath, so an overscroll still shows the deeper tone.
+ *
+ * The two themes move in opposite directions from this one line, and that is
+ * the intent rather than an oversight: in light `--bg-canvas` is a step *up*
+ * from the page and in dark it is a step *down*. Both times it is the step that
+ * puts more distance between the reading surface and the cards on it — the
+ * light theme stops sinking its own text, and the dark theme finally lets a
+ * `--bg-surface` panel lift, which at #0e1620 on #0b1119 it could not do. */
+.shell__main {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  background: var(--slab-sunk);
+}

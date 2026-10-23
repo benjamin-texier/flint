@@ -1,0 +1,76 @@
+/* ═══ Relations ════════════════════════════════════════════════════════════
+ * What one column of a table says about another. The other tabs describe the
+ * table; this one describes the rows, and says the things the DDL cannot.
+ *
+ * A list rather than a grid: there are rarely more than a dozen findings, each
+ * is a sentence, and a sentence in a table cell is a sentence nobody reads. */
+
+.rel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.rel__ask {
+  margin: 0;
+  max-width: 72ch;
+  font-size: var(--size-body);
+  color: var(--text-secondary);
+}
+
+.rel__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+}
+
+.rel__span {
+  margin: 0;
+  font-size: var(--size-body);
+  color: var(--text-primary);
+}
+
+.rel__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Each finding is bounded, because two of them run together at a glance
+ * otherwise — and the left edge carries the kind, so the eye can sort mirrors
+ * from constants without reading a word. */
+.rel__item {
+  padding: var(--s3);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--slab);
+}
+
+/* The three kinds, loudest first: a mirror is a redundancy somebody can act on
+ * today, a determination is a rule worth knowing, a constant is a fact. */
+.rel__item--mirrors {
+  border-left-color: var(--spark);
+}
+.rel__item--moves-with {
+  border-left-color: var(--spark);
+}
+.rel__item--correlates,
+.rel__item--far-values,
+.rel__item--determines {
+  border-left-color: var(--bar);
+}
+.rel__item--dominant,
+.rel__item--constant {
+  border-left-color: var(--line);
+}
+
+.rel__what {
+  margin: 0;
+  font-size: var(--size-body);
+  line-height: 1.5;
+  color: var(--text-primary);
+}

@@ -1,0 +1,114 @@
+/* ── Two tables, side by side ───────────────────────────────────────────────
+   The left column is what the table is now and the right is what it would
+   become, so the left is set back a step: a diff where both sides read equally
+   loud makes the reader work out which way round it is. */
+.cmp {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.cmp__pick {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.cmp__label {
+  font-size: var(--size-body);
+  color: var(--chalk-dim);
+}
+
+.cmp__select,
+.cmp__other {
+  height: 30px;
+  padding: 0 var(--s2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--slab);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+
+.cmp__other {
+  width: 20ch;
+}
+
+.cmp__idle,
+.cmp__says {
+  margin: 0;
+  max-width: 78ch;
+  font-size: var(--size-body);
+  color: var(--chalk);
+}
+
+.cmp__idle {
+  color: var(--chalk-dim);
+}
+
+/* What is in the way, each line naming one thing to fix — a verdict nobody can
+   act on is worse than a list. */
+.cmp__blockers {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cmp__blockers li {
+  padding-left: var(--s3);
+  border-left: 2px solid var(--warning);
+  font-size: var(--size-body);
+  color: var(--chalk);
+}
+
+.cmp__tbl td {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+}
+
+/* The side that is being replaced, a step quieter than the side replacing it. */
+.cmp__was {
+  color: var(--chalk-dim);
+}
+
+.cmp__how {
+  margin-left: var(--s2);
+  font-family: var(--font-sans);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.cmp__quiet {
+  font-family: var(--font-sans);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+/* A row that is gone and a row that is new are the two the eye should find
+   first; a retype and a move are differences within something that is still
+   there, and take the quieter mark. */
+.flag--cmp-removed {
+  background: var(--danger-weak);
+  color: var(--danger-text);
+}
+
+.flag--cmp-added {
+  background: var(--success-weak);
+  color: var(--success-text);
+}
+
+.flag--cmp-retyped,
+.flag--cmp-moved {
+  background: var(--warning-weak);
+  color: var(--warning);
+}
+
+.flag--cmp-same {
+  background: var(--fill);
+  color: var(--text-secondary);
+}

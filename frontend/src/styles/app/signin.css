@@ -1,0 +1,548 @@
+/* ═══ Signing in ══════════════════════════════════════════════════════════ */
+
+/* The whole viewport, because there is no app behind it: every route needs a
+ * session, so a card floating over a blurred dashboard would be showing
+ * something Flint cannot actually serve.
+ *
+ * A bar and a body. The bar is not the app's chrome — that needs a session to
+ * fill — it is the brand and the one fact this screen can state without one. */
+.signin {
+  display: grid;
+  grid-template-rows: var(--chrome-h) minmax(0, 1fr);
+  min-height: 100%;
+  background: var(--ground);
+}
+
+.signin__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s4);
+  padding: 0 var(--s5);
+  border-bottom: 1px solid var(--line);
+  background: var(--rail);
+}
+
+.signin__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  color: var(--spark);
+}
+
+.signin__word {
+  font-size: 1.0625rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+/* Mono, because it is an address or the absence of one, not a label for it. */
+.signin__state {
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+/* The form and what it found, side by side and both centred on their own.
+ *
+ * Asymmetric and capped: the panel is the wider half because it holds six rows
+ * of two lines each, and a form column past about 420px is a text input nobody
+ * can read the start and end of at once. Past the caps the extra width is
+ * margin — there is nothing on this screen that gets better by being stretched. */
+.signin__body {
+  display: grid;
+  grid-template-columns: minmax(0, 26rem) minmax(0, 30rem);
+  /* `start` inside a row that is itself centred. Centring each half on its own
+     put the form's heading a hundred and seventy pixels below the panel's,
+     because the two are never the same height — the panel grows a row of notes
+     and the form does not. Aligned at the top, the two headings sit on one
+     line, which is the only alignment on this screen a reader can see. */
+  align-items: start;
+  align-content: center;
+  justify-content: center;
+  gap: var(--s8);
+  padding: var(--s7) var(--s6);
+  overflow-y: auto;
+}
+
+/* ── The form ──────────────────────────────────────────────────────────── */
+
+.signin__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  min-width: 0;
+}
+
+.signin__title {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 650;
+  letter-spacing: -0.025em;
+  color: var(--text-primary);
+}
+
+.signin__sub {
+  margin: 0;
+  max-width: 46ch;
+  font-size: var(--size-body);
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.signin__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* Who you are, on one line: it is one thought, and stacking the two pushed the
+   button under the fold on a laptop once the panel beside it had a heading.
+ *
+ * Not two equal halves, though. A ClickHouse user name is a database identifier
+ * — `default`, `flint_ro`, eight or nine characters — and a password is a
+ * generated string of thirty. Measured on the equal split: revealing a
+ * twenty-two character password left fourteen of them visible, because half of
+ * a 416px column minus the gutter the reveal needs is 112px of value. The extra
+ * space goes where the characters are. */
+.signin__pair {
+  display: grid;
+  grid-template-columns: 0.82fr 1.18fr;
+  gap: var(--s3);
+  margin-top: var(--s2);
+}
+
+/* Taller than the app's control. `.input` is 32px because it lives in toolbars
+   and filter rows next to twenty other things; here there are three fields on
+   an otherwise empty screen and they are what the screen is for. */
+.signin__form .input {
+  min-height: 40px;
+  padding: 0 var(--s3);
+  font-size: 0.875rem;
+}
+.signin__form .input:hover:not(:focus) {
+  border-color: var(--line-strong);
+}
+
+.signin__wrap {
+  position: relative;
+  display: flex;
+  min-width: 0;
+}
+
+/* Room for whatever the round trip had to say, so a long address never runs
+   under it. Only when there is something there: an empty field reserving a
+   hundred pixels for a message nobody has asked for reads as a broken layout.
+   Prefixed with `.signin__form` — see the note on `.signin__pw`, which is the
+   same trap and the one that showed. */
+.signin__form .signin__endpoint--said {
+  padding-right: 8.5rem;
+}
+
+/* Inside the field, because it is a fact about the address in it rather than a
+   line of its own. */
+.signin__latency {
+  position: absolute;
+  top: 50%;
+  right: var(--s3);
+  transform: translateY(-50%);
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+  pointer-events: none;
+}
+.signin__latency--ok {
+  color: var(--spark);
+}
+/* Something answered and it was not a database. The one failure this field is
+   the right place for, so it is the one that takes the alarm colour. */
+.signin__latency--no {
+  color: var(--alarm-text);
+}
+/* Nothing answered. Quiet: the panel beside it is already saying what happened
+   in a whole sentence, and two red things for one failure reads as two. */
+.signin__latency--plain {
+  color: var(--chalk-faint);
+}
+
+/* Room for the reveal, and the selector is the whole fix.
+ *
+ * `.signin__pw` alone lost to `.signin__form .input` a few rules above — two
+ * classes beat one — so the padding this rule asks for was never applied and a
+ * revealed password ran forty-one pixels *under* HIDE. Measured in the browser
+ * rather than read off the file: the computed `padding-right` was 12px, the
+ * field's own, and the reveal button starts well inside that. Both fields that
+ * carry something in their right-hand gutter are prefixed for this reason.
+ *
+ * Generous rather than exact: the label is four uppercase characters at a
+ * tracking, and it changes width between SHOW and HIDE. */
+.signin__form .signin__pw {
+  padding-right: 3.25rem;
+}
+
+/* A revealed password is monospaced, like every other place in Flint where the
+   characters *are* the content. It is also the only way to read one: a
+   proportional face renders `l1I` and `O0` as near-identical shapes, which is
+   precisely the check somebody is doing when they press Show. */
+.signin__form .signin__pw--shown {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+}
+
+/* Opaque, and separated by a hairline. Transparent, it was not a button over a
+   field — it was a label the field's own value scrolled underneath, which is
+   what a long revealed password did: `b8c4a1…c7d1` ran straight through HIDE and
+   came out the other side. A field that scrolls needs something solid to scroll
+   *behind*.
+
+   Inset a pixel on three sides so the field's own border stays the outer edge,
+   and the radius is a pixel tighter than the field's for the same reason — a
+   6px curve inside a 6px curve leaves a sliver of border showing through the
+   corner. */
+.signin__reveal {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  bottom: 1px;
+  padding: 0 var(--s2);
+  border-radius: 0 5px 5px 0;
+  background: var(--bg-surface);
+  box-shadow: -1px 0 0 var(--line);
+  font-family: var(--font-ui);
+  font-size: var(--size-label);
+  font-weight: 600;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  transition: color var(--motion-fast) var(--ease);
+}
+.signin__reveal:hover {
+  color: var(--accent);
+}
+
+.signin__hint {
+  font-size: var(--size-label);
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.signin__go {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin-top: var(--s3);
+}
+.signin__go .btn {
+  height: 42px;
+  min-width: 11rem;
+  justify-content: center;
+  font-size: 0.875rem;
+}
+
+.signin__shortcut {
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+/* A refusal is the expected outcome of a form like this, so it is coloured as
+ * information rather than as an alarm — and a *server* failure is marked apart
+ * from it, because "wrong password" and "no database there" send you to
+ * completely different places. */
+.signin__error {
+  margin: 0;
+  padding: var(--s2) var(--s3);
+  border-radius: var(--radius-sm);
+  background: var(--danger-weak);
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--danger-text);
+}
+.signin__error--server {
+  background: var(--warning-weak);
+  color: var(--warning);
+}
+.signin__errorhint {
+  color: var(--text-secondary);
+}
+
+.signin__foot {
+  margin: var(--s2) 0 0;
+  padding-top: var(--s3);
+  border-top: 1px solid var(--line);
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+/* ── What these credentials can do ─────────────────────────────────────── */
+
+.signin__panel {
+  min-width: 0;
+  padding: var(--s5);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--slab);
+  box-shadow: var(--shadow-1);
+  transition: opacity var(--motion-base) var(--ease-out);
+}
+
+/* The reading is about an address somebody has since edited. Dimmed rather than
+   cleared: throwing away the answer they just read is the one thing worse than
+   showing them a stale one, and the header grows a button to ask again. */
+.signin__panel.is-stale {
+  opacity: 0.5;
+}
+
+.signin__panelhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+}
+
+.signin__paneltitle {
+  margin: 0;
+  font-size: var(--size-head);
+  font-weight: 650;
+  color: var(--text-primary);
+}
+
+.signin__again {
+  height: 26px;
+  padding: 0 var(--s2);
+  font-size: var(--size-label);
+}
+
+.signin__panelsub {
+  margin: var(--s2) 0 0;
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.signin__panelno {
+  margin: var(--s4) 0 calc(var(--s4) * -1);
+  padding: var(--s3);
+  border-radius: var(--radius-sm);
+  background: var(--warning-weak);
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--warning);
+}
+
+.signin__checks {
+  margin: var(--s4) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.signin__check {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--s3);
+  padding: var(--s3) 0;
+  border-top: 1px solid var(--divider);
+}
+.signin__check:first-child {
+  border-top: none;
+  padding-top: var(--s1);
+}
+
+/* The verdict, as a mark rather than as a word — the word is in the right-hand
+   column and reading it twice is not reading it better. Five states, in Flint's
+   own palette: `off` takes Cold because dormant is what it means, and a thing
+   this deployment does not have is neither working nor broken. */
+.signin__swatch {
+  width: 8px;
+  height: 8px;
+  margin-top: 5px;
+  border-radius: 2px;
+  background: var(--chalk-ghost);
+}
+.signin__check--granted .signin__swatch {
+  background: var(--success);
+}
+.signin__check--refused .signin__swatch {
+  background: var(--alarm);
+}
+.signin__check--partial .signin__swatch {
+  background: var(--warning);
+}
+.signin__check--off .signin__swatch {
+  background: var(--cold);
+}
+/* Nothing measured yet. Hollow rather than grey-filled: an empty outline reads
+   as "not asked", and a filled neutral square reads as a fifth verdict. */
+.signin__check--none .signin__swatch {
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+
+.signin__what {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.signin__label {
+  font-size: var(--size-body);
+  color: var(--text-primary);
+}
+.signin__check--none .signin__label {
+  color: var(--text-muted);
+}
+
+/* What the verdict rests on, in the server's own vocabulary. It wraps rather
+   than truncating: a privilege list cut off mid-identifier is the one thing on
+   this panel nobody can check. */
+.signin__rests {
+  font-size: var(--size-label);
+  line-height: 1.45;
+  color: var(--chalk-faint);
+  overflow-wrap: anywhere;
+}
+
+.signin__verdict {
+  font-size: var(--size-label);
+  white-space: nowrap;
+  color: var(--chalk-faint);
+}
+.signin__check--granted .signin__verdict {
+  color: var(--success-text);
+}
+.signin__check--refused .signin__verdict {
+  color: var(--alarm-text);
+}
+.signin__check--partial .signin__verdict {
+  color: var(--warning);
+}
+.signin__check--off .signin__verdict {
+  color: var(--cold);
+}
+
+/* What a reader will actually notice — a tab that will not be there, a page
+   that will be thin. Railed rather than boxed, because it is a consequence of
+   the row above it rather than a warning of its own. */
+.signin__note {
+  margin: var(--s2) 0 0;
+  padding: 7px var(--s3);
+  border-left: 2px solid var(--warning);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--slab-raised);
+  font-size: var(--size-label);
+  line-height: 1.5;
+}
+.signin__note:first-of-type {
+  margin-top: var(--s4);
+}
+
+.signin__notetitle {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.signin__notebody {
+  color: var(--text-secondary);
+}
+
+.signin__detected {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  margin: var(--s4) 0 0;
+  padding-top: var(--s3);
+  border-top: 1px solid var(--divider);
+}
+
+.signin__figures {
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+.signin__figures--waiting {
+  font-family: var(--font-ui);
+}
+
+/* ── Narrow ────────────────────────────────────────────────────────────── */
+
+/* Stacked, form first: the panel is about what is in the form, and reading a
+ * verdict above the fields it was measured from is reading it backwards. */
+@media (max-width: 1080px) {
+  .signin__body {
+    grid-template-columns: minmax(0, 30rem);
+    gap: var(--s6);
+    align-items: stretch;
+    align-content: start;
+    padding: var(--s6) var(--s5);
+  }
+}
+
+@media (max-width: 560px) {
+  .signin__bar {
+    padding: 0 var(--s4);
+  }
+
+  /* Block rather than a baseline row: wrapped, the figures used to continue
+     under the first one instead of at the panel's edge. */
+  .signin__detected {
+    display: block;
+  }
+  .signin__detected .label {
+    margin-right: var(--s2);
+  }
+
+  .signin__body {
+    gap: var(--s5);
+    padding: var(--s5) var(--s4) var(--s6);
+  }
+
+  /* One at a time. Two 40px inputs in a 320px column leaves each of them
+     narrower than the placeholder it holds. */
+  .signin__pair {
+    grid-template-columns: 1fr;
+  }
+
+  .signin__panel {
+    padding: var(--s4);
+  }
+
+  .signin__go {
+    flex-wrap: wrap;
+  }
+  .signin__go .btn {
+    width: 100%;
+  }
+  /* The shortcut is a pointerless machine's affordance, and a phone is not one. */
+  .signin__shortcut {
+    display: none;
+  }
+}
+
+/* The wait before Flint knows whether it must ask who you are. */
+.boot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+  background: var(--ground);
+}
+
+.chrome__signout {
+  height: 26px;
+  padding: 0 var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--size-label);
+  transition: color var(--motion-fast) var(--ease),
+    border-color var(--motion-fast) var(--ease);
+}
+.chrome__signout:hover:not(:disabled) {
+  color: var(--text-primary);
+  border-color: var(--line-strong);
+}

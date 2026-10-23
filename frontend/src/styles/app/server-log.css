@@ -1,0 +1,85 @@
+/* ═══ The server's log ════════════════════════════════════════════════════ */
+
+/* Two hundred lines in their own frame rather than two hundred lines of page.
+ * A tail is read by scanning the top of it and scrolling if the answer is not
+ * there — pushing everything below the fold to make room for the rest is the
+ * opposite of that. */
+.tlog {
+  margin-top: var(--s3);
+  max-height: 60vh;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  overflow: auto;
+}
+
+.tlog__line {
+  display: grid;
+  grid-template-columns: 152px 84px 190px 1fr;
+  gap: var(--s3);
+  padding: 4px var(--s3);
+  border-bottom: 1px solid var(--line);
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+.tlog__line:last-child {
+  border-bottom: 0;
+}
+
+.tlog__at,
+.tlog__logger {
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tlog__level {
+  text-transform: lowercase;
+}
+
+/* Clamped, because a ClickHouse log message is not a line.
+ *
+ * An authentication failure carries three paragraphs about resetting a cloud
+ * password; a `Trace` line can carry a whole query plan. Left to wrap, one row
+ * was 809 pixels tall and the section 134,000 — measured, not guessed — which is
+ * not a tail, it is a wall. Three lines and the rest on hover: the point of a
+ * tail is that it can be scanned, and the full text is still there for the one
+ * line that matters. */
+.tlog__msg {
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Only the levels worth a colour. An error is red, a warning is amber, and
+ * everything else is text — a log where every line is coloured is a log with no
+ * signal in it. */
+.tlog__line--error .tlog__level,
+.tlog__line--fatal .tlog__level,
+.tlog__line--critical .tlog__level {
+  color: var(--danger-text);
+}
+
+.tlog__line--warning .tlog__level {
+  color: var(--warning);
+}
+
+/* The error line, in the colour errors get everywhere else in Flint. */
+.spark__line--bad {
+  stroke: var(--danger);
+}
+
+/* ══ The Query page, once the grid can edit the query ══════════════════════
+ *
+ * Three surfaces were added together and they share one idea: a gesture that
+ * changes the SQL has to be visible as a change to the SQL. The strip states
+ * the clauses as removable chips, the column menu says which of its two kinds
+ * of hiding it does, and the analyses panel labels every figure with the rows
+ * it is out of. Nothing here invents a colour or a duration — see the tokens
+ * contract in `tokens.css`. */

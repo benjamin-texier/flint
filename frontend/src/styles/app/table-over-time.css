@@ -1,0 +1,119 @@
+/* ── A table over time ──────────────────────────────────────────────────────
+   Sentences first, shapes under them. The findings are the answer; the sparks
+   are there so a reader can check one against the data rather than take it on
+   faith, which is why they sit in the same column and share an axis width. */
+.drift__findings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.drift__finding {
+  padding-left: var(--s3);
+  border-left: 2px solid var(--line-strong);
+  font-size: var(--size-body);
+  color: var(--chalk);
+}
+
+/* A hole in the record is the one finding that is an absence rather than a
+   change, and it is the only one that takes the alarm: every other kind here
+   reports something that is still arriving. */
+.drift__finding--gap {
+  border-left-color: var(--alarm);
+}
+
+.drift__finding--filling,
+.drift__finding--fleet {
+  border-left-color: var(--warning);
+}
+
+.drift__col {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: var(--s2);
+  border-top: 1px solid var(--line);
+}
+
+.drift__name {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  margin: 0 0 2px;
+}
+
+.drift__type {
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+/* Three columns and a fixed spark, so every row in the tab shares one axis and
+   the shapes can be read down the page as well as across. */
+.drift__row {
+  display: grid;
+  grid-template-columns: 5.5rem 320px auto;
+  align-items: center;
+  gap: var(--s3);
+}
+
+.drift__label {
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+.drift__spark {
+  width: 320px;
+  height: 26px;
+  overflow: visible;
+}
+
+.drift__line {
+  fill: none;
+  stroke: var(--chalk-dim);
+  stroke-width: 1.25;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.drift__dot {
+  fill: var(--chalk-dim);
+}
+
+/* The peak, always. `sparkline` scales each row to its own maximum, so two rows
+   of wildly different magnitude draw the same shape — without the figure beside
+   it the reader draws exactly the wrong conclusion. */
+.drift__peak {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  font-variant-numeric: tabular-nums;
+  color: var(--chalk-dim);
+}
+
+.drift__left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: var(--s2) 0 0;
+  padding: var(--s2) 0 0;
+  border-top: 1px solid var(--line);
+  list-style: none;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+/* What the dashboard-wide range reaches, above the grid it changes. Quiet, and
+   always present while a range is set: a control that moves six of nine tiles
+   and says nothing about the other three is a control nobody can trust. */
+.dashgrid__range {
+  margin: var(--s4) 0 0;
+  max-width: 90ch;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}

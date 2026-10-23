@@ -1,0 +1,269 @@
+/* ═══ The mass map ═════════════════════════════════════════════════════════
+ * Where the disk is, as proportion. Blocks are tables, cells are columns, and
+ * area is bytes — so the picture is read by size before any label is.
+ *
+ * Every rectangle is absolutely positioned from a layout computed in
+ * `lib/treemap`, against a frame that is measured rather than assumed. */
+
+.mass {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.mass__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex-wrap: wrap;
+}
+
+.mass__text {
+  margin: 0;
+  font-size: var(--size-body);
+  color: var(--text-primary);
+}
+
+.mass__rest {
+  color: var(--text-secondary);
+}
+
+.mass__caption {
+  margin: 0;
+  font-size: var(--size-label);
+  line-height: 1.6;
+  color: var(--text-secondary);
+  max-width: 92ch;
+}
+
+.mass__left {
+  color: var(--text-muted);
+}
+
+/* The key names the families actually on screen. A legend listing six when the
+ * database uses three is a legend that has to be read past. */
+.mass__key {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--size-label);
+  color: var(--text-secondary);
+}
+
+.mass__keyitem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mass__swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+}
+
+.mass__frame {
+  position: relative;
+  width: 100%;
+  border-radius: var(--radius);
+  background: var(--slab-sunk);
+  overflow: hidden;
+}
+
+/* One table. The block is the button and its cells are decoration inside it:
+ * two hundred focusable rectangles is a tab order nobody can escape, and every
+ * cell in a block leads to the same page anyway. */
+.mblock {
+  position: absolute;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  overflow: hidden;
+  text-align: left;
+  /* The gap between blocks is drawn rather than laid out, so the areas stay
+     exactly proportional: a margin would take its width out of the smallest
+     rectangles first, which is where proportion matters most. */
+  box-shadow: inset -1px -1px 0 0 var(--slab-sunk), inset 1px 1px 0 0 var(--slab-sunk);
+}
+
+.mblock:hover,
+.mblock:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--spark);
+  z-index: 1;
+}
+
+/* A block with no room for its columns. Drawn as one solid cell of the neutral
+ * ink rather than left empty, and its title says why it is not divided. */
+.mblock--whole {
+  background: var(--slab-hover);
+}
+
+.mblock__name {
+  position: absolute;
+  left: 6px;
+  top: 5px;
+  max-width: calc(100% - 12px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-primary);
+  /* The label sits on top of a coloured cell, so it carries its own ground
+     rather than trusting whatever is behind it. */
+  background: color-mix(in srgb, var(--slab) 82%, transparent);
+  border-radius: 3px;
+  padding: 1px 4px;
+  pointer-events: none;
+}
+
+.mcell {
+  position: absolute;
+  overflow: hidden;
+  box-shadow: inset -1px -1px 0 0 color-mix(in srgb, var(--slab-sunk) 70%, transparent);
+}
+
+/* The fold: one cell standing for the columns too small to draw. Outlined
+ * rather than coloured, because it is several things and should not read as one
+ * column — and the overhead cell, which is not a column at all, is marked the
+ * same way for the same reason. */
+.mcell--fold,
+.mcell--overhead,
+.mcell--projection {
+  box-shadow: inset 0 0 0 1px var(--cell-absent);
+}
+
+.mcell__name {
+  position: absolute;
+  left: 5px;
+  bottom: 4px;
+  max-width: calc(100% - 10px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-data);
+  font-size: 10px;
+  color: var(--text-secondary);
+  pointer-events: none;
+}
+
+/* The restore column: a button, or the sentence saying why there is none.
+ *
+ * Deliberately not `.tbl--n`, which carries `white-space: nowrap` for figures —
+ * a sentence under that rule makes the column as wide as itself and pushes the
+ * table off the right of the screen, taking the button with it. The width is a
+ * hint to auto-layout so the prose wraps here rather than squeezing the columns
+ * that hold the data. The sentence itself is a `.says`, the house's existing
+ * idiom for prose inside a data cell: sans, left-aligned, wrapping. */
+.bk__cell {
+  width: 20ch;
+  text-align: right;
+}
+
+.bk__act {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  justify-content: flex-end;
+  white-space: nowrap;
+}
+
+/* What reads the column, beside what it costs. Quieter than the evidence it
+ * follows: it qualifies the finding rather than being one. */
+.rfind__usage {
+  margin-left: var(--s3);
+  color: var(--chalk-faint);
+}
+
+/* The queries that read a column. A disclosure rather than a panel: it answers
+ * a question the reader only sometimes has, and the SQL is long. */
+.rfind__usage {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  margin-left: var(--s3);
+  color: var(--chalk-faint);
+  font-family: inherit;
+  font-size: inherit;
+}
+.rfind__usage:hover {
+  color: var(--spark);
+}
+
+.rfind__twist {
+  font-size: 9px;
+}
+
+.rread {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: var(--s2) 0 var(--s2) var(--s3);
+  border-left: 1px solid var(--divider);
+}
+
+.rread__head {
+  margin: 0;
+  max-width: 78ch;
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--chalk-faint);
+}
+
+.rread__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rread__item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}
+
+.rread__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1) var(--s3);
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-dim);
+}
+
+.rread__when {
+  color: var(--chalk-faint);
+}
+
+/* Four lines of it, and the rest on hover — a generated statement can be a
+ * hundred kilobytes, and the shape is what identifies it. */
+.rread__sql {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  margin: 0;
+  overflow: hidden;
+  font-size: var(--size-label);
+  overflow-wrap: anywhere;
+}
+.rread__item:hover .rread__sql {
+  -webkit-line-clamp: 12;
+  overflow: auto;
+}
+
+.rread__open {
+  align-self: flex-start;
+  font-size: var(--size-label);
+  color: var(--spark);
+}
+.rread__open:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}

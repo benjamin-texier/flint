@@ -1,0 +1,60 @@
+/* ── Changing who can do what ─────────────────────────────────────────────
+   One strip of toggles, one panel open at a time. The alternative — every
+   control visible at once — was built here once before, in a different cell:
+   two groups of controls side by side turned a 33px row into a 113px one and
+   wrapped to three lines. */
+.rbac__strip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  margin-top: var(--s2);
+  flex-wrap: wrap;
+}
+
+.rbac__panel {
+  margin-top: var(--s2);
+  padding: var(--s3);
+  background: var(--slab);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.rbac__row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--s3);
+  flex-wrap: wrap;
+}
+
+.rbac__row + .rbac__row {
+  margin-top: var(--s3);
+}
+
+.rbac__field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rbac__field input,
+.rbac__field select {
+  min-width: 14ch;
+}
+
+/* A privilege that is already there, with the way to take it away attached to
+   it: the two belong together, and a separate revoke control would have to name
+   the thing again. */
+.rbac__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 2px 2px 2px var(--s2);
+  font-family: var(--font-mono);
+  font-size: var(--size-label);
+  background: var(--bar-ghost);
+  border-radius: var(--radius-pill);
+}
+
+.rbac__create {
+  margin-top: var(--s3);
+}

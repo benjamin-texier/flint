@@ -1,0 +1,546 @@
+/* ═══ Explorer rail ══════════════════════════════════════════════════════
+ * One database at a time, with a switcher above it. A tree of every database
+ * is unusable on a server with thirty of them, and costs two levels of
+ * indentation even on a small one. */
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  width: var(--rail-w);
+  flex: none;
+  background: var(--rail);
+  border-right: 1px solid var(--line);
+}
+
+.switch {
+  position: relative;
+  padding: var(--s4) var(--s4) var(--s3);
+}
+
+.switch__button {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  width: 100%;
+  text-align: left;
+  border-radius: var(--radius-sm);
+}
+
+.switch__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 1.0625rem;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--chalk);
+}
+
+.switch__caret {
+  flex: none;
+  width: 0;
+  height: 0;
+  border-top: 4px solid var(--chalk-faint);
+  border-left: 3.5px solid transparent;
+  border-right: 3.5px solid transparent;
+  transition: transform var(--motion-base) var(--ease);
+}
+.switch__button[aria-expanded='true'] .switch__caret {
+  transform: rotate(180deg);
+}
+.switch__button:hover .switch__caret {
+  border-top-color: var(--chalk);
+}
+
+.switch__facts {
+  margin: 3px 0 0;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.switch__menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% - var(--s1));
+  left: var(--s2);
+  right: var(--s2);
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: var(--s1);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--slab-raised);
+  box-shadow: var(--shadow-3);
+  animation: popIn var(--motion-fast) var(--ease) both;
+}
+
+@keyframes popIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+.switch__divider {
+  margin: var(--s2) 0 var(--s1);
+  padding: 0 var(--s2);
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+.switch__option {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  width: 100%;
+  height: 28px;
+  padding: 0 var(--s2);
+  border-radius: var(--radius-sm);
+  text-align: left;
+}
+.switch__option:hover {
+  background: var(--slab-hover);
+}
+.switch__option.is-on {
+  color: var(--spark);
+}
+
+.switch__optname {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+}
+
+.switch__optmeta {
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.rail__search {
+  position: relative;
+  padding: 0 var(--s4) var(--s3);
+}
+
+.rail__glass {
+  position: absolute;
+  left: 28px;
+  top: 10px;
+  width: 13px;
+  height: 13px;
+  color: var(--chalk-faint);
+  pointer-events: none;
+}
+
+.rail__input {
+  width: 100%;
+  height: 32px;
+  padding: 0 var(--s3) 0 30px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  font-size: var(--size-body);
+  transition: border-color var(--motion-fast) var(--ease-out);
+}
+.rail__input::placeholder {
+  color: var(--chalk-faint);
+}
+/* One focus ring for the whole app: a control may add to it, never replace it.
+   This used to drop the ring and stand in a 1px tinted border, which measures
+   2.9:1 against white — under the 3:1 a non-text indicator needs, and the only
+   control on the page not showing the ring every other one shows. The tint is
+   kept for the pointer, where there is nothing to indicate. */
+.rail__input:focus {
+  border-color: var(--spark-line);
+}
+.rail__input:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* The kind filters are also the key for the shapes in the list below. */
+.kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1);
+  padding: 0 var(--s4) var(--s3);
+}
+
+.kinds__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 11px;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+  transition: color var(--motion-fast) var(--ease-out), background var(--motion-fast) var(--ease-out);
+}
+.kinds__item:hover {
+  color: var(--chalk-dim);
+  background: var(--slab);
+}
+.kinds__item.is-on {
+  color: var(--chalk);
+  background: var(--slab-raised);
+}
+
+.kinds__n {
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+}
+
+.kinds__label {
+  white-space: nowrap;
+}
+
+/* ── The shape family ───────────────────────────────────────────────────
+ * Square = a table, which stores rows. Diamond = a materialized view, which
+ * transforms them on the way in. Ring = a view, which stores nothing. Disc =
+ * a dictionary, held in memory. Four silhouettes stay apart at 8px in a way
+ * four glyphs never do. */
+.glyph {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--k-table);
+}
+.glyph--materialized_view {
+  border-radius: 1px;
+  background: var(--k-matview);
+  transform: rotate(45deg) scale(0.86);
+}
+.glyph--view {
+  border-radius: 50%;
+  background: none;
+  box-shadow: inset 0 0 0 1.5px var(--k-view);
+}
+.glyph--dictionary {
+  border-radius: 50%;
+  background: var(--k-dictionary);
+}
+/* The legend's copy of a folding engine's rail: the same broken bar, stood on
+   end and shrunk, so the mark in the legend and the mark on the node are
+   visibly the same mark. Neutral ink — it is about behaviour, and behaviour has
+   no kind. */
+.glyph--folds {
+  width: 3px;
+  height: 9px;
+  border-radius: 1px;
+  background: repeating-linear-gradient(
+    180deg,
+    var(--chalk-faint) 0 3px,
+    transparent 3px 5px
+  );
+}
+
+/* The legend's copy of a carrying edge: the same dots, laid flat and still, so
+   what is moving on the diagram and what is named at its foot are visibly the
+   same mark. Accent ink, because the dots are accent ink. */
+.glyph--flow {
+  width: 12px;
+  height: 2px;
+  border-radius: 0;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--accent) 0 2px,
+    transparent 2px 5px
+  );
+}
+/* And of a severed one: a line with a piece missing, in the alarm ink it is
+   drawn in. */
+.glyph--severed {
+  width: 12px;
+  height: 2px;
+  border-radius: 0;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--alarm) 0 4px,
+    transparent 4px 7px
+  );
+}
+
+.rail__scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: var(--s4);
+}
+
+.rail__none {
+  margin: var(--s2) var(--s4);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.objnode {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  height: 28px;
+  padding: 0 var(--s4);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk-dim);
+  box-shadow: inset 2px 0 0 transparent;
+  transition: color var(--motion-fast) var(--ease-out), background var(--motion-fast) var(--ease-out),
+    box-shadow var(--motion-fast) var(--ease-out);
+}
+.objnode:hover {
+  color: var(--chalk);
+  background: var(--slab);
+}
+.objnode.is-active {
+  color: var(--chalk);
+  background: var(--slab);
+  box-shadow: inset 2px 0 0 var(--spark);
+}
+
+/* The name gives way in the middle, not at the end: two objects in the same
+   schema usually share their prefix and differ in their last segment, which is
+   exactly what tail truncation throws away. */
+.objnode__name {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+.objnode__head {
+  /* Room for a letter and the ellipsis, always. Squeezed narrower than the
+     ellipsis itself — the rail at 232px, beside a chevron, a mark and a row
+     count — the browser drops the ellipsis rather than the letters, and
+     `orders_by_account_hourly` was shown as `o_hourly`: a shortened
+     name with nothing to say so, which reads as a different table. */
+  min-width: 3ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.objnode__tail {
+  flex: none;
+  white-space: nowrap;
+}
+
+.objnode__rows {
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+/* The plumbing, folded away: present, countable, one click from visible, and
+ * not in the way of the objects somebody wrote. Set as a footnote to the kind
+ * chips, since it is what accounts for the difference between their counts and
+ * the database's own. */
+.rail__plumbing {
+  display: block;
+  margin: 0 var(--s4) var(--s2);
+  padding: 2px 0;
+  text-align: left;
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  color: var(--chalk-faint);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 35%, transparent);
+  text-underline-offset: 3px;
+}
+.rail__plumbing:hover {
+  color: var(--chalk);
+}
+
+.rail__foot {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex: none;
+  height: 38px;
+  padding: 0 var(--s4);
+  border-top: 1px solid var(--line);
+  font-size: var(--size-data);
+  color: var(--chalk-faint);
+  transition: color var(--motion-fast) var(--ease-out);
+}
+.rail__foot:hover {
+  color: var(--chalk);
+}
+.rail__footarrow {
+  transition: transform var(--motion-base) var(--ease);
+}
+.rail__foot:hover .rail__footarrow {
+  transform: translateX(3px);
+}
+
+/* ── The rail beside the alerts ─────────────────────────────────────────────
+   The explorer's rail followed the reader onto the alerts page, where a list of
+   tables answers no question anybody has. This one is the same frame — same
+   width, same ground, same border — carrying a filter instead of a tree, so
+   crossing between the two pages does not move the furniture. */
+.rail--alerts {
+  gap: var(--s4);
+  padding-bottom: var(--s4);
+  overflow-y: auto;
+}
+
+.rail__head {
+  padding: var(--s4) var(--s4) 0;
+}
+
+.rail__title {
+  margin: 0;
+  font-size: var(--size-head);
+  font-weight: 600;
+  color: var(--chalk);
+}
+
+.rail__sub {
+  margin: 2px 0 0;
+  font-size: var(--size-data);
+  color: var(--chalk-faint);
+}
+
+.rail__block {
+  padding: 0 var(--s4);
+}
+
+.rail__label {
+  margin: 0 0 var(--s2);
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+.railset {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 0 var(--s3);
+  list-style: none;
+}
+
+.railset__row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  width: 100%;
+  padding: 5px var(--s2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  text-align: left;
+  font-size: var(--size-data);
+  color: var(--chalk-dim);
+  cursor: pointer;
+  transition:
+    background var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
+}
+
+.railset__row:hover {
+  background: var(--slab-hover);
+  color: var(--chalk);
+}
+
+/* The selected filter is stated by the ground it sits on rather than by a
+   colour of its own: the row already carries a standing colour on its dot, and
+   two colours arguing on one row is how a filter stops reading as a filter. */
+.railset__row.is-on {
+  background: var(--slab-raised);
+  color: var(--chalk);
+  font-weight: 500;
+}
+
+.railset__name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Tabular figures so the column of counts is a column and not a ragged edge. */
+.railset__count {
+  font-variant-numeric: tabular-nums;
+  font-size: var(--size-data);
+  color: var(--chalk-faint);
+}
+
+.railset__row.is-on .railset__count {
+  color: var(--chalk-dim);
+}
+
+/* The standing, as a dot before the name. Firing takes the alarm, a check that
+   errored takes the warning — Flint failing to *evaluate* a rule is a different
+   fact from the rule being true — and the quiet three take no colour at all,
+   because an indicator that is always lit is not an indicator.
+
+   The two colours are the ones the page's own chips use (`.flag--firing`,
+   `.flag--error`), not a second opinion: a rail dot that disagrees with the chip
+   beside the alert it counts is two answers to one question. */
+.railset__row::before {
+  content: '';
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--line-strong);
+  transform: translateY(-1px);
+}
+
+.railset__row--firing::before {
+  background: var(--alarm);
+}
+
+.railset__row--error::before {
+  background: var(--warning);
+}
+
+.railset__row--ok::before {
+  background: var(--success);
+}
+
+/* Paused is the fifth colour: an alert switched off is not fine and not broken,
+   and neither of the other four can say so. Everything, and an alert that has
+   simply never run, stay uncoloured — nothing has happened to them. */
+.railset__row--paused::before {
+  background: var(--cold);
+}
+
+.railset__row--all::before,
+.railset__row--idle::before {
+  background: var(--line-strong);
+}
+
+.railset--plain {
+  padding: 0;
+}
+
+.railset__dest {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s2);
+  padding: 3px 0;
+  font-size: var(--size-data);
+  color: var(--chalk-dim);
+  min-width: 0;
+}
+
+.railset--plain .railset__name {
+  min-width: 0;
+}
+
+.railset__state {
+  flex: none;
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  color: var(--chalk-faint);
+}
+
+.railset__state--failing {
+  color: var(--alarm-text);
+}

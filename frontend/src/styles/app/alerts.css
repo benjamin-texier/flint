@@ -1,0 +1,209 @@
+/* ── Alerts ────────────────────────────────────────────────────────────────
+   One screen: the list, one form, and the log of what changed. */
+.page--alerts {
+  max-width: var(--measure-list);
+}
+
+.page__lead {
+  margin-top: var(--s2);
+  max-width: 74ch;
+  font-size: var(--size-body);
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+/* The app has no shared form control — every context had grown its own. This is
+   one, defined once, taking the global focus ring rather than replacing it. */
+.input {
+  width: 100%;
+  min-height: 32px;
+  padding: 6px var(--s3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--size-body);
+  transition: border-color var(--motion-fast) var(--ease-out);
+}
+.input::placeholder {
+  color: var(--chalk-faint);
+}
+
+/* Autofill. Chrome paints its own background and its own text colour over an
+   autofilled field and ignores `background`, which is why a saved ClickHouse
+   user and password used to arrive on the sign-in screen as two olive-yellow
+   bars — the UA's light-theme fill, chosen against a page it knows nothing
+   about. An inset shadow the height of the field is the only thing that covers
+   it, and `-webkit-text-fill-color` the only thing that reaches the text. Both
+   are taken from the tokens, so the fix flips with the theme like everything
+   else.
+
+   The absurd transition delay is the companion trick: WebKit re-applies the
+   fill on focus, and animating the property it changes to a time nobody will
+   ever reach is how the change is refused. */
+.input:-webkit-autofill,
+.input:-webkit-autofill:hover,
+.input:-webkit-autofill:focus,
+.input:-webkit-autofill:active {
+  box-shadow: inset 0 0 0 100px var(--bg-surface);
+  -webkit-text-fill-color: var(--text-primary);
+  caret-color: var(--text-primary);
+  /* token-exempt: this is a refusal, not a duration somebody picked. */
+  transition: background-color 8000s linear;
+}
+.input--area {
+  min-height: 84px;
+  font-family: var(--font-mono);
+  font-size: var(--size-data);
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.aform {
+  margin-top: var(--s5);
+  padding: var(--s4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--slab-raised);
+  box-shadow: var(--shadow-card);
+}
+
+.aform__head {
+  margin-bottom: var(--s3);
+}
+
+.aform__field {
+  display: block;
+  margin-top: var(--s3);
+}
+.aform__field .label {
+  display: block;
+  margin-bottom: 4px;
+}
+.aform__field--narrow {
+  flex: 1 1 150px;
+  min-width: 0;
+}
+.aform__field--tiny {
+  flex: 0 1 92px;
+  min-width: 0;
+}
+
+.aform__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s3);
+  align-items: flex-end;
+}
+
+/* Read it back before arming it. */
+.aform__says {
+  margin-top: var(--s4);
+  font-size: var(--size-body);
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.aform__hint {
+  margin-top: 4px;
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+.aform__actions {
+  display: flex;
+  gap: var(--s2);
+  margin-top: var(--s4);
+}
+
+.alist {
+  margin-top: var(--s5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  list-style: none;
+}
+
+.arow {
+  padding: var(--s3) var(--s4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--slab-raised);
+}
+/* Paused is dimmed, not hidden: an alert you switched off is still a decision
+   you made, and it belongs where you will see it again. */
+.arow--off {
+  background: var(--bg-surface-2);
+}
+.arow--off .arow__name {
+  color: var(--text-secondary);
+}
+
+.arow__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.arow__name {
+  font-family: var(--font-sans);
+  font-size: var(--size-body);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.arow__says {
+  margin-top: var(--s2);
+  font-size: var(--size-data);
+  color: var(--text-secondary);
+}
+
+.arow__sql {
+  margin-top: var(--s2);
+  padding: var(--s2) var(--s3);
+  overflow-x: auto;
+  border-radius: var(--radius-sm);
+  background: var(--fill);
+  font-family: var(--font-mono);
+  font-size: var(--size-data);
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.arow__foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s3);
+  margin-top: var(--s2);
+  font-size: var(--size-label);
+}
+
+.arow__last {
+  margin-top: 4px;
+  font-size: var(--size-label);
+  color: var(--text-secondary);
+}
+
+/* Alert tones. Firing is the only one that gets the alarm colour; "cannot run"
+   is amber because it is a broken question rather than a bad answer. */
+.flag--firing {
+  background: var(--danger-weak);
+  color: var(--danger-text);
+}
+.flag--error {
+  background: var(--warning-weak);
+  color: var(--warning);
+}
+.flag--idle {
+  background: var(--fill);
+  color: var(--text-secondary);
+}
+/* Paused had been wearing the idle chip, which says "nothing has happened yet"
+   about an alert somebody deliberately switched off. Two different facts, and
+   the one that is a decision now has the colour for a decision. */
+.flag--paused {
+  background: var(--cold-weak);
+  color: var(--cold);
+}

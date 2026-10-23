@@ -1,0 +1,510 @@
+/* ═══ Tables ═════════════════════════════════════════════════════════════
+ * Dashfile's grid, in Flint's colours: a white panel, a 40px header on the
+ * raised surface, sentence-case column names with a type mark in front, and
+ * dividers light enough to guide the eye without ruling the data into boxes. */
+
+.panel {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.panel__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
+  padding: var(--s3) var(--s4);
+  border-bottom: 1px solid var(--divider);
+}
+
+.panel__count {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.panel__spacer {
+  flex: 1;
+}
+
+.panel__hint {
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+.panel__toggle {
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.panel__toggle:hover {
+  color: var(--text-primary);
+}
+
+.panel__nomatch {
+  margin: 0;
+  padding: var(--s6) var(--s4);
+  text-align: center;
+  font-size: var(--size-data);
+  color: var(--text-muted);
+}
+
+.panel__scroll {
+  overflow-x: auto;
+}
+
+/* ── The side that continues ────────────────────────────────────────────────
+ * A wide table scrolling inside its own box is the right layout and a silent
+ * one. The object list on `/db/default` wants 1287px in a 1078px column, so
+ * three of its ten columns — On disk's unit, Ratio, Share — were simply not
+ * there, with nothing on the page admitting it and no way to reach them
+ * without a trackpad. This is the same rule as "155 of 164 objects", turned
+ * ninety degrees: the fold says it is a fold.
+ *
+ * A shade rather than a fade-to-ground, because these tables sit on three
+ * different surfaces — the page, a slab, a raised card — and a fade has to
+ * know which one it is over. A shade is the shadow the overhanging content
+ * casts, and that is true on any of them. `--fade-edge` carries the same ink as
+ * `--shadow-card` in each theme, since it is the same light.
+ *
+ * The focus ring belongs to the scroller and the shade to its wrapper, so
+ * `.wide` is a plain positioned box with no ink of its own. */
+.wide {
+  position: relative;
+  min-width: 0;
+}
+
+.wide::before,
+.wide::after {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  width: 26px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--motion-base) var(--ease-out);
+  /* Over a sticky header too — see `.panel__scroll--tall thead th`. */
+  z-index: 3;
+}
+
+.wide::before {
+  left: 0;
+  background: linear-gradient(to right, var(--fade-edge), transparent 72%);
+}
+
+.wide::after {
+  right: 0;
+  background: linear-gradient(to left, var(--fade-edge), transparent 72%);
+}
+
+.wide.is-more-left::before,
+.wide.is-more-right::after {
+  opacity: 1;
+}
+
+/* ── A list long enough to lose its own header ───────────────────────────────
+ * `default` holds 155 objects, so the list is 4,700px of rows under nine column
+ * headings that leave the screen after the first thirty. What is left is three
+ * unlabelled columns of integers: 17, 0, 0 tells you nothing about which is
+ * Cols, which is Rows and which is On disk, and the reader's only way back to
+ * the headings is to scroll four thousand pixels up and then down again.
+ *
+ * `position: sticky` cannot reach the page's scroller from in here, and that is
+ * not a guess — measured in a browser, the `th` leaves the viewport at exactly
+ * the same pixel its wrapper does. `overflow-x: auto` makes the wrapper the
+ * nearest scrollport on *both* axes (CSS Overflow 3: a `visible` paired with an
+ * `auto` computes to `auto`), and a scrollport with no vertical overflow of its
+ * own has nothing for a sticky child to stick within. Nothing but `clip` can
+ * pair with `auto`, and `clip` does not scroll.
+ *
+ * So the panel takes a height and becomes the scroller itself. That is a real
+ * trade — the page's scrollbar no longer measures the list — and it is paid
+ * only where the list is long enough to need it: `max-height` is inert until
+ * the rows exceed it, so a database with ten tables is untouched. The list is
+ * the last thing on the page, so scrolling down the page and then on into the
+ * list is one continuous gesture rather than two competing ones.
+ *
+ * The floor is not decoration: on a 600px window `100vh` minus the chrome and
+ * the panel's own bar leaves a peephole, and a list you read four rows at a
+ * time is worse than one that has lost its header.
+ *
+ * ## Where this is worth the trade
+ *
+ * A threshold rather than a taste, so the next table does not need the argument
+ * had again: **about two viewports.** Past that the headings are absent for
+ * more of the scroll than they are present, and a nested scroller is the lesser
+ * cost. Under it they are gone only for the tail and the cure is worse — three
+ * sections of a page each becoming its own scroll region is harder to read than
+ * one long page.
+ *
+ * Measured at a 1440×950 window, that is: the object list on a database
+ * (4,684px), Infrastructure's schema (12,034px) and what it costs on disk
+ * (1,987px, and six numeric columns that are meaningless unlabelled) take it.
+ * Diagnostics' three ranked tables (~1,250px each, and three of them stacked),
+ * the partition pressure table (1,144px) and Config's two settings tables
+ * (~750px, which is under the height anyway and so would never engage) do not.
+ *
+ * The check is `contrib/browser-check.mjs`'s business to keep honest; the
+ * inventory above was taken by walking every page and measuring each table. */
+.panel__scroll--tall {
+  max-height: max(18rem, calc(100vh - var(--chrome-h) - 5rem));
+}
+
+.panel__scroll--tall thead th {
+  position: sticky;
+  top: 0;
+  /* Above the rows, below the shade: `.wide`'s gradients are the one thing on
+     this panel that has to stay on top of the header, because the columns they
+     stand for are as hidden from the header as they are from the rows. */
+  z-index: 2;
+}
+
+/* Focusable only while something is off screen — see `Wide` — so the ring is
+   never on a table that had nothing to reveal. Inset, because the scroller's
+   own edge is flush against the panel's border and an outset ring there is
+   half a ring. */
+.wide .panel__scroll:focus-visible {
+  outline: 2px solid var(--spark);
+  outline-offset: -2px;
+  border-radius: var(--radius-sm);
+}
+
+/* ── The peek: what is inside the object you selected in the diagram ────── */
+
+/* It stands where the object list stood, so it borrows the list's frame
+   exactly — a panel that changed shape as well as contents would read as the
+   page jumping rather than as one thing being swapped for another. */
+.peek__what {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-width: 0;
+}
+
+.peek__name {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  font-weight: 600;
+  color: var(--chalk);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.peek__db {
+  flex: none;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+/* The same two weights the diagram sets the engine in, for the same reason:
+   `Replacing` is the word that distinguishes this table from the one above
+   it. */
+.peek__engine {
+  flex: none;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.peek__enginekey {
+  font-weight: 600;
+  color: var(--chalk-dim);
+}
+
+.peek__figures {
+  display: flex;
+  gap: var(--s3);
+  flex: none;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-dim);
+}
+
+/* Tall enough to show that rows have shapes — a dozen of them, so a wide
+   column and a null-heavy one look different at a glance — and short enough
+   that the diagram it belongs to stays on screen above it. The grid is
+   virtualised and fills whatever it is given, so this height is the whole
+   decision. */
+.peek__grid {
+  height: 340px;
+  padding: var(--s3) var(--s4) 0;
+}
+
+/* Said in place of a sample, where taking one would take from a queue. */
+.peek__quiet {
+  margin: 0;
+  max-width: 74ch;
+  font-size: var(--size-body);
+  line-height: 1.6;
+  color: var(--chalk-faint);
+}
+
+.peek__note {
+  padding: var(--s4);
+}
+
+.peek__foot {
+  margin: 0;
+  padding: var(--s2) var(--s4) var(--s3);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+/* ── The shared grammar of Flint's two kinds of table ───────────────────────
+   The reference tables (`.tbl`) and the results grid (`.grid`) are different
+   machines and cannot share a component: one is a `<table>` of forty rich rows
+   with pills and bars in its cells, the other a windowed grid of ten thousand
+   absolutely-placed scalar cells. They can share these, so that moving a header
+   height moves both rather than leaving the two to drift a pixel at a time.
+
+   `--table-row-h` has a twin in `ResultsGrid.tsx`: the virtualizer needs the row
+   height as a number to do its arithmetic, so that one value is stated in both
+   places and has to agree. */
+:root {
+  --table-head-h: 34px;
+  --table-row-h: 25px;
+  --table-refrow-h: 30px;
+  --table-pad: 11px;
+  --table-head-bg: var(--slab-raised);
+  --table-head-rule: var(--line-strong);
+  --table-col-rule: var(--line);
+  --table-row-rule: var(--divider);
+}
+
+/* The reference tables — columns, partitions, projections, databases — read in
+   the same language as the results grid: a raised header keeping its vertical
+   dividers, a body that has none, and one whisper of a rule between rows. The
+   header face is the one deliberate difference. The grid's header holds
+   identifiers, so it is set in the data face; these hold English labels, so
+   they are set in the interface one. */
+.tbl {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--size-data);
+}
+
+.tbl th {
+  height: var(--table-head-h);
+  padding: 0 var(--table-pad);
+  text-align: left;
+  white-space: nowrap;
+  background: var(--table-head-bg);
+  border-bottom: 1px solid var(--table-head-rule);
+  border-right: 1px solid var(--table-col-rule);
+  font-family: var(--font-sans);
+  font-size: var(--size-data);
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-secondary);
+}
+.tbl th:last-child {
+  border-right: none;
+}
+
+.tbl td {
+  height: var(--table-refrow-h);
+  padding: 0 var(--table-pad);
+  border-bottom: 1px solid var(--table-row-rule);
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+}
+.tbl tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.tbl tbody tr {
+  transition: background var(--motion-fast) var(--ease);
+}
+.tbl tbody tr:hover td {
+  background: var(--slab-hover);
+}
+.tbl tbody tr.is-muted .tbl__key {
+  color: var(--text-muted);
+}
+
+/* Columns that sort themselves, as in the results grid: the header label *is*
+ * the control, and the arrow shows which way. */
+.tblsort {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: inherit;
+  color: inherit;
+  text-align: inherit;
+}
+.tblsort:hover {
+  color: var(--text-primary);
+}
+.tblsort.is-on {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.tbl--n .tblsort {
+  width: 100%;
+  justify-content: flex-end;
+}
+
+/* The sorted column's direction. The header it sits in already says it is the
+   sorted one — `.tblsort.is-on` takes the full ink and 600 — so the arrow only
+   has to say *which way*, and it does not need the one colour that means "you
+   can touch this" to do it. */
+.tblsort__arrow {
+  width: 8px;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--chalk-dim);
+}
+
+.tbl--n {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.tbl__head {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tbl__key {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.objlink {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tbl__pos {
+  width: 4ch;
+  text-align: right;
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+.tbl__note {
+  display: block;
+  margin-top: 2px;
+  font-family: var(--font-sans);
+  font-size: var(--size-label);
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.tbl__expr {
+  max-width: 30ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Pills sit inline rather than in a flex <td>: making a table cell a flex
+ * container takes it out of the row's border flow and leaves a broken rule. */
+.tbl__keys {
+  white-space: nowrap;
+}
+.tbl__keys .pill + .pill {
+  margin-left: 3px;
+}
+
+.tbl__bar {
+  width: 15%;
+  min-width: 108px;
+}
+
+/* Quiet by colour, not by opacity. The 0.7 here cost this two full stops — 4.52
+   became 2.89 on a raised row — and an em-dash standing in for a value somebody
+   is looking for is text that has to be read. The muted tier is already the
+   quiet one; dimming it further was saying the same thing twice and breaking it
+   the second time. */
+.dash {
+  color: var(--text-muted);
+}
+
+/* A true zero, as opposed to a value that was never reported. Quiet, but there
+   — the difference between "no tables" and "we did not ask" is worth a glance. */
+.zero {
+  color: var(--text-muted);
+}
+
+.link {
+  color: var(--text-primary);
+  transition: color var(--motion-fast) var(--ease);
+}
+.link:hover {
+  color: var(--accent);
+}
+
+/* A button that reads as a link. Undoing a fold is an action on this page, not
+   navigation to another, so the element stays a button and only the appearance
+   is borrowed — the keyboard and the screen reader get the truth. */
+.linkish {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--spark);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 35%, transparent);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.linkish:hover {
+  text-decoration-color: currentColor;
+}
+
+.type {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+/* Type marks in a header or beside a column name. */
+.ticon {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+.ticon--aa {
+  font-size: 9.5px;
+}
+.ticon__svg {
+  flex: none;
+  width: 11px;
+  height: 11px;
+}
+
+.codec {
+  margin-left: 7px;
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+.nullable {
+  margin-left: 1px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.glyph--lg {
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+}
+.glyph--materialized_view.glyph--lg {
+  transform: rotate(45deg) scale(0.88);
+}
+.glyph--view.glyph--lg {
+  box-shadow: inset 0 0 0 2px var(--k-view);
+}

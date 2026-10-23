@@ -1,0 +1,43 @@
+/* ── Try it before you arm it ──────────────────────────────────────────────
+   Attached to the form it belongs to, not a separate screen: the point is to
+   look at the answer while the thing that produced it is still in front of
+   you. */
+.check {
+  margin-top: var(--s3);
+}
+
+.check__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+}
+
+/* The verdict is the answer for an alert; the rows are only how it got there. */
+.check__verdict {
+  margin-top: var(--s2);
+  font-size: var(--size-data);
+  font-weight: 500;
+}
+.check__verdict--firing {
+  color: var(--danger-text);
+}
+.check__verdict--ok {
+  color: var(--success-text);
+}
+.check__verdict--error {
+  color: var(--warning);
+}
+
+.check__table {
+  margin-top: var(--s2);
+  max-height: 240px;
+  overflow: auto;
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-sm);
+}
+
+.check__more {
+  padding: 4px var(--s3);
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}

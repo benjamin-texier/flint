@@ -1,0 +1,747 @@
+/* ── Endpoints ────────────────────────────────────────────────────────────
+ *
+ *  Two pages, one vocabulary. The list is a dense table because the question
+ *  it answers is comparative — which of these is busy, which is on its way
+ *  out — and a grid of cards makes comparison a memory exercise. The endpoint
+ *  page is two columns because its questions are about the pair: the contract
+ *  on the left, what has actually been happening on the right. */
+
+/* `.tbl th` is written for a column header — a filled band with a rule down
+   its right edge. These tables use `th scope="row"` for the address, because
+   that is what the row is *about* and a screen reader should say it before
+   every cell; without this the first column reads as a second header running
+   down the page. */
+.eps tbody th,
+.ep__contract tbody th {
+  height: var(--table-refrow-h);
+  background: transparent;
+  border-right: none;
+  border-bottom: 1px solid var(--table-row-rule);
+  font-weight: 400;
+  color: var(--chalk);
+}
+/* `.tbl` drops the rule under its last row, and a row header that kept one
+   drew a line under a single column — which reads as a box around it. */
+.eps tbody tr:last-child th,
+.ep__contract tbody tr:last-child th {
+  border-bottom: none;
+}
+/* A row header is part of its row, so it lights up with it. */
+.eps tbody tr:hover th,
+.ep__contract tbody tr:hover th {
+  background: var(--slab-hover);
+}
+
+.eps__n {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.eps th,
+.eps td {
+  vertical-align: baseline;
+}
+.eps__path {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color var(--motion-fast) var(--ease-out);
+}
+.eps__path:hover,
+.eps__path:focus-visible {
+  border-bottom-color: var(--spark);
+}
+.eps__from code {
+  font-size: var(--size-data);
+  color: var(--chalk-dim);
+}
+/* A revision that is not the live one is still a row somebody has to be able
+   to read: dimmed, never greyed to the point of being decoration. */
+.eps tbody tr.is-muted th,
+.eps tbody tr.is-muted td {
+  color: var(--chalk-faint);
+}
+.eps tbody tr.is-muted .eps__path {
+  color: var(--chalk-dim);
+}
+.eps__foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s3);
+  margin-top: var(--s3);
+  font-size: var(--size-body);
+}
+
+.eps__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  gap: var(--s4);
+  margin-top: var(--s6);
+}
+.eps__card {
+  padding: var(--s4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--slab);
+}
+.eps__cardtitle {
+  margin: 0 0 var(--s3);
+  font-size: var(--size-head);
+  font-weight: 600;
+  color: var(--chalk);
+}
+.eps__cardbody {
+  margin: 0 0 var(--s3);
+  font-size: var(--size-body);
+  line-height: 1.55;
+  color: var(--chalk-dim);
+}
+.eps__cardbody:last-child {
+  margin-bottom: 0;
+}
+.eps__cardbody code {
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+
+/* ── One endpoint ─────────────────────────────────────────────────────── */
+
+.ep__title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  font-family: var(--font-data);
+  word-break: break-all;
+}
+.ep__method {
+  color: var(--spark);
+  font-weight: 700;
+}
+.ep__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+
+.ep__revs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  margin-bottom: var(--s5);
+}
+.ep__rev {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--s1) var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--slab);
+  color: var(--chalk-dim);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  cursor: pointer;
+  transition:
+    border-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
+}
+.ep__rev:hover {
+  border-color: var(--line-strong);
+  color: var(--chalk);
+}
+.ep__rev.is-on {
+  border-color: var(--spark);
+  color: var(--chalk);
+}
+
+.ep__cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: var(--s5);
+  align-items: start;
+}
+/* One column below the width where the right-hand panels stop being a column
+   and start being a series of very narrow boxes. */
+@media (max-width: 62rem) {
+  .ep__cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.ep__left,
+.ep__right {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+  min-inline-size: 0;
+}
+
+.ep__panel {
+  padding: var(--s4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--slab);
+}
+.ep__paneltitle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s3);
+  margin: 0 0 var(--s3);
+  font-size: var(--size-head);
+  font-weight: 600;
+  color: var(--chalk);
+}
+/* A panel's caption sits inside its heading, so without this it inherits the
+   heading's size and reads as a second title. It is an aside about the panel,
+   and it should look like one. */
+.ep__paneltitle .mono-dim {
+  font-size: var(--size-label);
+  font-weight: 400;
+  letter-spacing: var(--track-label);
+}
+
+.ep__panelfoot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s3);
+  margin: var(--s3) 0 0;
+  font-size: var(--size-body);
+  line-height: 1.55;
+  color: var(--chalk-dim);
+}
+/* The sentence a panel shows instead of a figure it does not have. Not an
+   error and not a placeholder: it is the answer. */
+.ep__none {
+  margin: 0;
+  font-size: var(--size-body);
+  line-height: 1.55;
+  color: var(--chalk-faint);
+}
+.ep__prose {
+  margin: 0;
+  font-size: var(--size-body);
+  line-height: 1.6;
+  color: var(--chalk-dim);
+}
+
+/* The sentence under a generated statement, saying where it came from. Its
+   own rule only for the space above it: it follows a paragraph rather than a
+   heading, and without one the two read as one run-on. */
+.ep__reopen {
+  margin-top: var(--s3);
+}
+
+.ep__contract th {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  font-weight: 400;
+  color: var(--chalk);
+  text-align: left;
+}
+.ep__ctype {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--cold);
+  white-space: nowrap;
+}
+.ep__csays {
+  font-size: var(--size-body);
+  color: var(--chalk-dim);
+}
+.ep__cval {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk-faint);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.ep__sql {
+  margin: 0;
+  padding: var(--s3);
+  overflow-x: auto;
+  border-radius: var(--radius-sm);
+  background: var(--slab-sunk);
+  color: var(--chalk-dim);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  line-height: 1.6;
+}
+
+.ep__figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s5);
+}
+.ep__figure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}
+.ep__fignum {
+  font-family: var(--font-data);
+  font-size: var(--size-metric);
+  font-weight: 600;
+  color: var(--spark);
+  line-height: 1;
+}
+.ep__figunit {
+  margin-left: 1px;
+  font-size: var(--size-body);
+  font-weight: 400;
+  color: var(--chalk-faint);
+}
+
+.ep__keys,
+.ep__callers,
+.ep__refusals {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+.ep__key {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--s1) var(--s3);
+  font-size: var(--size-body);
+}
+.ep__keyname {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+.ep__keycount {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk-dim);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.ep__meter {
+  grid-column: 1 / -1;
+  display: block;
+  block-size: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--bar-ghost);
+  overflow: hidden;
+}
+.ep__meterfill {
+  display: block;
+  block-size: 100%;
+  /* A key that has spent 52 of 60 000 has spent something, and a bar rounded
+     to nothing says it has not. The same hairline this codebase has shipped
+     once already. */
+  min-inline-size: 2px;
+  background: var(--spark);
+  /* A bar that grows into place rather than appearing: the eye reads the
+     length, and a length that was never drawn is a length nobody compared. */
+  transition: inline-size var(--motion-slow) var(--ease-out);
+}
+/* Over its quota is not a decoration — it is the reason somebody opened this
+   panel. */
+.ep__meter.is-over .ep__meterfill {
+  background: var(--alarm);
+}
+.ep__keynote {
+  grid-column: 1 / -1;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.ep__caller {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 6rem auto;
+  align-items: center;
+  gap: var(--s3);
+  font-size: var(--size-body);
+}
+.ep__callername {
+  color: var(--chalk-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ep__callerbar {
+  display: block;
+  block-size: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--bar-ghost);
+  overflow: hidden;
+}
+.ep__callerfill {
+  display: block;
+  block-size: 100%;
+  /* A minimum width, because a caller with one call out of forty thousand is
+     still a caller: rounded to a hairline it reads as nothing at all, which
+     is the bug this codebase has actually shipped. */
+  min-inline-size: 2px;
+  background: var(--spark);
+  transition: inline-size var(--motion-slow) var(--ease-out);
+}
+.ep__callern {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk-dim);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.ep__refusal {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: baseline;
+  gap: var(--s3);
+  font-size: var(--size-body);
+}
+.ep__status {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  font-weight: 600;
+}
+/* Two bands, because they are two different conversations. A 4xx is the
+   caller's to fix and a 5xx is ours. */
+.ep__status--4 {
+  color: var(--warning);
+}
+.ep__status--5 {
+  color: var(--alarm);
+}
+/* Most reasons are one short groupable clause, by design. The exception is a
+   refusal that came from the shape parser rather than from the contract: those
+   are written for the person debugging their own query string and can run to a
+   paragraph. Clamped rather than truncated server-side, so the whole sentence
+   is still there for anyone who selects it. */
+.ep__reason {
+  color: var(--chalk-dim);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+.ep__refusaln {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A button that lives inside a panel's own sentence. Quiet, because the panel
+   is the thing being read and the button is a way out of it. */
+.btn--quiet {
+  padding: 2px var(--s2);
+  border-color: transparent;
+  background: transparent;
+  color: var(--spark);
+}
+.btn--quiet:hover {
+  border-color: var(--line);
+  background: var(--slab-hover);
+}
+
+/* ── The contract, as something to type ───────────────────────────────── */
+
+.ctr {
+  margin: var(--s4) 0;
+  padding: var(--s4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--slab-sunk);
+}
+.ctr__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s3);
+  margin-bottom: var(--s3);
+}
+.ctr__none {
+  margin: 0 0 var(--s3);
+  font-size: var(--size-body);
+  color: var(--chalk-faint);
+}
+.ctr__rules {
+  margin: 0 0 var(--s4);
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+.ctr__rule {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--s2) var(--s3);
+  padding-bottom: var(--s3);
+  border-bottom: 1px solid var(--line);
+}
+.ctr__rule:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.ctr__name {
+  min-inline-size: 7rem;
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+.ctr__type {
+  min-inline-size: 5rem;
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--cold);
+}
+.ctr__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  flex: 1 1 8rem;
+  min-inline-size: 0;
+}
+.ctr__field--wide {
+  flex: 1 1 16rem;
+}
+.ctr__field--tiny {
+  flex: 0 0 5rem;
+}
+.ctr__cols {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s3);
+}
+.ctr__foot {
+  margin: var(--s3) 0 0;
+  font-size: var(--size-body);
+  line-height: 1.55;
+  color: var(--chalk-faint);
+}
+
+/* ── Keys ─────────────────────────────────────────────────────────────── */
+
+.keys {
+  margin-top: var(--s6);
+  padding-top: var(--s4);
+  border-top: 1px solid var(--line);
+}
+.keys__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s3);
+  margin: 0 0 var(--s3);
+  font-size: var(--size-head);
+  font-weight: 600;
+}
+.keys__toggle {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--chalk);
+  font: inherit;
+  cursor: pointer;
+}
+.keys__toggle:hover {
+  color: var(--spark);
+}
+/* The disclosure triangle, which the button's own text does not carry. */
+.keys__toggle::before {
+  content: '▸';
+  display: inline-block;
+  margin-right: var(--s2);
+  color: var(--chalk-faint);
+  transition: transform var(--motion-fast) var(--ease-out);
+}
+.keys__toggle[aria-expanded='true']::before {
+  transform: rotate(90deg);
+}
+.keys__lead {
+  margin: 0 0 var(--s4);
+  max-inline-size: 62ch;
+  font-size: var(--size-body);
+  line-height: 1.6;
+  color: var(--chalk-dim);
+}
+.keys__list {
+  margin: 0 0 var(--s4);
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+.keys__row {
+  padding: var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--slab);
+}
+/* A disabled key is still a key somebody has to be able to read. */
+.keys__row.is-off {
+  opacity: 0.7;
+}
+.keys__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+}
+.keys__name {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+.keys__says {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s3);
+  margin: var(--s2) 0 0;
+  font-size: var(--size-body);
+}
+.keys__form {
+  margin-top: var(--s3);
+}
+.keys__scope {
+  margin: var(--s3) 0;
+}
+.keys__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  margin: var(--s2) 0;
+}
+.keys__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  padding: var(--s1) var(--s2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--slab-sunk);
+  font-size: var(--size-data);
+  cursor: pointer;
+}
+.keys__chip:hover {
+  border-color: var(--line-strong);
+}
+.keys__chip code {
+  font-family: var(--font-data);
+  color: var(--chalk-dim);
+}
+.keys__chip:has(input:checked) {
+  border-color: var(--spark);
+}
+.keys__chip:has(input:checked) code {
+  color: var(--chalk);
+}
+
+/* ── Exposing tables ──────────────────────────────────────────────────────
+ *
+ *  A list to tick, and it is deliberately dense: the whole point of this panel
+ *  is that fifteen tables are one act, and a form that made each row a card
+ *  would put nine of them below the fold and undo the saving. */
+
+.expose__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+  margin: var(--s4) 0 var(--s2);
+}
+.expose__list {
+  margin: 0 0 var(--s4);
+  padding: 0;
+  list-style: none;
+  max-block-size: 22rem;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--slab-sunk);
+}
+.expose__row {
+  display: grid;
+  grid-template-columns: auto minmax(8rem, 1fr) 6rem 6rem 6rem minmax(0, 1.4fr);
+  align-items: baseline;
+  gap: var(--s3);
+  padding: var(--s2) var(--s3);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--size-body);
+  cursor: pointer;
+}
+.expose__list li:last-child .expose__row {
+  border-bottom: none;
+}
+.expose__row:hover {
+  background: var(--slab-hover);
+}
+.expose__name {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.expose__kind {
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+.expose__rows,
+.expose__bytes {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk-dim);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.expose__sort {
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The one screen in the product that holds several secrets at once, and the
+   only moment any of them can be read. Selectable, monospaced, one per line —
+   shaped to be dragged into a password manager rather than admired. */
+.expose__tokens {
+  margin: 0 0 var(--s4);
+  padding: var(--s3);
+  overflow-x: auto;
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-sm);
+  background: var(--slab-sunk);
+  color: var(--chalk);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  line-height: 1.7;
+  user-select: all;
+}
+.expose__done,
+.expose__skipped {
+  margin: 0 0 var(--s4);
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  font-size: var(--size-body);
+}
+.expose__done li,
+.expose__skipped li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s3);
+}
+.expose__done code,
+.expose__skipped code {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}

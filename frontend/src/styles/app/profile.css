@@ -1,0 +1,129 @@
+/* ═══ Profile ════════════════════════════════════════════════════════════
+ * Roles first: which column is the time, which are the measurements, which are
+ * the categories. The per-column numbers come after. */
+
+.roles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 232px), 1fr));
+  gap: var(--s3);
+}
+
+.role {
+  padding: var(--s3) var(--s4);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--chart-8);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+.role--time { border-left-color: var(--chart-3); }
+.role--metric { border-left-color: var(--chart-2); }
+.role--category { border-left-color: var(--chart-6); }
+.role--dimension { border-left-color: var(--chart-1); }
+.role--identifier { border-left-color: var(--chart-5); }
+.role--geographic { border-left-color: var(--chart-4); }
+.role--structure { border-left-color: var(--chart-7); }
+
+.role__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  font-size: var(--size-label);
+  font-weight: 600;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.role__n {
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+
+.role__why {
+  margin: 5px 0 var(--s2);
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.role__cols {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1);
+}
+
+.role__col {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--fill);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-primary);
+}
+
+.rolepill {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-sans);
+  font-size: var(--size-label);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  background: var(--fill);
+  color: var(--text-secondary);
+}
+.rolepill--time { background: color-mix(in srgb, var(--chart-3) 22%, transparent); }
+.rolepill--metric { background: color-mix(in srgb, var(--chart-2) 22%, transparent); }
+.rolepill--category { background: color-mix(in srgb, var(--chart-6) 22%, transparent); }
+.rolepill--dimension { background: color-mix(in srgb, var(--chart-1) 22%, transparent); }
+.rolepill--identifier { background: color-mix(in srgb, var(--chart-5) 22%, transparent); }
+.rolepill--geographic { background: color-mix(in srgb, var(--chart-4) 22%, transparent); }
+.rolepill--structure { background: color-mix(in srgb, var(--chart-7) 22%, transparent); }
+
+.nullbar {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  justify-content: flex-end;
+}
+
+.nullbar__value {
+  font-variant-numeric: tabular-nums;
+}
+
+.nullbar__track {
+  width: 44px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--bar-ghost);
+  overflow: hidden;
+}
+
+.nullbar__fill {
+  display: block;
+  height: 100%;
+  background: var(--chart-4);
+}
+
+.tops {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  max-width: 34ch;
+}
+
+.top {
+  max-width: 15ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background: var(--fill);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+}

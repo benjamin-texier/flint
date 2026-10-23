@@ -1,0 +1,110 @@
+/* ── A dashboard on a wall ──────────────────────────────────────────────────
+   Everything that *changes* the dashboard goes; everything that says what you
+   are looking at stays. Nobody edits a wall, and a stray click on a screen
+   behind a desk is a dashboard somebody else has to put back — while a chart of
+   "the last 7 days" that does not say so is a chart of nothing in particular.
+
+   The page element is the one that goes full screen, so it paints its own ground
+   and takes the room the chrome gave up: outside a fullscreen context none of
+   this applies, and the class alone changes nothing. */
+.page--wall {
+  min-height: 100vh;
+  max-width: none;
+  padding: var(--s5) var(--s6);
+  background: var(--ground);
+  overflow-y: auto;
+}
+
+.page--wall .btn,
+.page--wall .picker,
+.page--wall .tile__controls,
+.page--wall .vars__input {
+  display: none;
+}
+
+/* The one exception, because it is the way out — named rather than positional.
+   `:first-of-type` counts per element *type*, so it matched the first `<button>`
+   and the first `<a class="btn">` as well, and the link to the reports page
+   stayed on the wall beside the exit. */
+.page--wall .btn--wall {
+  display: inline-flex;
+}
+
+/* The variables stay legible without being editable: what the numbers were
+   filtered by is half of what the numbers mean. */
+.page--wall .vars__one::after {
+  content: attr(data-value);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+
+.page--wall .page__title {
+  font-size: var(--size-hero);
+}
+
+/* Controls for the `{name:Type}` the tiles declare. Above the grid with the
+   range, because both change how every tile reads and neither belongs to any
+   one of them. */
+.vars {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  margin-top: var(--s3);
+}
+
+.vars__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s3);
+}
+
+.vars__one {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.vars__name {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-dim);
+}
+
+.vars__type {
+  color: var(--chalk-faint);
+}
+
+.vars__input {
+  width: 22ch;
+  height: 30px;
+  padding: 0 var(--s2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--slab);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+
+/* What is in the way, before it becomes a broken tile: a reader looking at an
+   error where they expected data has no way to know a text box above would fix
+   it. */
+.vars__issues {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vars__issues li {
+  padding-left: var(--s3);
+  border-left: 2px solid var(--warning);
+  font-size: var(--size-label);
+  color: var(--chalk-dim);
+}

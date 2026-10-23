@@ -1,0 +1,157 @@
+/* ═══ Shape strip: the clauses that decide how a table reads ═════════════
+ * The plate under the name. Everything here is one answer to "what kind of
+ * thing is this" — the engine, the keys it is sorted and split on, what it
+ * feeds — so it is set as a spec sheet rather than as a grid of tiles: a
+ * label column of fixed width, and the expression given the whole rest of the
+ * line. Those expressions are the reason. `ORDER BY` on a real table is four
+ * function calls and ninety characters; in a 220px tile it wrapped to five
+ * ragged lines while `PARTITION BY` beside it used a third of one, and the
+ * card read as debris. One clause per row, hairline between, and a long key
+ * stays a single readable line.
+ *
+ * White rather than the sunk ground it used to sit on: at 4% apart, a
+ * `--slab-sunk` panel on `--ground` is not a surface, it is a smudge. This is
+ * the first object on the page — it gets an edge. */
+
+.shape {
+  position: relative;
+  margin: var(--s5) 0 0;
+  padding: var(--s2) var(--s6) var(--s3);
+  background: var(--slab);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--k-table);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-1);
+  animation: rise var(--motion-slow) var(--ease-out) both;
+  animation-delay: calc(var(--beat) * 6);
+}
+.shape--materialized_view {
+  border-left-color: var(--k-matview);
+}
+.shape--view {
+  border-left-color: var(--k-view);
+}
+.shape--dictionary {
+  border-left-color: var(--k-dictionary);
+}
+
+/* The teaching lines are the same six sentences on every table in the server.
+   Worth reading once, so they are on by default; worth being able to put away,
+   so this is remembered. Parked in the corner rather than given a row: it is a
+   control, not one of the clauses. */
+.shape__toggle {
+  position: absolute;
+  top: var(--s3);
+  right: var(--s4);
+  z-index: 1;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  color: var(--chalk-faint);
+  cursor: pointer;
+  transition: color var(--motion-fast) var(--ease-out), background var(--motion-fast) var(--ease-out);
+}
+.shape__toggle:hover {
+  background: var(--spark-wash);
+  color: var(--spark);
+}
+
+/* Label left, expression right, explanation under the expression rather than
+   under the label — the sentence belongs to the value it explains, and read
+   down the second column the plate is a paragraph about one table. */
+.shape__item {
+  display: grid;
+  grid-template-columns: 152px minmax(0, 1fr);
+  gap: 0 var(--s5);
+  min-width: 0;
+  padding: var(--s4) 0;
+  border-top: 1px solid var(--divider);
+}
+.shape__item:first-of-type {
+  border-top: 0;
+}
+
+.shape__key {
+  grid-column: 1;
+  padding-top: 2px;
+  font-size: var(--size-label);
+  font-weight: 500;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+.shape__value {
+  grid-column: 2;
+  margin: 0;
+  font-family: var(--font-data);
+  font-size: var(--size-body);
+  line-height: 1.5;
+  color: var(--chalk);
+  word-break: break-word;
+}
+
+/* The engine is the one fact on this plate that decides how every other line
+   reads — a ReplacingMergeTree's ORDER BY is also its identity, a Kafka
+   table's is not a key at all. It is the headline, and it is set like one. */
+.shape__item--engine .shape__value {
+  font-size: var(--size-head);
+  letter-spacing: -0.01em;
+}
+
+/* The teaching line. Sits under the expression, never over it: the expert
+ * reads the value and stops, the newcomer reads one sentence more. */
+.shape__why {
+  grid-column: 2;
+  margin: 6px 0 0;
+  max-width: 72ch;
+  font-size: var(--size-label);
+  line-height: 1.6;
+  color: var(--chalk-faint);
+}
+
+.shape__lineage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+
+/* Under a phone's width the label column costs more than it gives: 152px of
+   the line spent on the word `PARTITION BY` leaves the expression a column
+   narrower than the expression is. */
+@media (max-width: 720px) {
+  .shape {
+    padding-inline: var(--s4);
+  }
+  .shape__item {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .shape__key,
+  .shape__value,
+  .shape__why {
+    grid-column: 1;
+  }
+  .shape__key {
+    margin-bottom: 4px;
+  }
+}
+
+.lineage {
+  padding: 2px 7px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  font-size: var(--size-label);
+  color: var(--chalk-dim);
+  transition: color var(--motion-fast) var(--ease-out), border-color var(--motion-fast) var(--ease-out);
+}
+.lineage:hover {
+  color: var(--chalk);
+  border-color: var(--chalk-faint);
+}
+.lineage--down {
+  border-color: var(--spark-line);
+  color: var(--spark);
+}

@@ -1,0 +1,354 @@
+/* ── Published endpoints ───────────────────────────────────────────────────
+   Two facts have to be unmissable: which parameters a caller must supply, and
+   whether the address alone is enough to get the data. */
+.page--publish {
+  max-width: var(--measure-list);
+}
+
+.pub__url {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin-top: var(--s2);
+  font-family: var(--font-mono);
+  font-size: var(--size-data);
+  color: var(--text-primary);
+}
+
+.pub__method {
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--fill);
+  font-size: var(--size-label);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.pub__try {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+  margin-top: var(--s2);
+}
+
+.pub__curl {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  padding: var(--s2) var(--s3);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface-2);
+  border: 1px solid var(--divider);
+  font-family: var(--font-mono);
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--text-secondary);
+  white-space: pre;
+}
+
+/* The panel that shows a token once. Its two halves — the secret and the
+   sentence explaining that this is the only time it is readable — ran together
+   into one unreadable string until this stacked them. */
+.pub__token {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  margin-top: var(--s2);
+  padding: var(--s2) var(--s3);
+  overflow-x: auto;
+  border-radius: var(--radius-sm);
+  background: var(--warning-weak);
+  font-family: var(--font-mono);
+  font-size: var(--size-label);
+  color: var(--text-primary);
+}
+
+.pub__params {
+  margin-top: var(--s3);
+  padding: var(--s3);
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface-2);
+}
+
+.pub__param {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin-top: var(--s2);
+}
+
+.pub__param code {
+  flex: none;
+  min-width: 9ch;
+  font-family: var(--font-mono);
+  font-size: var(--size-data);
+  color: var(--text-primary);
+}
+
+/* ── The caller's panel ──────────────────────────────────────────────────
+ *
+ * Two halves of the same question: what this endpoint takes, and a way to ask
+ * it something. Sunk into the card rather than floated over it, because it is
+ * part of the endpoint rather than a dialogue about it. */
+/* The one link out of this page, and it sits in a paragraph rather than under
+ * a figure — so it does not borrow `.diag__open`, whose 11px accent measures
+ * 4.22:1 on this ground and misses AA. Body size and the stronger accent. */
+.pub__doclink {
+  font-size: var(--size-body);
+  font-weight: 500;
+  color: var(--accent-strong);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.call {
+  margin-top: var(--s3);
+  padding: var(--s4);
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface-2);
+}
+
+.call__cols {
+  display: grid;
+  /* The reference is read once and the builder is worked in, so the builder
+   * gets the room. Under 900px they stack, reference first — you read the
+   * columns before you can filter on one. */
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  gap: var(--s5);
+}
+
+@media (max-width: 900px) {
+  .call__cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.call__side {
+  min-width: 0;
+}
+
+.call__build {
+  min-width: 0;
+  border-left: 1px solid var(--divider);
+  padding-left: var(--s5);
+}
+
+@media (max-width: 900px) {
+  .call__build {
+    border-left: none;
+    padding-left: 0;
+    border-top: 1px solid var(--divider);
+    padding-top: var(--s4);
+  }
+}
+
+.call__head {
+  margin: 0 0 var(--s3);
+  font-family: var(--font-ui);
+  font-size: var(--size-head);
+  font-weight: 600;
+  color: var(--chalk);
+}
+
+.call__group {
+  margin-bottom: var(--s4);
+}
+
+.call__group > .label {
+  display: block;
+  margin-bottom: var(--s2);
+}
+
+.call__row {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin-bottom: var(--s2);
+}
+
+.call__row--wrap {
+  flex-wrap: wrap;
+}
+
+.call__row .input {
+  flex: 1 1 8ch;
+  min-width: 0;
+}
+
+/* The operator never needs the room a value does, and a select that stretches
+ * to fill one reads as the more important half of the row. */
+.call__op {
+  flex: 0 1 auto;
+  min-width: 14ch;
+}
+
+.call__key {
+  flex: none;
+  min-width: 7ch;
+  font-family: var(--font-mono);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+
+.call__num {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.call__num .input {
+  width: 11ch;
+}
+
+.call__check {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  font-size: var(--size-body);
+  color: var(--chalk-dim);
+}
+
+.call__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.call__list li {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  padding: 3px 0;
+  border-bottom: 1px solid var(--divider);
+  font-size: var(--size-body);
+}
+
+.call__list li:last-child {
+  border-bottom: none;
+}
+
+.call__list code {
+  font-family: var(--font-mono);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+
+.call__list .says {
+  margin-top: 0;
+}
+
+.call__note {
+  margin: var(--s2) 0 0;
+  font-size: var(--size-label);
+  line-height: 1.6;
+  color: var(--chalk-dim);
+}
+
+.call__note code {
+  font-family: var(--font-mono);
+  color: var(--chalk);
+}
+
+.call__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1);
+}
+
+/* The picker sits on the line above the snippet, not beside it: four labels
+ * and a 90-character line of shell do not share a row at any width. */
+.call__take {
+  display: flex;
+  align-items: center;
+  margin-top: var(--s4);
+}
+
+/* Wide enough for the longest label. `.call__num`'s 11ch clipped
+ * "Spreadsheet" to "Spreadsh", which reads as a rendering fault. */
+.call__take .input {
+  width: auto;
+  min-width: 14ch;
+}
+
+/* A verdict beside a figure is 34ch wide for a reason; a caveat under a
+ * full-width snippet is not, and wrapping it into a narrow ragged column made
+ * it look like something had gone wrong with the layout. */
+.call > .says {
+  max-width: 76ch;
+  margin-top: var(--s2);
+}
+
+.call__curl {
+  margin-top: var(--s2);
+  background: var(--bg-canvas);
+}
+
+.call__actions {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s3);
+  margin-top: var(--s3);
+}
+
+/* The status line, and everything the headers said. A CSV caller gets only
+ * these, so the panel shows exactly what it would see.
+ *
+ * It takes the rest of the row rather than sharing one with the button: six
+ * headers wrap to three lines, and wrapping them *around* the button made the
+ * button look like part of the sentence. */
+.call__verdict {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--s2) var(--s3);
+  margin: 0;
+  padding-top: 7px;
+  font-size: var(--size-label);
+  line-height: 1.5;
+}
+
+.call__verdict .flag {
+  font-family: var(--font-mono);
+}
+
+.call__body {
+  max-height: 22rem;
+  margin-top: var(--s3);
+  padding: var(--s3);
+  overflow: auto;
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-sm);
+  background: var(--bg-canvas);
+  font-family: var(--font-mono);
+  font-size: var(--size-label);
+  line-height: 1.55;
+  color: var(--chalk-dim);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* A select styled as a toolbar button, for the "send this somewhere" control.
+   It is an action list, not a setting, so it reads as a button and resets to
+   its prompt after each use. */
+.btn--select {
+  padding-right: var(--s3);
+  font-family: var(--font-sans);
+  cursor: pointer;
+  /* A select is as wide as its longest option, and these are menus whose face
+     is a verb — "Explain…", "Send to…" — over options that are sentences. Sized
+     to the options, Explain was 159px wide for a seven-letter label, and with
+     Send to it was the 60px that pushed the editor's drawers onto a second row
+     at 1440px, the commonest laptop there is. Sized to what it shows, the bar
+     is one row there. Where `field-sizing` is not supported the select keeps
+     the old width, and the bar still wraps as it was built to. */
+  field-sizing: content;
+}
+
+.editor__pick {
+  display: inline-flex;
+}

@@ -1,0 +1,598 @@
+/* ═══ Results grid ═══════════════════════════════════════════════════════ */
+
+/* The grid is drawn rather than laid out. Both axes are windowed, so every cell
+   is placed absolutely at a measured offset, and two consequences are worth
+   knowing before reading the rest. The frozen block — row number, then any
+   pinned columns — is sticky at the left edge and paints an opaque background,
+   because scrolled cells pass underneath it. And the body has no vertical
+   rules: alignment already says where a column is, and twenty filets across a
+   wide result read as graph paper rather than as data. The header keeps its
+   dividers, which is the one place a column boundary needs stating. */
+
+.gridshell {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  height: 100%;
+  min-height: 0;
+  /* Without this the grid's own bar sets a min-content width — a row of
+     toggles and a hint, about 1,065px of it — and the whole shell refuses to
+     shrink, spilling over the analyses panel beside it. */
+  min-width: 0;
+  gap: var(--s2);
+}
+
+.gridshell__bar {
+  display: flex;
+  align-items: baseline;
+  /* Wraps, so a narrower grid loses a line to the bar rather than losing the
+     switches off the right-hand edge. */
+  flex-wrap: wrap;
+  gap: var(--s1) var(--s3);
+  flex: none;
+  min-height: 15px;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.gridshell__state {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  min-width: 0;
+  color: var(--chalk-dim);
+}
+.gridshell__sorted {
+  color: var(--chalk);
+}
+
+/* The figures over a selected block. Data, so they are set in the data face and
+ * in the primary colour: the label beside each one is what is quiet. */
+.gridshell__sel {
+  white-space: nowrap;
+}
+
+/* The totals row. Sticky at the foot of the scroller, so it stays under the
+ * numbers it adds up however far down the result you are. */
+.grid__totals {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  height: 26px;
+  background: var(--slab-raised);
+  box-shadow: 0 -1px 0 var(--line-strong);
+}
+
+.grid__cell--total {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  height: 26px;
+}
+
+.grid__totalbtn {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  max-width: 100%;
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  font-variant-numeric: tabular-nums;
+  color: var(--chalk);
+}
+.grid__totalbtn:hover .grid__totalkind {
+  color: var(--spark);
+}
+
+/* The calculation names itself, because a figure in a footer with no label is a
+ * number nobody can check. */
+.grid__totalkind {
+  font-family: var(--font-ui);
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+/* Which columns are drawn. A popover rather than a modal: choosing columns is
+ * something you do while looking at them. */
+.gridshell__picker {
+  position: relative;
+  flex: none;
+}
+
+.colpick {
+  position: absolute;
+  z-index: 20;
+  /* Anchored to the button's left edge, because the button sits at the left of
+   * the bar: hung from the right it reached off the shell and got clipped. */
+  top: calc(100% + var(--s1));
+  left: 0;
+  width: 280px;
+  padding: var(--s2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--slab-raised);
+  box-shadow: var(--shadow-3);
+  animation: popIn var(--motion-fast) var(--ease) both;
+}
+
+.colpick__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  padding: var(--s1) var(--s2) var(--s2);
+  border-bottom: 1px solid var(--divider);
+}
+
+.colpick__count {
+  flex: 1;
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+.colpick__all {
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--spark);
+}
+.colpick__all:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.colpick__list {
+  max-height: 280px;
+  overflow-y: auto;
+  padding-top: var(--s1);
+}
+
+.colpick__item {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 3px var(--s2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.colpick__item:hover {
+  background: var(--slab-hover);
+}
+
+.colpick__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-data);
+  font-size: 12px;
+  color: var(--chalk);
+}
+
+.colpick__type {
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+}
+
+/* A switch that lives in the grid's own bar rather than in a menu: it changes
+ * how the numbers read, so it belongs beside them. */
+.gridshell__toggle {
+  flex: none;
+  padding: 2px var(--s2);
+  border-radius: var(--radius-pill);
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+.gridshell__toggle:hover {
+  color: var(--chalk);
+  background: var(--slab-hover);
+}
+.gridshell__toggle.is-on {
+  color: var(--accent-strong);
+  background: var(--spark-wash);
+}
+
+.gridshell__stats {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--s1) var(--s4);
+  min-width: 0;
+}
+
+.gridshell__stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  white-space: nowrap;
+  font-family: var(--font-data);
+  color: var(--chalk);
+}
+.gridshell__stat.is-dim {
+  color: var(--chalk-faint);
+}
+
+.gridshell__statkey {
+  font-family: var(--font-ui);
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+.gridshell__caveat::before {
+  content: '· ';
+}
+.gridshell__clear {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--spark);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.gridshell__hint {
+  margin-left: auto;
+  flex: none;
+  font-family: var(--font-data);
+  white-space: nowrap;
+}
+.gridshell__hint.is-flash {
+  color: var(--spark);
+}
+
+.gridshell__main {
+  display: flex;
+  gap: var(--s2);
+  flex: 1;
+  min-height: 0;
+  /* The column menu hangs from here rather than from the header it belongs to:
+     the header lives inside the scroller, which would clip it. */
+  position: relative;
+}
+
+.grid {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  background: var(--slab);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.grid:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+.grid__canvas {
+  position: relative;
+  min-width: 100%;
+  font-family: var(--font-data);
+}
+
+/* The measuring span. Same font as a cell, never seen. */
+.grid__probe {
+  position: absolute;
+  top: -200px;
+  left: -2000px;
+  visibility: hidden;
+  white-space: pre;
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+}
+
+.grid__head {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  width: 100%;
+  height: var(--table-head-h);
+  background: var(--table-head-bg);
+  border-bottom: 1px solid var(--table-head-rule);
+}
+
+.grid__body {
+  position: relative;
+  width: 100%;
+}
+
+.grid__row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: var(--table-row-h);
+  /* A whisper, not a rule: enough to hold a row together across twenty
+     columns, quiet enough that two hundred of them are not a texture. */
+  box-shadow: inset 0 -1px 0 var(--table-row-rule);
+}
+.grid__row:hover {
+  background: var(--slab-hover);
+}
+
+.grid__frozen {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  display: flex;
+  height: 100%;
+  background: var(--slab);
+  box-shadow: 1px 0 0 var(--line);
+}
+.grid__head .grid__frozen {
+  background: var(--slab-raised);
+}
+.grid__row:hover .grid__frozen {
+  background: var(--slab-hover);
+}
+/* Once anything has scrolled under it, the frozen block says so. */
+.grid__canvas.is-lifted .grid__frozen {
+  box-shadow:
+    1px 0 0 var(--line),
+    /* token-exempt: every --shadow-* token is a vertical drop with its colour
+       baked in, and this lift is cast sideways by a frozen column. There is no
+       token for the geometry, and half a token would be worse than a literal. */
+    7px 0 11px -7px rgb(0 0 0 / 22%);
+}
+
+.grid__cell {
+  box-sizing: border-box;
+  /* The windowed cells are placed absolutely and the frozen block beside them
+     is not, so without this their static position falls a whole row below the
+     one they belong to. Ignored by the frozen cells, which are in flow. */
+  top: 0;
+  height: var(--table-row-h);
+  line-height: var(--table-row-h);
+  padding: 0 var(--table-pad);
+  font-size: var(--size-data);
+  color: var(--chalk);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.grid__cell--num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A NULL and a zero-length string both render as nothing unless told not to,
+   and in ClickHouse they are not the same answer. */
+.grid__cell--null {
+  color: var(--chalk-faint);
+  font-style: italic;
+}
+.grid__cell--empty {
+  color: var(--chalk-faint);
+}
+
+.grid__cell--gutter {
+  flex: none;
+  text-align: right;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+  cursor: pointer;
+}
+.grid__cell--corner {
+  cursor: default;
+}
+
+.grid__cell.is-sel {
+  background: var(--spark-wash);
+}
+.grid__cell.is-active {
+  background: var(--spark-wash);
+  box-shadow: inset 0 0 0 1.5px var(--spark);
+}
+
+.grid__headcell {
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  height: var(--table-head-h);
+  padding: 0;
+  border-right: 1px solid var(--table-col-rule);
+}
+.grid__headcell.is-activecol {
+  background: var(--slab-hover);
+}
+
+.grid__sort {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0 var(--table-pad);
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--chalk);
+  text-align: left;
+  cursor: pointer;
+}
+
+.grid__colname {
+  font-weight: 500;
+  color: var(--chalk);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The type gives way, never the name: an `Enum8` writes its whole value list
+ * here — 673 pixels of it, measured — and a header that shows the type of a
+ * column it does not name is a header nobody can read. */
+.grid__coltype {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--size-label);
+}
+
+.grid__sortmark {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-left: auto;
+  color: var(--spark);
+}
+
+/* Which level this column is, when the sort is a stack. Nothing is shown for a
+ * single level: a lone "1" is a number with nothing to be first of. */
+.grid__sortlevel {
+  flex: none;
+  margin-left: 2px;
+  font-family: var(--font-data);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  color: var(--spark);
+}
+
+.grid__pin {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin-right: 3px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--chalk-faint);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
+.grid__pin svg {
+  width: 11px;
+  height: 11px;
+}
+.grid__headcell:hover .grid__pin,
+.grid__pin:focus-visible,
+.grid__pin.is-on {
+  opacity: 1;
+}
+.grid__pin.is-on {
+  color: var(--spark);
+}
+
+.grid__resize {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  z-index: 2;
+  width: 7px;
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
+}
+.grid__resize:hover::after,
+.grid__resize:active::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 3px;
+  width: 2px;
+  height: 100%;
+  background: var(--spark);
+}
+
+/* ── The cell inspector ─────────────────────────────────────────────────── */
+
+.inspect {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  width: 320px;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--slab);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.inspect__head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+  flex: none;
+  padding: var(--s3);
+  border-bottom: 1px solid var(--line);
+}
+
+.inspect__id {
+  flex: 1;
+  min-width: 0;
+}
+
+.inspect__name {
+  font-family: var(--font-data);
+  font-size: var(--size-body);
+  font-weight: 500;
+  color: var(--chalk);
+  overflow-wrap: anywhere;
+}
+
+.inspect__type {
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  overflow-wrap: anywhere;
+}
+
+.inspect__close {
+  flex: none;
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--chalk-faint);
+  cursor: pointer;
+}
+.inspect__close:hover {
+  color: var(--chalk);
+}
+
+.inspect__meta {
+  flex: none;
+  padding: var(--s2) var(--s3) 0;
+}
+
+.inspect__value {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: var(--s2) var(--s3) var(--s3);
+  overflow: auto;
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  line-height: 1.55;
+  color: var(--chalk);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  tab-size: 2;
+}
+.inspect__value--absent {
+  color: var(--chalk-faint);
+  font-style: italic;
+}
+
+.inspect__foot {
+  flex: none;
+  padding: var(--s2) var(--s3);
+  border-top: 1px solid var(--line);
+}

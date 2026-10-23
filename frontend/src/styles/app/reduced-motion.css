@@ -1,0 +1,19 @@
+/* ═══ Reduced motion ═════════════════════════════════════════════════════
+ * The diagram's travelling dots are ambient rather than triggered, which is
+ * exactly the kind of motion a reader may have asked their system to stop.
+ * Everything still arrives — it arrives at once. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    /* token-exempt: the reduced-motion kill switch. 1ms rather than 0 because a
+     zero-length animation never fires animationend, and two listeners here wait
+     on it. */
+  animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    /* token-exempt: as above — the reduced-motion kill switch, not a duration. */
+  transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+}

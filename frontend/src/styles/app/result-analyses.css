@@ -1,0 +1,230 @@
+/* ── The result and its analyses, side by side ────────────────────────── */
+
+.rview__spacer {
+  flex: 1;
+}
+
+.rview__main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.rview__body.is-split {
+  display: flex;
+  gap: var(--s3);
+  overflow: hidden;
+}
+
+.analysis {
+  flex: none;
+  width: 300px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-left: var(--s3);
+  border-left: 1px solid var(--line);
+}
+
+.analysis__head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding-bottom: var(--s2);
+  background: var(--ground);
+}
+
+.analysis__title {
+  margin: 0;
+  font-size: var(--size-head);
+  font-weight: 600;
+  color: var(--chalk);
+}
+
+.analysis__scope {
+  margin: 0;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.analysis__notes {
+  margin: 0 0 var(--s3);
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}
+
+.analysis__note {
+  font-size: var(--size-label);
+  color: var(--chalk-dim);
+}
+.analysis__note.is-warn {
+  color: var(--warning);
+}
+
+.analysis__notecol {
+  margin-right: var(--s1);
+  font-family: var(--font-data);
+  color: var(--chalk);
+}
+
+.analysis__cols {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  padding-bottom: var(--s4);
+}
+
+.acol {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  padding-bottom: var(--s3);
+  border-bottom: 1px solid var(--divider);
+}
+.acol:last-child {
+  border-bottom: none;
+}
+
+.acol__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-width: 0;
+}
+
+.acol__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+
+/* An Enum8's type is its whole value list — three hundred characters of it —
+ * and unconstrained it pushed the column's own name out of the row entirely.
+ * The name is what identifies the card, so the type is what gives way. */
+.acol__type {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 48%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+}
+
+.acol__facts {
+  margin: 0;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+/* A shape, not a measurement: 22 pixels tall, no axes, and the figures
+ * underneath are where a number gets read. */
+.acol__spark {
+  width: 100%;
+  height: 22px;
+  display: block;
+  opacity: 0.72;
+}
+
+.acol__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1) var(--s3);
+  margin: 0;
+}
+
+.acol__stat {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s1);
+}
+
+.acol__statkey {
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+.acol__statval {
+  margin: 0;
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+
+.acol__span {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1) var(--s2);
+  margin: 0;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-dim);
+}
+
+.acol__spanlen {
+  color: var(--chalk-faint);
+}
+
+.acol__top {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* The bar is a background behind the value, the same trick the grid's data
+ * bars use: the text stays selectable and exactly where it was. */
+.acol__val {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+  width: 100%;
+  padding: 1px var(--s1);
+  border-radius: var(--radius-sm);
+  background-image: linear-gradient(to right, var(--bar-cell) var(--share, 0%), transparent 0);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk-dim);
+  text-align: left;
+}
+
+button.acol__val {
+  cursor: pointer;
+}
+button.acol__val:hover {
+  color: var(--accent-strong);
+  background-color: var(--slab-hover);
+}
+
+.acol__valtext {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.acol__valn {
+  flex: none;
+  color: var(--chalk-faint);
+}
+
+.acol__more {
+  padding: 1px var(--s1);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}

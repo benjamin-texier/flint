@@ -44,10 +44,13 @@ fi
 # --motion-* values and nothing else. Where a literal is genuinely the right
 # answer — a unit conversion, a geometry no token expresses — the line above it
 # says `token-exempt:` and why, so a decision is never mistaken for an oversight.
-if [ -n "$(staged 'frontend/src/styles/app.css')" ]; then
-  git show ":frontend/src/styles/app.css" | python3 .githooks/check-css-tokens.py \
-    || fail "app.css: a literal where a token belongs"
-fi
+#
+# Every piece of the stylesheet, since it became one file per surface — see the
+# head of app.css. `tokens.css` is not checked: it is where the literals live.
+for f in $(staged 'frontend/src/styles/app.css' 'frontend/src/styles/app/*.css'); do
+  git show ":$f" | python3 .githooks/check-css-tokens.py "$f" \
+    || fail "$f: a literal where a token belongs"
+done
 
 # ── Types and lint, over the whole frontend ──────────────────────────────
 # Not scoped to the staged files, deliberately: a type error is rarely in the

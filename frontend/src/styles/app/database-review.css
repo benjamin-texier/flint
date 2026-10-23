@@ -1,0 +1,334 @@
+/* ── The database-wide review ─────────────────────────────────────────────
+ *
+ * One column, one proposed type, and every table that has it. The layout is the
+ * argument: the group is what you read, the members are what you tick, and the
+ * SQL at the foot is what leaves the page. So the group heading carries the
+ * decision, the member rows carry the evidence each tick actually rests on, and
+ * nothing about a member — its size, whether it was sampled, whether its key
+ * would make the server refuse — is folded away where a reader ticking five
+ * boxes at once would not see it. */
+.sweep {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+}
+
+.sweep__pick {
+  display: grid;
+  grid-template-columns: auto minmax(12ch, 22ch) 1fr auto;
+  align-items: center;
+  gap: var(--s3);
+}
+
+.sweep__label {
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+.sweep__pattern {
+  height: 28px;
+  padding: 0 var(--s2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--slab-sunk);
+  color: var(--chalk);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  transition: border-color var(--motion-fast) var(--ease);
+}
+.sweep__pattern:focus-visible {
+  border-color: var(--spark);
+  outline: none;
+}
+
+.sweep__matched {
+  margin: 0;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.sweep__go {
+  grid-column: 4;
+}
+
+/* A pattern catches names without being watched, so what it caught is one fold
+ * away rather than a number to be trusted. */
+.sweep__names {
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+.sweep__names > summary {
+  cursor: pointer;
+  color: var(--chalk-dim);
+}
+.sweep__names ul {
+  margin: var(--s2) 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1) var(--s3);
+  font-family: var(--font-data);
+}
+/* `--chalk-faint`, not `--chalk-ghost` — the third and fourth site of the same
+ * mistake, and the same reasoning as `.clause__key` and `.strip__share`: the
+ * ghost tier is 3.3:1 and the token file says in as many words that it is for
+ * marks nobody reads. A table's name is the one thing on this row somebody has
+ * to read, since it is what they click, and "past the cap" is the sentence that
+ * explains why the row is quiet in the first place. Quiet is the right register
+ * for both; illegible is not the same as quiet. The repo's own browser check
+ * caught them at 3.22:1, as it caught `.clause__key` and `.strip__share` before
+ * them. */
+.sweep__names li.is-past {
+  color: var(--chalk-faint);
+}
+.sweep__past {
+  color: var(--chalk-faint);
+}
+
+.sweep__progress,
+.sweep__stake {
+  margin: 0;
+  font-size: var(--size-body);
+  color: var(--chalk-dim);
+}
+
+/* The stake and the kind filter on one line: the control belongs beside the
+ * count it narrows, not above the list where it would read as a heading. */
+.sweep__bar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: var(--s4);
+}
+
+.sweep__bar .sweep__stake {
+  flex: 1;
+  min-width: 0;
+}
+
+.sweep__caveat {
+  display: block;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.sweep__groups {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.sweep__group {
+  padding: var(--s3);
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--slab);
+}
+/* Severity on the left edge only: it orders the reading, it does not colour the
+ * whole card, and a page of cards each shouting its own colour is a page where
+ * nothing stands out. */
+.sweep__group--save {
+  border-left-color: var(--spark);
+}
+.sweep__group--fix {
+  border-left-color: var(--warning);
+}
+
+.sweep__ghead {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+}
+
+.sweep__gtick,
+.sweep__mtick {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  cursor: pointer;
+}
+
+.sweep__column {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+
+.sweep__headline {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk-dim);
+}
+
+.sweep__spread,
+.sweep__kind {
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+.sweep__bytes {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+
+.sweep__why,
+.sweep__claim {
+  margin: var(--s2) 0 0;
+  font-size: var(--size-label);
+  line-height: 1.55;
+  color: var(--chalk-faint);
+}
+
+.sweep__members {
+  margin: var(--s3) 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}
+
+.sweep__member {
+  display: grid;
+  /* The claim gets a column wide enough for "every row" on one line: it is the
+   * difference between a hypothesis and a verdict, and wrapping it made the two
+   * states differ in height as well as in wording. */
+  grid-template-columns: minmax(18ch, 1fr) minmax(0, 2fr) auto 9ch auto;
+  align-items: baseline;
+  gap: var(--s3);
+  padding: var(--s1) var(--s2);
+  border-radius: var(--radius-sm);
+  font-size: var(--size-label);
+  transition: background var(--motion-fast) var(--ease);
+}
+.sweep__member:hover {
+  background: var(--slab-hover);
+}
+/* The server would refuse this one. Dimmed and unticked rather than hidden: the
+ * reader is entitled to know the column has the same problem here, and that
+ * this table is the one where the fix is a rebuild. */
+.sweep__member.is-refused {
+  opacity: 0.55;
+}
+
+/* Only rendered when the group's members do not all start from the same type,
+ * which is when "which of these is the Int32" becomes a question the row has to
+ * answer for itself. Inside the evidence rather than in a cell of its own, so
+ * the row keeps the same grid whether or not the members disagree. */
+.sweep__mfrom {
+  color: var(--chalk-dim);
+  font-weight: 500;
+}
+
+.sweep__mevidence {
+  font-family: var(--font-data);
+  color: var(--chalk-faint);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* What a group says once, above its tables: the sentence they all agreed on. */
+.sweep__gusage,
+.sweep__gcaution {
+  margin: var(--s2) 0 0;
+  font-size: var(--size-label);
+  line-height: 1.5;
+}
+.sweep__gusage {
+  color: var(--chalk-faint);
+}
+.sweep__gcaution {
+  color: var(--warning);
+}
+
+/* And what only one table says, on its own row and across its full width, so a
+ * disagreement between members reads as a disagreement rather than as text
+ * squeezed into an evidence column. */
+.sweep__musage {
+  grid-column: 1 / -1;
+  color: var(--chalk-faint);
+  line-height: 1.5;
+}
+
+.sweep__mbytes {
+  font-family: var(--font-data);
+  color: var(--chalk-dim);
+  text-align: right;
+}
+
+/* Sample or verdict, on every row, because it is the one thing about a member
+ * that a grouped page could most easily let disappear.
+ *
+ * And the fifth site of the ghost-tier mistake, this one caught by reading
+ * rather than by the check: 11px uppercase is the hardest thing in the product
+ * to read, and the sentence above argues that this is the one thing about a
+ * member that must not disappear. Setting it in the tier meant for hairlines
+ * was arguing the other way. */
+.sweep__mclaim {
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+.sweep__mclaim.is-verified {
+  color: var(--spark);
+}
+
+.sweep__mcaution {
+  grid-column: 1 / -1;
+  color: var(--warning);
+  line-height: 1.5;
+}
+
+.sweep__out {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: var(--s3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--slab-raised);
+}
+
+.sweep__outhead {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+}
+
+.sweep__outtitle {
+  margin: 0;
+  font-size: var(--size-head);
+  color: var(--chalk);
+}
+
+.sweep__outfacts {
+  margin: 0;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.sweep__sql {
+  margin: 0;
+  padding: var(--s3);
+  border-radius: var(--radius-sm);
+  background: var(--slab-sunk);
+  color: var(--chalk);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  line-height: 1.6;
+  overflow-x: auto;
+  white-space: pre;
+}

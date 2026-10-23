@@ -1,0 +1,214 @@
+/* ═══ Changing rows that are there ════════════════════════════════════════
+ * A predicate, what it reaches, and a job. Never a grid with a pencil on it:
+ * ClickHouse has no cell edit, and the icon would lie about what the click
+ * does. The preview is not decoration either — the button that runs the
+ * mutation does not exist until the server has said how many parts it
+ * rewrites, because that figure and the row count are different numbers. */
+
+.writepane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.writepane__head {
+  font-size: var(--size-body);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.chrows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  max-width: 720px;
+}
+
+.chrows__row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}
+
+.chrows__sets {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s2);
+}
+
+.chrows__set {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  width: 100%;
+}
+
+.chrows__eq {
+  font-family: var(--font-data);
+  color: var(--text-muted);
+}
+
+.chrows__foot {
+  display: flex;
+  gap: var(--s3);
+}
+
+.chrows__preview {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s2);
+  padding: var(--s3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-2);
+}
+
+/* The one sentence on this page that is allowed to be loud, because it is the
+ * one a reader most often finds out about afterwards: a predicate on an
+ * unindexed column rewrites every part, and the row count does not say so. */
+.chrows__loud {
+  padding: var(--s2) var(--s3);
+  border-left: 2px solid var(--warning);
+  background: var(--warning-weak);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--size-label);
+}
+
+.chrows__pending {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+/* Arranging by hand. The grip is the only part of a tile that starts a drag,
+ * which is what keeps the table inside one selectable and scrollable while the
+ * dashboard is being arranged. */
+.tile__grip {
+  cursor: grab;
+  padding: 0 var(--s1);
+  line-height: 1;
+  color: var(--text-muted);
+  user-select: none;
+  touch-action: none;
+}
+.tile__grip:active {
+  cursor: grabbing;
+}
+
+/* The tile being carried stays legible rather than vanishing: it is the thing
+ * the reader is aiming, and a placeholder they cannot identify is a placeholder
+ * they drop in the wrong place. */
+.tile.is-dragging {
+  opacity: 0.5;
+}
+
+/* Where it would land, on the leading edge of the tile it would take the place
+ * of — a line and not a highlight, because the question is "between which two"
+ * rather than "on which one". */
+.tile.is-over {
+  box-shadow:
+    inset 3px 0 0 0 var(--accent),
+    var(--shadow-card);
+}
+
+.tile__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s2) var(--s3);
+  border-bottom: 1px solid var(--divider);
+}
+
+.tile__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tile__meta {
+  font-family: var(--font-mono);
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+.tile__width {
+  height: 22px;
+  font-size: var(--size-label);
+}
+
+/* The download, on its own line under the tile's header. Not in the header
+   itself: the title and the database already share that row, and a third thing
+   would push a long title to an ellipsis on a narrow tile. Above the body,
+   because the body is where a tile stops being bounded. */
+.tile__take {
+  padding: 0 var(--s3) var(--s2);
+  border-bottom: 1px solid var(--border);
+}
+
+.tile__body {
+  flex: 1;
+  min-height: 200px;
+  padding: var(--s3);
+  overflow: auto;
+}
+/* A chart inside a tile is already framed by the tile. */
+.tile__body .chart {
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  background: none;
+}
+
+/* On its own on a page rather than at the head of a saved-queries list, where
+   `flex: 1` on the name meant a 1100px field for the words "Weekly load" with
+   its button pushed to the far edge of the screen. A field sized to what goes in
+   it, with the action beside it. */
+.saveform--bare {
+  border-bottom: none;
+}
+.saveform--bare .saveform__name {
+  flex: 0 1 34ch;
+}
+
+.dashadded {
+  margin: 0 0 var(--s2);
+  font-size: var(--size-body);
+  color: var(--text-secondary);
+}
+
+@media (max-width: 900px) {
+  /* Below this a twelve-column split is theatre — every tile gets the width. */
+  .dash > .tile {
+    grid-column: 1 / -1 !important;
+  }
+}
+
+/* A two-pane diagram needs room: below this the canvas is about four hundred
+ * pixels — a diagram of two boxes — and the panel is squeezed until object
+ * names wrap mid-word. Stacked, each gets the full width, and the canvas
+ * re-fits itself because the observer that watches its box drives the fit. */
+@media (max-width: 1080px) {
+  .frame__body {
+    flex-direction: column;
+    height: auto;
+  }
+  .frame__body > .canvas {
+    /* The row is a column here, so the canvas's `flex: 1` would put its basis
+     * on the vertical axis and collapse it to nothing. */
+    flex: none;
+    height: var(--body-h);
+  }
+  .frame__body > .npanel {
+    flex: none;
+    max-height: 340px;
+    border-left: none;
+    border-top: 1px solid var(--border);
+    animation: none;
+  }
+}

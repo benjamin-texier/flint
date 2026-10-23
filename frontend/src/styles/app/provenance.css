@@ -1,0 +1,41 @@
+/* ── Provenance, in the diagram's side panel ────────────────────────────── */
+
+/* Output name over its sources rather than beside them: the panel is 320px and
+   an expression can draw on three columns of two tables. */
+.prov {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  margin: 0;
+}
+
+.prov__row {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.prov__out {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+  overflow-wrap: anywhere;
+}
+
+.prov__in {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-dim);
+}
+
+.prov__ref {
+  overflow-wrap: anywhere;
+}
+
+/* The table is context, the column is the answer. */
+.prov__table {
+  color: var(--chalk-faint);
+}

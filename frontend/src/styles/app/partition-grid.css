@@ -1,0 +1,329 @@
+/* ═══ The partition grid ═══════════════════════════════════════════════════
+ * The database on its other axis. One row per table, one column per partition,
+ * the weight of each cell drawn — a TTL's cut-off, a backfill and a hole where
+ * an ingest failed are all shapes here and invisible in every total.
+ *
+ * The grid scrolls inside its own frame: a database of daily partitions is
+ * wider than any page, and the one thing that must never happen is the page
+ * itself scrolling sideways. The table's first column is sticky, because a row
+ * whose name has scrolled away is a row of squares nobody can attribute. */
+
+.ptime {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.ptime__bar,
+.paff__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+}
+
+/* The two ways through history, kept together and next to the count they act
+ * on: a control for moving a window belongs beside the sentence that says which
+ * window you are on. */
+.ptime__nav {
+  display: flex;
+  gap: var(--s1);
+  flex: none;
+}
+
+.ptime__nav .btn {
+  height: 26px;
+  padding: 0 var(--s3);
+  font-size: 12px;
+}
+
+.ptime__text,
+.paff__text {
+  margin: 0;
+  font-size: var(--size-body);
+  color: var(--text-primary);
+}
+
+.ptime__rest,
+.paff__rest {
+  color: var(--text-secondary);
+}
+
+.ptime__legend,
+.ptime__caption,
+.paff__legend,
+.paff__caption {
+  margin: 0;
+  font-size: var(--size-label);
+  line-height: 1.6;
+  color: var(--text-secondary);
+  max-width: 92ch;
+}
+
+/* What was left out, set apart from what the columns mean: one is a caveat
+ * about the picture, the other is how to read it. */
+.ptime__left,
+.paff__left {
+  color: var(--text-muted);
+}
+
+/* The frame is the grid's own width, not the page's: a five-column grid stretched
+ * across a wide screen puts 500px of empty slab beside it and reads as a table
+ * that failed to load its remaining columns. */
+.ptime__scroll,
+.paff__scroll {
+  /* `fit-content`, not `max-content`. Both give a five-column grid a frame its
+     own width rather than the page's — which is the point, since 500px of empty
+     slab beside a small grid reads as a table that failed to load the rest. But
+     `max-content` *asks* for the whole content width, and in a column flex
+     container that grows the parent instead of clamping: with twenty-odd columns
+     the co-access matrix made the page itself scroll 54px sideways, which is the
+     one thing this frame exists to prevent. `fit-content` is min(max-content,
+     available), which is the actual intent. `min-width: 0` keeps the flex item
+     from insisting on its content width by another route. */
+  width: fit-content;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* And `contain: paint`, without which `overflow-x: auto` clamps the box and
+     *not* the document: a table wider than the frame still counted toward the
+     page's scrollable width, so the whole page scrolled 54px sideways while the
+     frame itself was the right size and scrolled correctly inside it. Measured,
+     not guessed — the window really moved, on the matrix at twenty-odd columns
+     and latently on the partition grid at a daily scale, where the table is
+     several thousand pixels wide. Containment makes the box the end of the
+     line for its own geometry, which is what the frame was for. */
+  contain: paint;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--slab);
+}
+
+.ptime__table,
+.paff__table {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--size-label);
+}
+
+.ptime__corner,
+.ptime__row {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--slab);
+  text-align: left;
+  font-weight: 400;
+  padding: var(--s2) var(--s3);
+  min-width: 200px;
+  max-width: 260px;
+  border-right: 1px solid var(--line);
+}
+
+.ptime__corner {
+  z-index: 2;
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.ptime__corner,
+.ptime__col {
+  position: sticky;
+  top: 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.ptime__col {
+  z-index: 1;
+  background: var(--slab);
+  padding: var(--s2) 2px;
+  font-weight: 400;
+  font-family: var(--font-data);
+  color: var(--text-muted);
+  /* Every column is the same width whatever its label, because the grid is
+     read down as much as across and a ragged column ruins that. A long
+     partition name — a tuple key prints as `('eu',2026)` — is clipped rather
+     than allowed to widen its column; the full string is in the title. */
+  width: 46px;
+  max-width: 46px;
+  overflow: hidden;
+}
+
+/* Horizontal, not rotated. A month id is six characters and fits; rotating the
+ * row to save 12px a column would cost every reader the one label they scan
+ * along, and this grid is scanned along its top more than anywhere else. */
+/* The pinned column, set apart from the timeline by one rule. Not a colour and
+ * not a gap: it is still a column of the same grid, read the same way — it is
+ * only that the axis stops before it. */
+.ptime__col--pinned,
+.ptime__cell--pinned {
+  border-left: 1px solid var(--line);
+}
+
+.ptime__collabel {
+  display: block;
+  width: 42px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  letter-spacing: -0.02em;
+}
+
+.ptime__row .objlink {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ptime__rowsub {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin-top: 2px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.ptime__inner {
+  margin-left: 4px;
+}
+
+.ptime__cell,
+.paff__cell {
+  padding: 1px;
+  text-align: center;
+  line-height: 0;
+}
+
+.ptime__table tbody tr:hover .ptime__row,
+.ptime__table tbody tr:hover .ptime__cell {
+  background: var(--slab-hover);
+}
+
+/* A cell. `--fill` is the magnitude, 0..1 against the grid's scale, floored by
+ * the layout so that anything present is visible: "small" and "not there" are
+ * different answers and this grid exists to tell them apart. */
+.pmark {
+  display: inline-block;
+  width: 40px;
+  height: 22px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--cell-ink) calc(var(--fill, 0) * 100%), transparent);
+  transition: background var(--motion-fast) var(--ease);
+}
+
+/* Past the scale: full, with the accent edge the storage bars use for exactly
+ * the same statement — this one does not stop here. */
+.pmark--past {
+  box-shadow: inset -2px 0 0 0 var(--spark);
+}
+
+/* Nothing here. Drawn as an outline of nothing rather than as a pale fill,
+ * because a pale fill is what a *small* value looks like and those are the two
+ * answers this grid exists to keep apart. */
+.pmark--absent {
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--cell-absent);
+  opacity: 0.9;
+}
+
+/* Text for whoever is not looking at the picture. The grid is squares; the
+ * figures behind them have to reach a screen reader some other way. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Where a structural history stops, and why. Said in the same voice as the rest
+ * of the page rather than as a warning: a log with a TTL is not a fault. */
+.chg__none {
+  margin: var(--s3) 0 0;
+  max-width: 84ch;
+  font-size: var(--size-label);
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+/* Marks a statement that came through Flint. Quiet: most of them will not have,
+ * and a badge on the exception is more useful than one on the rule. */
+.chg__via {
+  margin-left: var(--s2);
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background: var(--fill);
+  font-family: var(--font-sans);
+  font-size: var(--size-label);
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
+.chg__sql {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  overflow-wrap: anywhere;
+}
+
+/* How many identical statements one row stands for. Quiet — the count is the
+ * exception, not the rule — and on its own line, because inline it broke the
+ * phrase in the middle: "2m / ago ×55, back to 4h ago". */
+.chg__times {
+  display: block;
+  font-size: var(--size-label);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* The measurement, once it exists: figures first, then what they do and do not
+ * license. Never a predicted saving — the ratio is measured and the projection
+ * says "at that ratio" or admits it cannot. */
+/* The button sizes to its label. In a stretched column it ran the full width of
+   the card, which made one optional measurement look like the card's verdict. */
+.rmeasure {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s2);
+}
+
+.rmeasure__read {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  font-size: var(--size-body);
+  color: var(--chalk-dim);
+}
+
+.rmeasure__figs {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+
+.rmeasure__aside {
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.rmeasure__aside--warn {
+  color: var(--warning);
+}
+
+.rmeasure__refused {
+  margin: 0;
+  max-width: 78ch;
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--warning);
+}

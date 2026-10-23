@@ -1,0 +1,68 @@
+/* ═══ Over time ═══════════════════════════════════════════════════════════ */
+
+/* One metric: its name and where it is now on a line, the shape underneath, and
+ * a sentence saying which question it answers. No axis and no legend — the moment
+ * a sparkline needs either it should have been a chart on a page of its own. */
+.spark {
+  margin-top: var(--s4);
+}
+
+.spark__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s3);
+}
+
+.spark__label {
+  font-size: var(--size-body);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.spark__now {
+  font-family: var(--font-data);
+  font-size: var(--size-head);
+  color: var(--text-primary);
+}
+
+.spark__svg {
+  display: block;
+  width: 100%;
+  height: 34px;
+  margin-top: 6px;
+  overflow: visible;
+}
+
+.spark__line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+/* The ceiling a metric is measured against, where it has a real one. Dashed so
+ * it reads as a limit rather than as data. */
+.spark__limit {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.spark__says {
+  margin: var(--s2) 0 0;
+  max-width: 90ch;
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.spark__peak {
+  color: var(--text-secondary);
+}
+
+.spark__gaps {
+  color: var(--warning);
+}

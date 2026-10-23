@@ -1,0 +1,122 @@
+/* ── Reports ───────────────────────────────────────────────────────────────
+   A dashboard shows now; a report keeps then. So the editions are as prominent
+   as the definitions, and opening one shows what it found at the time. */
+.page--reports {
+  max-width: var(--measure-list);
+}
+
+.rsections {
+  margin-top: var(--s2);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  list-style: none;
+  counter-reset: rsection;
+}
+
+.rsections__item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  min-width: 0;
+}
+
+.rsections__title {
+  flex: none;
+  font-size: var(--size-data);
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.rsections__sql {
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: var(--size-label);
+  color: var(--text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rform__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  margin-top: var(--s3);
+  padding: var(--s3);
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface-2);
+}
+
+.rform__sectionhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* An edition, opened. Given the weight of a document rather than a modal: it is
+   the artefact the whole feature exists to produce. */
+.snap {
+  margin-top: var(--s6);
+  padding: var(--s4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--slab-raised);
+  box-shadow: var(--shadow-card);
+}
+
+.snap__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s3);
+  padding-bottom: var(--s3);
+  border-bottom: 1px solid var(--divider);
+}
+
+.snap__title {
+  font-family: var(--font-sans);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--text-primary);
+}
+
+.snap__when {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin-top: 4px;
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+.snap__section {
+  margin-top: var(--s5);
+}
+
+.snap__sectionhead {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin-bottom: var(--s2);
+}
+
+/* A snapshot's table scrolls inside its section rather than stretching it: the
+   grid is windowed, and a windowed grid in an unbounded parent renders its
+   whole virtual height and wins nothing. */
+.snap__grid {
+  display: flex;
+  margin-top: var(--s2);
+}
+
+/* The ceiling goes on the scroller itself, not on a wrapper. `.grid` already
+   has `overflow: auto`, so a max-height there does exactly what is wanted: six
+   rows take six rows' worth of room, five hundred scroll. On the wrapper it did
+   neither — a flex item does not shrink below its content height on the cross
+   axis, so the grid overflowed the ceiling and the rows past it were clipped
+   with no way to reach them. */
+.snap__grid .grid {
+  max-height: min(420px, 55vh);
+}

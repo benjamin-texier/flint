@@ -1,0 +1,111 @@
+/* ═══ The Infrastructure board ═════════════════════════════════════════════
+ * One row per section: the name, and the figure that says whether to go there.
+ * Quiet is the good answer, so a settled row carries no colour at all — only
+ * the ones asking for something take an edge, and the row that could *not* be
+ * read takes one too, because not knowing is what this page exists to surface. */
+
+.board {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--slab);
+  overflow: hidden;
+}
+
+.board__row {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  padding: var(--s3) var(--s4);
+  border-left: 3px solid transparent;
+  border-bottom: 1px solid var(--line);
+  transition: background var(--motion-fast) var(--ease);
+}
+
+/* Each row is a way into its section, and only the section's name was the way:
+   a word in body weight with nothing to say it could be pressed, beside the
+   sentence somebody had actually been reading when they decided to go there.
+   The link now covers its row — one target, still one link for a screen reader
+   and one tab stop — and the row takes the ground the product gives a hovered
+   row, with the arrow that says where the press goes. */
+.board__name::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+.board__row:hover {
+  background: var(--fill);
+}
+.board__row::after {
+  content: '→';
+  margin-left: auto;
+  color: var(--chalk-faint);
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease);
+}
+.board__row:hover::after,
+.board__row:focus-within::after {
+  opacity: 1;
+}
+
+.board__row:last-child {
+  border-bottom: none;
+}
+
+.board__name {
+  flex: none;
+  min-width: 9rem;
+  font-size: var(--size-body);
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.board__says {
+  font-size: var(--size-body);
+  color: var(--text-secondary);
+}
+
+/* A section still being fetched is not a section that is fine, and it is not
+ * one that failed either — it says so in its own words and takes no edge. */
+.board__row--reading .board__says {
+  color: var(--text-muted);
+}
+
+.board__row--watch {
+  border-left-color: var(--bar);
+}
+
+.board__row--delay,
+.board__row--throw {
+  border-left-color: var(--alarm);
+}
+
+/* Could not be read. The accent rather than the alarm: nothing is known to be
+ * wrong, and treating a missing grant as an incident would cry wolf on every
+ * narrowly-granted deployment. */
+.board__row--unknown {
+  border-left-color: var(--spark);
+}
+
+.board__row--unknown .board__says {
+  color: var(--text-primary);
+}
+
+/* The disks table carries a bar and the figure beside it, so its columns are
+ * proportioned for that rather than left to the browser: the bar takes the room
+ * it needs to be a proportion, and the figures line up against it. Without this
+ * the bar sat in a column of its own natural width and the table read as five
+ * loose facts rather than one shape. */
+.tbl--disks .tbl__bar {
+  width: 34%;
+  min-width: 140px;
+}
+
+.tbl--disks .tbl--n {
+  white-space: nowrap;
+}

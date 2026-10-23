@@ -1,0 +1,118 @@
+/* ── What is on this page ───────────────────────────────────────────────────
+   Furniture, and it should read as furniture: one quiet line between two rules,
+   the titles in their own words rather than in abbreviations nobody agreed to.
+   It wraps rather than scrolls, because a list of sections that hides some of
+   its sections would be worse than no list. */
+.onpage {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s2) var(--s3);
+  margin-top: var(--s4);
+  padding: var(--s2) 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.onpage__label {
+  flex: none;
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+.onpage__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1) var(--s3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.onpage__link {
+  font-size: var(--size-data);
+  color: var(--chalk-dim);
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 3px;
+  transition:
+    color var(--motion-fast) var(--ease-out),
+    text-decoration-color var(--motion-fast) var(--ease-out);
+}
+
+.onpage__link:hover {
+  color: var(--chalk);
+  text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
+}
+
+/* Room above a section arrived at by its anchor, so its title does not land
+   flush against the top of the scroller. */
+.diag[id] {
+  scroll-margin-top: var(--s4);
+}
+
+.diag__shutout {
+  margin-top: var(--s6);
+  text-align: left;
+}
+
+.diag__obstacles {
+  margin: var(--s2) 0;
+  padding-left: var(--s4);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  list-style: disc;
+}
+
+/* Traffic on the diagram: a magnitude on its own channel, so it never competes
+   with the hue that says what kind of object this is. */
+.gnode__traffic {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  height: 9px;
+  margin-top: 3px;
+}
+
+/* An empty track is what makes "read by nothing" visible at a glance: the
+   difference between a bar at 3% and no bar at all is invisible, while the
+   difference between an empty track and a filled one is not. */
+.gnode__track {
+  flex: 1;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--fill);
+}
+
+.gnode__trafficbar {
+  display: block;
+  height: 3px;
+  min-width: 3px;
+  border-radius: 2px;
+  background: var(--bar);
+}
+
+.gnode__trafficnum {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--size-label);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+.gnode__trafficnone {
+  flex: none;
+  font-family: var(--font-sans);
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+.canvas__hint--traffic {
+  max-width: 78ch;
+}

@@ -1,0 +1,79 @@
+/* ── Access ────────────────────────────────────────────────────────────────── */
+.acc__group {
+  margin-top: var(--s5);
+  font-family: var(--font-sans);
+  font-size: var(--size-label);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.acc {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  margin-top: var(--s2);
+  /* The list's own indent, which nothing resets for a `ul`: every card sat
+     40px in from the "5 USERS" over it and from the section's own heading. */
+  padding: 0;
+  list-style: none;
+}
+
+.acc__item {
+  padding: var(--s3) var(--s4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--slab-raised);
+}
+
+.acc__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.acc__name {
+  font-family: var(--font-mono);
+  font-size: var(--size-data);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.acc__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+  margin-top: var(--s2);
+}
+
+.acc__role {
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--fill);
+  font-family: var(--font-mono);
+  font-size: var(--size-label);
+  color: var(--text-secondary);
+}
+
+.acc__grants {
+  margin-top: var(--s2);
+  /* One split for every card on the page. Each grantee's table is its own
+     table, so under automatic layout each one put the line between "On" and
+     "May" wherever its own longest scope ended — 471px on one card, 416 on the
+     next, 832 on a third — and reading down the page the privileges zig-zagged.
+     A fixed share for the scope and a fixed width for the flag lines them up;
+     a scope longer than its share wraps rather than moving the line. */
+  table-layout: fixed;
+}
+.acc__grants th:first-child {
+  width: 32%;
+}
+.acc__grants th:nth-child(3) {
+  width: 10rem;
+}
+.acc__grants td {
+  overflow-wrap: anywhere;
+}

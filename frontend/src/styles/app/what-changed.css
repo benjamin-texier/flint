@@ -1,0 +1,105 @@
+/* ═══ What changed ═════════════════════════════════════════════════════════
+ * The band a board opens with. Kin to `.board` below-right of it — same slab,
+ * same rule between rows, same left edge for urgency — and deliberately not the
+ * same component: a board row is a section and its state, where a headline is a
+ * subject, a sentence about it and the measurement behind the sentence. Three
+ * parts want three columns, and a `.board__row` given a third would have to
+ * grow one for every row that has no figure to put in it.
+ *
+ * Ranks: the alarm for something to act on, the bar's ink for something to
+ * watch, and *nothing at all* for a note. That last one is the rule the
+ * Infrastructure board already states and this band inherits — a colour that is
+ * always on says nothing, and a schema change is news without being a problem. */
+
+/* `.section` sets a top margin and no bottom one — every block after it brings
+   its own. The metric line does not: it has always followed a page header,
+   which carries its own space. So the band supplies the gap it needs rather
+   than the metric line growing one that would move it on eight other pages.
+   Collapses against the next section's larger top margin, so `/infra` is
+   unchanged. */
+.news {
+  margin-bottom: var(--s7);
+}
+
+.news__list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--slab);
+  overflow: hidden;
+}
+
+.news__row {
+  display: grid;
+  grid-template-columns: minmax(8rem, auto) 1fr auto;
+  align-items: baseline;
+  gap: var(--s3);
+  padding: var(--s3) var(--s4);
+  border-left: 3px solid transparent;
+  border-bottom: 1px solid var(--line);
+}
+
+.news__row:last-child {
+  border-bottom: none;
+}
+
+.news__row--act {
+  border-left-color: var(--alarm);
+}
+
+.news__row--watch {
+  border-left-color: var(--bar);
+}
+
+.news__subject {
+  font-size: var(--size-body);
+  font-weight: 500;
+  color: var(--text-primary);
+  /* A qualified name is the common subject here and it is the one thing on the
+     row that must stay readable whole: the sentence beside it can wrap, and a
+     table whose database has been elided is a table nobody can find. */
+  overflow-wrap: anywhere;
+}
+
+.news__says {
+  font-size: var(--size-body);
+  color: var(--text-secondary);
+}
+
+/* The measurement, held to the right where the eye can run down the column and
+   compare them. Tabular figures for the same reason the tables use them: a
+   column of numbers that do not line up is a column nobody reads down. */
+.news__figure {
+  font-size: var(--size-body);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  white-space: nowrap;
+  text-align: right;
+}
+
+/* "Nothing moved", and the reasons nothing could be judged. A sentence rather
+   than an empty panel, because on the board that opens with this band the
+   absence of news *is* the answer somebody came for. */
+.news__quiet {
+  margin: 0;
+  font-size: var(--size-body);
+  color: var(--text-secondary);
+}
+
+/* Below this the three columns stop being three: the figure loses enough room
+   that it wraps inside itself, and a measurement broken across two lines reads
+   as two measurements. Subject over sentence, figure under both. */
+@media (max-width: 700px) {
+  .news__row {
+    grid-template-columns: 1fr;
+    gap: var(--s1);
+  }
+
+  .news__figure {
+    text-align: left;
+  }
+}

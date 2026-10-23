@@ -1,0 +1,319 @@
+/* ── The configuration this server is running with ────────────────────────── */
+
+/* `compatibility` gets its own line rather than a row in a table of 46. It
+   explains more surprising behaviour than anything else on the machine, and
+   finding it by scrolling is finding it too late. */
+.cfg__loud {
+  margin: var(--s3) 0;
+  padding: var(--s3);
+  background: var(--slab);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--warning);
+  border-radius: var(--radius);
+}
+
+.cfg__find {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  margin: var(--s3) 0;
+}
+
+/* The shared field, sized to what goes in it: `.input` is width:100%, which in
+   an inline-flex label stretches to whatever the label happens to be. A setting
+   name is the longest thing typed here. */
+.cfg__findbox {
+  width: 28ch;
+}
+
+/* A value can be a path, a byte count, or a comma-separated list of hosts.
+   Wrapping rather than nowrap, and bounded, so one long path does not make the
+   table wider than the screen — the mistake the restore column made. */
+.cfg__value {
+  max-width: 34ch;
+  overflow-wrap: anywhere;
+}
+
+.cfg__cmds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  margin-bottom: var(--s2);
+}
+
+/* `.says` is measured for a table cell — 34ch, so a sentence beside a figure
+   wraps instead of widening the column. In a full-width panel that same measure
+   reads as a cramped column beside nothing, so prose here gets a prose measure. */
+.rbac__panel .says {
+  max-width: 68ch;
+}
+
+/* The row's own shape, beside its name. The line carries a magnitude the same
+ * way the cells do, so it is the same ink — but at a *different* scale, its own
+ * peak rather than the grid's, which the legend says in words because no drawing
+ * can say it. */
+/* On the same line as the row's figures, not under them. Its own line cost
+ * nineteen pixels a row, and this grid's whole argument is density — a hundred
+ * squares you can take in at once. */
+.ptime__spark {
+  display: block;
+  flex: none;
+  overflow: visible;
+}
+
+.ptime__sparkline {
+  fill: none;
+  stroke: var(--cell-ink);
+  stroke-width: 1.25;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.85;
+}
+
+/* A bucket alone between two holes. A polyline of one point draws nothing, and
+ * "one month, then nothing for a year" is worth seeing. */
+.ptime__sparkdot {
+  fill: var(--cell-ink);
+  opacity: 0.85;
+}
+
+/* Where the rest of the database's disk is — a way out of one table's review
+ * and into the one that matters more. Behind a click: it is a different
+ * question, and the panel is already long. */
+.review__elsewhere {
+  align-self: flex-start;
+  font-size: var(--size-label);
+  color: var(--spark);
+}
+.review__elsewhere:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.heavy {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--slab);
+}
+
+/* Title and the way out on one line, the scope sentence under both — the
+   header holds all three, so a plain flex row put a paragraph beside a heading. */
+.heavy__head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--s1) var(--s3);
+  align-items: baseline;
+}
+.heavy__head .heavy__scope {
+  grid-column: 1 / -1;
+}
+
+.heavy__title {
+  margin: 0;
+  font-size: var(--size-body);
+  font-weight: 600;
+  color: var(--chalk);
+}
+
+/* The way back out, in the same quiet voice as the plate's own toggle. */
+.heavy__hide {
+  padding: 2px 6px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  color: var(--chalk-faint);
+  cursor: pointer;
+  transition: color var(--motion-fast) var(--ease-out), background var(--motion-fast) var(--ease-out);
+}
+.heavy__hide:hover {
+  background: var(--spark-wash);
+  color: var(--spark);
+}
+
+.heavy__scope {
+  margin: 0;
+  max-width: 78ch;
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--chalk-faint);
+}
+
+.heavy__list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.heavy__row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  padding: 2px var(--s1);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+}
+.heavy__row:hover {
+  background: var(--slab-hover);
+}
+
+.heavy__where {
+  flex: none;
+  min-width: 14ch;
+  color: var(--spark);
+}
+.heavy__where:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.heavy__col {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--chalk);
+}
+
+.heavy__type {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 30%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.heavy__bytes {
+  flex: none;
+  min-width: 9ch;
+  text-align: right;
+  color: var(--chalk-dim);
+}
+
+/* The plan, read back. Above the text and never instead of it: a verdict
+ * nobody can check against the thing it came from is a verdict taken on
+ * faith. The left edge carries the tone, so a column of them is scannable
+ * without reading a word. */
+.planread {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  flex: none;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.planread__v {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--s1) var(--s3);
+  max-width: 92ch;
+  padding: 2px var(--s2);
+  border-left: 2px solid var(--line-strong);
+  font-size: var(--size-body);
+  line-height: 1.5;
+  color: var(--chalk-dim);
+}
+
+.planread__v--good {
+  border-left-color: var(--spark);
+}
+.planread__v--cost {
+  border-left-color: var(--warning);
+}
+
+.planread__text {
+  flex: 1;
+  min-width: 24ch;
+}
+
+.planread__ev {
+  flex: none;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+  font-variant-ligatures: none;
+}
+
+/* The offer to explain a large read. It sits with the statistics it is about,
+ * and asking must never cost the rows on screen — which is why it fetches its
+ * own plan rather than going through the Explain menu. */
+.whystrip {
+  flex: none;
+  padding: var(--s2) var(--s3);
+  background: var(--slab);
+  border-bottom: 1px solid var(--line);
+}
+
+.whystrip__ask {
+  font-size: var(--size-label);
+  color: var(--spark);
+}
+.whystrip__ask:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.whystrip .bhint {
+  margin: 0;
+}
+
+/* The plan's verdicts inside an expanded pattern row. Indented under the SQL
+ * they explain, and clicks kept off the row so reading one does not collapse
+ * it. */
+.diag__why {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  margin-top: var(--s2);
+  cursor: default;
+}
+
+.diag__why .bhint {
+  margin: 0;
+}
+
+/* The DDL editor. A real statement, not a form: monospace, the width of the
+ * panel, and tall enough for what the server reported without a scrollbar
+ * inside a scrollbar. */
+.ddl {
+  display: block;
+  width: 100%;
+  margin: var(--s2) 0;
+  padding: var(--s2);
+  font-family: var(--font-mono);
+  font-size: var(--size-data);
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  resize: vertical;
+}
+
+/* A checkbox in a row of fields: aligned with the inputs rather than with their
+ * labels, so a row of controls reads as one line. */
+.rbac__check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  padding-bottom: 4px;
+  font-size: var(--size-label);
+  color: var(--text-muted);
+  white-space: nowrap;
+}

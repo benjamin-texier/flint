@@ -1,0 +1,37 @@
+/* ═══ Dashboards ═════════════════════════════════════════════════════════
+ * A twelve-column grid. A tile spans whole columns, so widths stay commensurate
+ * and two tiles side by side always line up. */
+
+.page--dash {
+  max-width: none;
+}
+
+/* `dashgrid`, not `dash`. Two components had claimed the same class name — this
+   one and the em-dash placeholder up in the tables — and CSS obliged them both:
+   every dashboard rendered at 70% opacity in the muted grey meant for a missing
+   figure, and every em-dash became a block-level grid. Neither rule looked wrong
+   where it was written, and nothing but a browser could have said so. */
+.dashgrid {
+  display: grid;
+  gap: var(--s4);
+  margin-top: var(--s5);
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+  transition: opacity var(--motion-base) var(--ease);
+}
+.tile.is-editing {
+  border-color: var(--accent);
+}
+/* Hold the previous render while refetching: no skeleton, no layout jump. */
+.tile.is-busy .tile__body {
+  opacity: 0.55;
+}

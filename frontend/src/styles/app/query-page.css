@@ -1,0 +1,316 @@
+/* ═══ The query page, as two things ══════════════════════════════════════
+ * Before this the page was six full-width bands stacked edge to edge, each
+ * closed by its own hairline: toolbar, tabs, editor, figures, clauses, chart
+ * forms, grid legend, header. Every one of them was justified on its own and
+ * together they pushed the first row of data four hundred pixels down a screen
+ * whose whole purpose is rows. Worse, they interleaved: the figures about the
+ * answer sat *above* the clauses of the question.
+ *
+ * So the page is two things now. Above, the question — where you are asking,
+ * how, what you are asking, and the clauses that make it up — one white block
+ * that reads as one surface. Below, on the ground, the answer as a card with
+ * the figures as its head. The gutter between them is the whole hierarchy: two
+ * places for the eye instead of six, and the card edge says "this is what came
+ * back" without a word.
+ */
+
+.editor {
+  background: var(--ground);
+}
+
+/* ── The bar, in three zones ──────────────────────────────────────────────
+ * Where you are asking · what happens now · ⟨space⟩ · where it goes after.
+ * The spark is spent once, on Run. Everything else in the bar is furniture and
+ * is dressed as furniture, which is the change: nine peers competing at equal
+ * weight is a bar with no answer to "what do I press".
+ *
+ * It wraps. Below about 1440px the row does not fit, and a bar that cannot wrap
+ * pushes the whole main area sideways instead — 272px of it at 1152, which took
+ * the answer card's own margins off the left of the screen with it. Measured at
+ * four widths, because none of it is visible to `tsc`. */
+.editor__bar {
+  flex-wrap: wrap;
+  row-gap: var(--s2);
+}
+/* On the second row the spacer is on the first row and cannot push anything, so
+ * the drawers push themselves. Right either way: wrapped to the left they would
+ * sit under the database picker and read as part of the left zone, which is the
+ * one thing they are not. */
+.editor__bar > .segmented:last-child {
+  margin-left: auto;
+}
+
+.editor__where,
+.editor__act {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex: none;
+}
+.editor__where {
+  gap: var(--s3);
+}
+/* A hairline rather than more space: the two zones are different kinds of
+ * thing, and at this density space alone reads as an accident. */
+.editor__act {
+  padding-left: var(--s3);
+  border-left: 1px solid var(--divider);
+}
+
+/* Run, with a mark on it. The glyph is not decoration — the button is the one
+ * control on the page somebody hunts for, and a shape finds the eye before a
+ * word does. */
+.btn--run {
+  padding-left: var(--s3);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--accent) 34%, transparent);
+}
+.btn__play {
+  width: 0;
+  height: 0;
+  flex: none;
+  border-style: solid;
+  border-width: 4.5px 0 4.5px 7px;
+  border-color: transparent transparent transparent currentcolor;
+}
+
+/* Stop is not a danger: nothing is lost by cancelling a read. It is the same
+ * quiet button with a live dot on it, so the pair reads as one control changing
+ * state rather than as two buttons swapping places. */
+.btn--stop {
+  color: var(--alarm-text);
+  border-color: color-mix(in srgb, var(--danger) 42%, var(--border));
+}
+.btn__dot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--danger);
+  animation: pulse var(--loop-breathe) var(--ease-inout) infinite;
+}
+
+/* The toolbar's second tier: real buttons, no border until the pointer is on
+ * them. Distinct from `.btn--quiet`, which is a green inline control used inside
+ * panels — these have to sit in a 32px row beside Run without shouting. */
+.btn--soft {
+  border-color: transparent;
+  background: transparent;
+  color: var(--chalk-dim);
+}
+.btn--soft:hover:not(:disabled) {
+  border-color: var(--line);
+  background: var(--slab-raised);
+  color: var(--chalk);
+}
+/* A native select in a `.btn` needs the room its own arrow takes, which the
+ * base rule does not know about. */
+.btn--soft.btn--select {
+  padding-right: var(--s2);
+}
+
+/* ── The answer, as one surface ───────────────────────────────────────────
+ * A card on the ground, so the question above it has an edge to end at. The
+ * figures are its head rather than a band of their own — they describe what is
+ * inside it, and they were the band that used to separate the query from its own
+ * clauses. */
+.answer {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  margin: var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--slab);
+  box-shadow: var(--shadow-1);
+  transition: border-color var(--motion-base) var(--ease);
+}
+/* While a read is in flight the card's own edge says so, alongside the ember
+ * travelling its head. One state, said twice, quietly — the reader may be
+ * looking at either end of it. */
+.answer.is-running {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+}
+
+.answer .stats {
+  border-bottom: 1px solid var(--divider);
+  background: var(--slab-raised);
+}
+
+.answer__body {
+  flex: 1;
+  min-height: 0;
+  padding: var(--s3);
+  overflow: hidden;
+}
+.answer__body .note {
+  max-width: 70ch;
+}
+
+/* ── The first question ──────────────────────────────────────────────────
+ * What a fresh tab shows. See `components/StartHere.tsx` for why it offers
+ * rather than explains. It scrolls: on a short window the offers are what
+ * matters and the history below them can go under the fold. */
+.start {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s5);
+  height: 100%;
+  padding: var(--s3) var(--s2) var(--s4);
+  overflow-y: auto;
+}
+
+.start__sec {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.start__head {
+  margin: 0;
+  font-size: var(--size-head);
+  font-weight: 500;
+  color: var(--chalk);
+}
+.start__head .ident {
+  font-family: var(--font-data);
+  font-size: 0.9em;
+}
+
+/* Four at most, so they are one row on a normal window and two on a narrow one
+ * — never a column of four, which is a list pretending to be cards. */
+.start__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(232px, 1fr));
+  /* Each card as tall as its own statement. Stretched to the tallest of the row
+   * — the grid's default — the count, which is one line of SQL, grew a hundred
+   * pixels of white to match the hour bucket, which is five. */
+  align-items: start;
+  gap: var(--s3);
+  max-width: 1100px;
+}
+
+/* One offer. The SQL is on it before it is pressed: a card that runs something
+ * you have not read is a card you learn to distrust exactly once. */
+.opener {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
+  padding: var(--s3);
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--slab);
+  transition: border-color var(--motion-fast) var(--ease),
+    background var(--motion-fast) var(--ease),
+    transform var(--motion-fast) var(--ease),
+    box-shadow var(--motion-fast) var(--ease);
+}
+.opener:hover {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  background: var(--slab-raised);
+  /* One pixel. Enough that the card acknowledges the pointer, not enough to
+   * move the text under it. */
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-1);
+}
+
+.opener__title {
+  font-size: var(--size-body);
+  font-weight: 600;
+  color: var(--chalk);
+}
+
+.opener__note {
+  font-size: var(--size-label);
+  line-height: 1.45;
+  color: var(--chalk-faint);
+}
+
+/* The statement, shown small and whole. `pre-wrap` because these are three or
+ * four lines by construction and a truncated SELECT is not something anybody
+ * can check. */
+.opener__sql {
+  margin-top: var(--s1);
+  padding-top: var(--s2);
+  border-top: 1px solid var(--divider);
+  font-family: var(--font-data);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  color: var(--chalk-dim);
+}
+.opener:hover .opener__sql {
+  color: var(--chalk);
+}
+
+/* What this server was asked lately — the same read the History drawer makes,
+ * six of it, because coming back to a tab usually means wanting the query from
+ * twenty minutes ago and opening a drawer for it is a click charged for
+ * remembering. */
+.start__recent {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-width: 1100px;
+}
+
+.start__row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  width: 100%;
+  padding: 5px var(--s2);
+  border-radius: var(--radius-sm);
+  text-align: left;
+  transition: background var(--motion-fast) var(--ease);
+}
+.start__row:hover {
+  background: var(--slab-hover);
+}
+
+.start__when {
+  flex: none;
+  width: 8ch;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.start__sql {
+  /* Its own width rather than the row's, so a fold's count sits beside the
+     statement it counts instead of at the far edge of the card. */
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-data);
+  font-size: 12px;
+  color: var(--chalk-dim);
+}
+.start__row:hover .start__sql {
+  color: var(--chalk);
+}
+
+/* How many runs a folded row stands for. After the statement rather than
+   before it: the statement is what is being recognised, the count is a
+   footnote to it. */
+.start__runs {
+  flex: none;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.start__hint {
+  margin: 0;
+  font-size: var(--size-label);
+  line-height: 1.55;
+  color: var(--chalk-faint);
+}

@@ -1,0 +1,435 @@
+/* ═══ Editor ═════════════════════════════════════════════════════════════ */
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.editor__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex: none;
+  padding: var(--s2) var(--s3);
+  border-bottom: 1px solid var(--line);
+  background: var(--rail);
+}
+
+.editor__spacer {
+  flex: 1;
+}
+
+.editor__actions {
+  display: flex;
+  gap: var(--s2);
+}
+
+.picker {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  font-size: var(--size-label);
+  font-weight: 500;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+.picker__select {
+  height: 28px;
+  padding: 0 var(--s2);
+  background: var(--slab-raised);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+
+.explain__select {
+  height: 32px;
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  border-color: var(--border);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* A plan is a tree, so it keeps its indentation. */
+.plan {
+  height: 100%;
+  overflow: auto;
+  margin: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  line-height: 1.6;
+  color: var(--text-primary);
+}
+
+.setgroup {
+  margin: var(--s3) 0 var(--s2);
+  font-size: var(--size-label);
+  font-weight: 600;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.setgroup:first-child {
+  margin-top: 0;
+}
+
+.settbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.settbl td {
+  padding: 3px var(--s2);
+  border-bottom: 1px solid var(--divider);
+  vertical-align: baseline;
+}
+.settbl tr:last-child td {
+  border-bottom: none;
+}
+.settbl__k {
+  color: var(--text-secondary);
+}
+.settbl__v {
+  width: 1%;
+  white-space: nowrap;
+  text-align: right;
+  color: var(--text-primary);
+}
+
+.tabstrip {
+  display: flex;
+  align-items: stretch;
+  gap: 1px;
+  flex: none;
+  padding: 0 var(--s2);
+  background: var(--rail);
+  border-bottom: 1px solid var(--line);
+}
+
+.tabstrip__tab {
+  display: flex;
+  align-items: center;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+/* Selected, said the same way the nav says it: the tab already lifts onto the
+   surface and takes the full ink, so the rule beneath it only has to close the
+   shape. The accent is spent once per view, on the thing you are being asked to
+   do — here that is Run, a hand's width to the right. */
+.tabstrip__tab.is-active {
+  border-bottom-color: var(--chalk);
+  background: var(--slab);
+}
+
+.tabstrip__pick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 var(--s2);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk-faint);
+  max-width: 22ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tabstrip__tab.is-active .tabstrip__pick {
+  color: var(--chalk);
+}
+
+.tabstrip__mode {
+  margin-right: 5px;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text-muted);
+}
+.tabstrip__tab.is-active .tabstrip__mode {
+  color: var(--accent);
+}
+
+.tabstrip__running {
+  width: 5px;
+  height: 5px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--spark);
+  animation: pulse var(--loop-sweep) var(--ease-out) infinite;
+}
+
+.tabstrip__close,
+.tabstrip__add {
+  width: 22px;
+  height: 28px;
+  color: var(--chalk-faint);
+  font-size: 0.9375rem;
+  line-height: 1;
+}
+.tabstrip__close:hover,
+.tabstrip__add:hover {
+  color: var(--chalk);
+}
+
+.editor__code {
+  min-height: 96px;
+  overflow: hidden;
+  background: var(--slab);
+  border-bottom: 1px solid var(--line);
+}
+/* Same band, different ground: the form is furniture and reads as the rail
+ * does, while the editor is a surface you write on. */
+.editor__code--build {
+  background: var(--bg-sidebar);
+}
+.editor__code > div,
+.editor__code .cm-editor {
+  height: 100%;
+}
+
+.editor__grip {
+  flex: none;
+  height: 6px;
+  margin-top: -3px;
+  cursor: row-resize;
+  position: relative;
+  z-index: 1;
+}
+.editor__grip::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 2px;
+  width: 32px;
+  height: 2px;
+  border-radius: 1px;
+  transform: translateX(-50%);
+  background: transparent;
+  transition: background var(--motion-fast) var(--ease);
+}
+.editor__grip:hover::after,
+.editor__grip:focus-visible::after {
+  background: var(--accent);
+}
+
+/* What the form is about to send, in the slot where a statement shows its own
+ * clauses as chips. Not editable, and deliberately so: this text is rewritten
+ * on every change to the form above it, so an edit here would be lost without a
+ * word. The way to take it over is the switch, which keeps it. */
+.builtstrip {
+  flex: none;
+  /* Enough for the sentence and the first lines of the statement, and it
+   * scrolls for the rest. The statement has to be on screen; it does not have
+   * to be the tallest thing on it, and a six-line SELECT that pushed the chart
+   * below the fold was exactly the trade nobody wants. */
+  max-height: 150px;
+  overflow-y: auto;
+  padding: var(--s2) var(--s3);
+  border-bottom: 1px solid var(--line);
+  background: var(--rail);
+}
+/* Folded, it is one line: the question in words, and the way back to the
+ * statement. */
+.builtstrip.is-folded {
+  max-height: none;
+  overflow: visible;
+}
+.builtstrip.is-folded .builtstrip__says {
+  margin-bottom: 0;
+}
+
+.builtstrip__says {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  margin: 0 0 var(--s2);
+  font-size: var(--size-body);
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+.builtstrip__says .label {
+  flex: none;
+}
+
+.builtstrip__sentence {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The fold, at the end of the sentence rather than over the statement: it is
+ * the statement's own control, and it has to be reachable when the statement is
+ * not there. */
+.builtstrip__fold {
+  flex: none;
+  height: 22px;
+  padding: 0 var(--s2);
+  border-radius: var(--radius-sm);
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  color: var(--text-muted);
+  transition: color var(--motion-fast) var(--ease), background var(--motion-fast) var(--ease);
+}
+.builtstrip__fold:hover {
+  color: var(--text-primary);
+  background: var(--fill);
+}
+
+.builtstrip__sql {
+  margin: 0;
+  padding: 0;
+  background: none;
+  line-height: 1.45;
+  color: var(--text-primary);
+  transition: opacity var(--motion-fast) var(--ease);
+}
+/* While the next statement is being rendered, the one on screen is the previous
+ * question's. Dimmed rather than blanked: a panel that empties on every
+ * keystroke is a panel nobody can read. */
+.builtstrip__sql.is-stale {
+  opacity: 0.55;
+}
+
+.builtstrip__note {
+  margin: var(--s1) 0 0;
+  font-size: var(--size-label);
+}
+
+/* What a statement could not bring with it into the form.
+ *
+ * Above the sentence, because the sentence is the question as it now stands and
+ * reading it without knowing what fell out on the way in is the misreading this
+ * exists to prevent. The strip is allowed to grow for it: a list that scrolled
+ * behind the SQL would be a list saying what was left out, itself left out. */
+.builtstrip:has(.builtstrip__carried) {
+  max-height: 280px;
+}
+
+.builtstrip__carried {
+  margin: 0 0 var(--s2);
+  padding: var(--s2);
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-sm);
+  background: var(--warning-weak);
+  color: var(--warning);
+}
+
+.builtstrip__carriedhead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s2);
+  margin: 0;
+  font-size: var(--size-label);
+  line-height: 1.5;
+}
+.builtstrip__carriedhead .builtstrip__fold {
+  color: var(--warning);
+}
+.builtstrip__carriedhead .builtstrip__fold:hover {
+  color: var(--text-primary);
+}
+
+.builtstrip__carriedlist {
+  margin: var(--s1) 0 0;
+  padding-left: var(--s3);
+  font-size: var(--size-label);
+  line-height: 1.55;
+}
+.builtstrip__carriedlist li + li {
+  margin-top: var(--s1);
+}
+
+/* A gesture the form could not carry, said where the figures are. */
+.editor__refused {
+  flex: none;
+  margin: 0;
+  padding: var(--s2) var(--s3);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--warning);
+  background: var(--warning-weak);
+}
+
+/* While a query is in flight an ember travels this strip. Nothing else in the
+ * editor moves. */
+.stats {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  position: relative;
+  flex: none;
+  height: 28px;
+  padding: 0 var(--s3);
+  overflow: hidden;
+  background: var(--rail);
+  border-bottom: 1px solid var(--line);
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-dim);
+}
+
+.stats__state {
+  font-family: var(--font-ui);
+  font-weight: 500;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+.stats--running .stats__state {
+  color: var(--spark);
+}
+
+.stats__fact--warn {
+  color: var(--alarm-text);
+}
+
+.stats--running::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 34%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--spark), transparent);
+  animation: travel var(--loop-sweep) linear infinite;
+}
+
+@keyframes travel {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(calc(100vw + 100%));
+  }
+}
+
+/* Superseded by `.answer__body` — see "The answer, as one surface" at the end
+ * of this file. Removed rather than aliased: the class is gone from the page,
+ * and a rule for a class nobody sets is a rule the next reader has to check. */
+
+.preview__note {
+  margin: 0 0 var(--s2);
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+.preview {
+  display: flex;
+  flex-direction: column;
+  /* A fraction of the viewport, but never so short that the grid stops being
+     one — sixteen rows is the floor for reading a result rather than peeking. */
+  height: max(62vh, 420px);
+}

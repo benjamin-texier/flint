@@ -1,0 +1,663 @@
+/* ── The rail, while a query is being written ─────────────────────────── */
+
+/* The base row is a fixed 28px tall, which is right for a list of names and
+ * wrong the moment one of them can unfold: the column list overflowed the box
+ * and sat *under* the rows below it, which then swallowed its clicks. Height is
+ * the content's here, and the hover belongs to the line rather than to the whole
+ * unfolded block. */
+.objnode--writing {
+  display: block;
+  height: auto;
+  padding: 0 var(--s2) 0 var(--s2);
+}
+.objnode--writing:hover {
+  background: none;
+  color: var(--chalk-dim);
+}
+
+.objnode__line {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  height: 28px;
+  padding: 0 var(--s2) 0 var(--s1);
+  border-radius: var(--radius-sm);
+}
+.objnode__line:hover {
+  background: var(--slab-hover);
+}
+
+.objnode__twist {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--chalk-faint);
+}
+.objnode__twist svg {
+  width: 10px;
+  height: 10px;
+  display: block;
+  margin: auto;
+  transition: transform var(--motion-fast) var(--ease);
+}
+.objnode--writing.is-open .objnode__twist svg {
+  transform: rotate(90deg);
+}
+.objnode__twist:hover {
+  color: var(--chalk);
+}
+
+.objnode__write {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex: 1;
+  min-width: 0;
+  /* The line carries the hover ground, so the button's own inset was 12px of
+     nothing taken from the one thing on the row that runs short. */
+  padding-inline: 0;
+  text-align: left;
+  color: inherit;
+}
+
+/* Only on hover: the arrow is the second thing anybody wants here, and a
+ * column of arrows down a 155-row rail is noise.
+ *
+ * And over the row rather than in it. Invisible, it still held its 20px in
+ * every row, and the name is what pays for room on this rail: at 232px a table
+ * name had 85px, which is `r… _occupan` — both ends of it cut. Laid over the
+ * end of the line on the line's own hover ground, it costs the name nothing and
+ * covers the row count only while the pointer is on the row. */
+.objnode__open {
+  position: absolute;
+  inset-block: 0;
+  right: var(--s1);
+  display: flex;
+  align-items: center;
+  opacity: 0;
+  padding: 0 var(--s1) 0 var(--s2);
+  border-radius: var(--radius-sm);
+  background: var(--slab-hover);
+  color: var(--chalk-faint);
+  transition:
+    opacity var(--motion-fast) var(--ease),
+    color var(--motion-fast) var(--ease);
+}
+.objnode__line:hover .objnode__open,
+.objnode__open:focus-visible {
+  opacity: 1;
+}
+.objnode__open:hover {
+  color: var(--spark);
+}
+
+.objcols {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: var(--s1) 0 var(--s2) var(--s4);
+  padding-left: var(--s2);
+  border-left: 1px solid var(--divider);
+}
+
+.objcol {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 2px var(--s1);
+  border-radius: var(--radius-sm);
+  text-align: left;
+}
+.objcol:hover {
+  background: var(--slab-hover);
+}
+
+.objcol__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk-dim);
+}
+.objcol:hover .objcol__name {
+  color: var(--chalk);
+}
+
+/* The name is what gets clicked, so the type gives way first: in a 264px rail a
+ * `LowCardinality(Nullable(String))` left the column called `a…`. */
+.objcol__type {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+}
+
+/* The analyses panel stacks under the values on a narrow window, and keeps the
+ * values on top: they are what was asked for. */
+@media (max-width: 1180px) {
+  .rview__body.is-split {
+    flex-direction: column;
+  }
+
+  .analysis {
+    width: auto;
+    max-height: 40%;
+    padding-left: 0;
+    border-left: none;
+    border-top: 1px solid var(--line);
+  }
+}
+
+/* An EXPLAIN is the one result on this page that is not the query's own answer,
+ * and which pass produced it changes how to read it. The note says so above the
+ * text rather than inside it: a caveat set in the same monospace as the SQL
+ * reads as part of the SQL. */
+.planview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  height: 100%;
+  min-height: 0;
+}
+
+.planview__note {
+  flex: none;
+  max-width: 80ch;
+  margin: 0;
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--chalk-dim);
+}
+
+.planview .plan {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* Detached parts: the controls, and what deleting one costs. */
+.dparts__acts,
+.dparts__confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  justify-content: flex-end;
+}
+
+.dparts__cost {
+  font-size: var(--size-label);
+  color: var(--danger-text);
+  white-space: nowrap;
+}
+
+.dparts__error {
+  font-size: var(--size-label);
+  color: var(--danger-text);
+  max-width: 40ch;
+}
+
+/* Partition controls: one strip, one mode. Two independent groups in this cell
+ * wrapped it to three lines and knocked the row out of alignment. */
+.pacts {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.pacts__cost {
+  font-size: var(--size-label);
+  color: var(--danger-text);
+  white-space: nowrap;
+}
+
+.pacts__error {
+  font-size: var(--size-label);
+  color: var(--danger-text);
+  max-width: 38ch;
+}
+
+/* "If this went away": the verdict, then the two lists with what separates them
+ * stated between them. */
+.impact__line {
+  margin: var(--s2) 0 0;
+  font-size: var(--size-body);
+  color: var(--text-primary);
+}
+
+.impact__kind {
+  margin: var(--s3) 0 var(--s2);
+  max-width: 88ch;
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.impact__what {
+  margin-left: var(--s2);
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+/* ══ Schema review ═════════════════════════════════════════════════════════
+ *
+ * A page of advice about somebody's schema has one job before it has any
+ * others: not to overstate. So the claim comes first (hypothesis or verdict),
+ * every card carries the numbers it rests on, and the caution sits *under* the
+ * DDL — last thing read before deciding. */
+
+/* The blocks of a review are not equidistant: what was measured, what it is
+   worth and what it would cost are three separate thoughts, and the sentences
+   inside each belong to each other more than to their neighbours. */
+.review {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s5);
+}
+
+.review__head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s4);
+  flex-wrap: wrap;
+}
+
+.review__scope {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}
+
+/* What was measured, and over how much. The pane's own title — it was set at
+   body size under a tab bar and read as the first of five equal grey lines. */
+.review__claim {
+  margin: 0;
+  font-size: var(--size-head);
+  color: var(--chalk);
+}
+
+.review__facts {
+  margin: 0;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  line-height: 1.55;
+  color: var(--chalk-faint);
+}
+
+/* The one line on this page somebody acts on: how many changes are worth
+   considering and what they are sitting on. It is the answer the tab was opened
+   for, so it is set as an answer rather than as another caption. */
+.review__stake {
+  margin: 0;
+  font-size: var(--size-head);
+  line-height: 1.5;
+  color: var(--chalk);
+}
+
+/* Which kinds of finding are listed. Sits in the head beside the claim it
+ * narrows, and reads as a control rather than as a finding: pill-shaped, quiet
+ * until something is actually hidden, at which point it has to say so. */
+.review__picker {
+  position: relative;
+  flex: none;
+}
+
+.review__filter {
+  padding: 2px var(--s2);
+  border-radius: var(--radius-pill);
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+  transition: color var(--motion-fast) var(--ease), background var(--motion-fast) var(--ease);
+}
+.review__filter:hover {
+  color: var(--chalk);
+  background: var(--slab-hover);
+}
+.review__filter.is-on {
+  color: var(--accent-strong);
+  background: var(--spark-wash);
+}
+
+.kindpick {
+  position: absolute;
+  z-index: 20;
+  /* Hung from the right, unlike the grid's column picker: this button sits at
+   * the right of the head, and anchored left it reached past the panel. */
+  top: calc(100% + var(--s1));
+  right: 0;
+  width: 300px;
+  padding: var(--s2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--slab-raised);
+  box-shadow: var(--shadow-3);
+  animation: popIn var(--motion-fast) var(--ease) both;
+}
+
+.kindpick__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  padding: var(--s1) var(--s2) var(--s2);
+  border-bottom: 1px solid var(--divider);
+}
+
+.kindpick__count {
+  flex: 1;
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+/* The way back, in the popover's head and again in the note that appears when
+ * every kind is switched off — the same affordance, so it is the same rule. */
+.kindpick__all,
+.review__showall {
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--spark);
+}
+.kindpick__all:hover,
+.review__showall:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.kindpick__list {
+  display: flex;
+  flex-direction: column;
+  padding-top: var(--s1);
+}
+
+.kindpick__item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+  padding: var(--s1) var(--s2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.kindpick__item:hover {
+  background: var(--slab-hover);
+}
+
+.kindpick__item input {
+  /* Aligned to the label's first line rather than to the pair, so the gloss
+   * hanging under it does not drag the box into the gap between rows. */
+  margin-top: 2px;
+}
+
+.kindpick__name {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--size-body);
+  color: var(--chalk);
+}
+
+.kindpick__gloss {
+  display: block;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.kindpick__tally {
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+/* The caveat that stops the figure above it being read as a saving. Its own
+ * line, quiet, and never omitted. */
+.review__caveat {
+  display: block;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.btn__aside {
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: inherit;
+  opacity: 0.75;
+}
+
+.pill--caution {
+  color: var(--warning);
+  background: var(--warning-weak);
+}
+
+/* The cost of a mutation, said once — and said as part of the sentence above
+   it rather than as a block of its own, so it is pulled back out of the list's
+   spacing. */
+.review__cost {
+  margin: calc(var(--s3) - var(--s5)) 0 0;
+  max-width: 78ch;
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--warning);
+}
+
+.review__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* A finding is six things to read — the column, the evidence, the reasoning,
+   the statement, the way to measure it and the caveat — and at twelve pixels of
+   padding they were a paragraph with a border round it. This is a card someone
+   is deciding from. */
+.rfind {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  padding: var(--s4) var(--s5);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--slab);
+  box-shadow: var(--shadow-1);
+}
+
+/* The left edge carries the kind, so a column of cards is scannable without
+ * reading a single pill. */
+.rfind--save {
+  border-left-color: var(--spark);
+}
+.rfind--fix {
+  border-left-color: var(--warning);
+}
+
+.rfind__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-wrap: wrap;
+}
+
+.rfind__col {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  font-weight: 600;
+  color: var(--chalk);
+}
+
+.rfind__headline {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk-dim);
+  /* A type is characters, not ligatures — the same rule the editor keeps. */
+  font-variant-ligatures: none;
+}
+
+.rfind__bytes {
+  flex: none;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.rfind__evidence {
+  margin: 0;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk);
+}
+
+.rfind__why {
+  margin: 0;
+  max-width: 78ch;
+  font-size: var(--size-body);
+  line-height: 1.55;
+  color: var(--chalk-dim);
+}
+
+.rfind__ddl {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+}
+
+.rfind__ddl .code {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+
+.rfind__caution {
+  margin: 0;
+  max-width: 78ch;
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--warning);
+}
+
+.rfind__caution--soft {
+  color: var(--chalk-faint);
+}
+
+/* Object controls, and the impact that stands in front of a drop. Wider than the
+ * other confirmations because it carries names, not just a figure — the whole
+ * point is that the reader sees what breaks before the button. */
+.oacts {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.oacts--wide {
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.oacts__impact {
+  text-align: right;
+}
+
+.oacts__cost {
+  font-size: var(--size-label);
+  color: var(--danger-text);
+}
+
+.oacts__names {
+  margin: 2px 0 0;
+  max-width: 52ch;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+/* The inferred half, set apart from the declared one: it is a reading of SQL, not
+ * the server's own record. */
+.oacts__names--soft {
+  color: var(--text-muted);
+}
+
+.oacts__error {
+  font-size: var(--size-label);
+  color: var(--danger-text);
+  max-width: 36ch;
+}
+
+/* The confirmation, in a row of its own across the table.
+ *
+ * It began in the action cell and the list of dependents was clipped — the one
+ * thing it exists to show was the one thing you could not read. Full width, text
+ * that wraps, buttons on the right. */
+.oacts__panelrow > td {
+  background: var(--bg-surface-2);
+}
+
+.oconfirm {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s4);
+  padding: var(--s2) 0;
+}
+
+.oconfirm__what {
+  flex: 1;
+  min-width: 0;
+}
+
+.oconfirm__cost {
+  margin: 0;
+  font-size: var(--size-body);
+  color: var(--danger-text);
+}
+
+.oconfirm__names {
+  margin: 4px 0 0;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+/* The inferred half, set apart: a reading of SQL, not the server's record. */
+.oconfirm__names--soft {
+  color: var(--text-muted);
+}
+
+.oconfirm__how {
+  font-family: var(--font-sans);
+}
+
+.oconfirm__acts {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex: none;
+}
+
+.oconfirm__error {
+  font-size: var(--size-label);
+  color: var(--danger-text);
+  max-width: 30ch;
+}

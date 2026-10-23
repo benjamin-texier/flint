@@ -1,0 +1,223 @@
+/* ── Diagnostics ───────────────────────────────────────────────────────────
+   A console of sections that each answer one question and each know how to be
+   unavailable, because on a locked-down role most of them are. */
+.page--diagnose,
+.page--board,
+.page--checkup {
+  max-width: 1180px;
+}
+
+/* The board and the checkup take the same measure as every section the board
+   points at. Infrastructure's board was `page--wide` and the checkup had no cap
+   at all, so moving along the bar from Home to Health moved the title 130px to
+   the right and the first table's edge with it: the same chrome, the same
+   space, and a page that seemed to have been laid out by somebody else. */
+
+.diag__filter {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin-top: var(--s3);
+}
+
+/* One row of four controls that had come from three places: the form builder's
+   fields, which carry the 8px under them that a stacked form wants, the
+   database picker's select, mono and 28px, and a segmented button. Side by side
+   the boxes sat 4px above the select and the label broke over two lines to
+   make room for them. Here they are one height on one centre line, and the
+   label keeps to its own. */
+.diag__filter > .label {
+  flex: none;
+  white-space: nowrap;
+}
+.diag__filter .bfield {
+  margin-bottom: 0;
+}
+.diag__filter .picker__select {
+  height: 30px;
+  font-family: var(--font-sans);
+}
+
+.diag__filternote {
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+.diag {
+  margin-top: var(--s6);
+}
+
+.diag__head {
+  margin-bottom: var(--s3);
+}
+
+.diag__title {
+  font-family: var(--font-sans);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
+.diag__sub {
+  margin-top: 3px;
+  max-width: 76ch;
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+/* The healthy answer, stated. An empty container makes the reader wonder
+   whether the question was asked at all. */
+.diag__quiet {
+  padding: var(--s3) 0;
+  font-size: var(--size-data);
+  color: var(--text-secondary);
+}
+
+.diag__sql {
+  display: block;
+  max-width: 62ch;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Clicking a row opens the statement rather than truncating it. */
+.diag__sql--full {
+  max-width: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.diag__msg {
+  display: block;
+  max-width: 58ch;
+  overflow: hidden;
+  font-size: var(--size-label);
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diag__share {
+  margin-right: var(--s2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+.tbl tbody tr.is-open {
+  background: var(--bg-surface-2);
+}
+
+/* The one action an open statement offers. Sits under the SQL, in the accent,
+ * because it leaves the page. */
+.diag__open {
+  display: inline-block;
+  margin-top: var(--s2);
+  font-size: var(--size-label);
+  font-weight: 500;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--spark);
+}
+.diag__open:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* A verdict rides beside the number it is about, never instead of it. */
+.says {
+  display: block;
+  max-width: 34ch;
+  margin-top: 2px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.4;
+  letter-spacing: 0;
+  text-align: left;
+  white-space: normal;
+}
+/* `.says` is 34ch because it was written to sit beside a row — an annotation
+   in the margin of a table, where a long measure would fight the columns. A
+   warning that is a *paragraph* is a different thing and needs a readable
+   measure; without this it wraps into a narrow column beside a full-width form
+   and reads as a rendering fault. */
+.says--wide {
+  max-width: 62ch;
+}
+
+.says--watch,
+.says--delay {
+  color: var(--warning);
+}
+.says--throw {
+  color: var(--danger-text);
+}
+
+/* A `says` that is a way out of the row rather than a third sentence about it.
+   The verdict above it is a finding; this is an offer, and without something to
+   tell them apart the two read as one paragraph and nobody discovers the link.
+
+   The underline does that work and the accent does not. This was the accent
+   first, and the repo's own "one spark per view" check caught it: the palette
+   spends the accent once per page, on the thing you are being asked to do, and
+   a table where every qualifying row lights up draws a green ladder down one
+   column. So it follows `.link` — the accent on hover only — with an underline
+   at rest, because at 11px inside a table nothing else says "clickable". */
+.says--ask {
+  color: var(--chalk);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 32%, transparent);
+  text-underline-offset: 3px;
+  transition:
+    color var(--motion-fast) var(--ease-out),
+    text-decoration-color var(--motion-fast) var(--ease-out);
+}
+
+.says--ask:hover {
+  color: var(--spark);
+  text-decoration-color: currentColor;
+}
+
+.flag {
+  display: inline-block;
+  margin-left: var(--s2);
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-sans);
+  font-size: var(--size-label);
+  font-weight: 600;
+}
+.flag--watch,
+.flag--delay {
+  background: var(--warning-weak);
+  color: var(--warning);
+}
+.flag--throw {
+  background: var(--danger-weak);
+  color: var(--danger-text);
+}
+/* A verdict that is fine, and quiet about it. `Says` next door renders nothing
+   at all for `ok`; a chip cannot always do that — it holds a column open — so it
+   goes as quiet as a chip can. Green here would light every row of a healthy
+   page, and an indicator that is always lit is not an indicator.
+   `--good` below is the other thing "ok" can mean: not the resting state, but
+   news of a change into it. */
+.flag--ok {
+  background: var(--fill);
+  color: var(--text-secondary);
+}
+
+/* Something went right, and that is news: an alert that came back, a call that
+   answered 200. Both follow a moment of doubt, which is what earns the colour. */
+.flag--good {
+  background: var(--success-weak);
+  color: var(--success-text);
+}

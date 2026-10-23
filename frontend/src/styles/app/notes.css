@@ -1,0 +1,117 @@
+/* ═══ Notes ══════════════════════════════════════════════════════════════ */
+
+.note {
+  padding: var(--s4);
+  border-radius: var(--radius-lg);
+  font-size: var(--size-body);
+}
+
+.note--error {
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+  background: var(--danger-weak);
+}
+
+.note--empty {
+  border: 1px dashed var(--line-strong);
+  color: var(--chalk-dim);
+}
+
+/* A panel waiting out an outage. No border, no colour, no button: the strip at
+   the top of the window is saying all of that once, and a page of these has to
+   read as one thing missing rather than as twelve things broken. */
+.note--waiting {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin: 0;
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+.note__wait {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--chalk-faint);
+  animation: pulse var(--loop-breathe) var(--ease-inout) infinite;
+}
+
+.note__head {
+  margin-bottom: var(--s2);
+}
+
+.note__title {
+  margin: 0;
+  font-size: var(--size-head);
+  color: var(--chalk);
+}
+
+.note__message {
+  margin: 0;
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.note__hint {
+  margin: var(--s2) 0 0;
+  color: var(--chalk-dim);
+  max-width: 68ch;
+}
+
+.note .btn {
+  margin-top: var(--s3);
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s3);
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+/* The sentence a long wait earns. Set as prose rather than as a label: it is an
+ * explanation, not a status word, and it arrives quietly. */
+.loading__slow {
+  font-family: var(--font-ui);
+  font-size: var(--size-body);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--chalk-dim);
+  animation: fadeIn var(--motion-base) var(--ease) both;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+}
+
+.loading__spark {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--spark);
+  animation: pulse var(--loop-sweep) var(--ease-out) infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}

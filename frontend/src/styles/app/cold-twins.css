@@ -1,0 +1,77 @@
+/* ── What nothing has read ─────────────────────────────────────────────────
+ *
+ * The note above a table's columns, and the mark beside one. Deliberately quiet:
+ * a cold column is a *question* — nothing named it in the window — and painting
+ * it as a fault would answer a question Flint has no business answering. A
+ * quarterly report reads columns that look cold for months.
+ */
+.coldnote {
+  margin: 0 0 var(--s2);
+  color: var(--text-secondary);
+}
+
+/* Held rather than answered: the log was too short, or the grant is missing.
+ * A different tier from the answer, because "I cannot tell" and "nothing is
+ * cold" are the two readings a reader must never confuse. */
+.coldnote--held {
+  color: var(--text-muted);
+}
+
+.tbl__cold {
+  margin-left: var(--s2);
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  font-size: var(--size-label);
+  font-weight: 400;
+  color: var(--text-muted);
+  vertical-align: middle;
+}
+
+/* ── The same data, twice ──────────────────────────────────────────────────
+ *
+ * A list of *sets*, not of tables, which is the whole shape of the finding: three
+ * copies of one dataset is one thing to think about. Each set names its members
+ * as links, because the next question after "these two are the same" is always
+ * "which one is which".
+ */
+.twins {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  margin: var(--s3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.twins__row {
+  padding: var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--slab);
+}
+
+.twins__what {
+  margin: 0 0 4px;
+  font-size: var(--size-body);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* The members, side by side on a wide page: they are being compared, and a
+ * vertical list of two things somebody is comparing makes them scroll to do it. */
+.twins__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2) var(--s5);
+  margin: var(--s2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.twins__list > li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}

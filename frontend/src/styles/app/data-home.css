@@ -1,0 +1,141 @@
+/* ═══ Data's home ══════════════════════════════════════════════════════════
+ * The mirror of the Infrastructure board, and deliberately not built out of it:
+ * that board answers "is anything wrong" one section at a time, where this one
+ * lists things — statements, endpoints — that mostly have nothing wrong with
+ * them. Rows here carry no standing edge for the same reason the board's quiet
+ * rows carry none: a colour that is always on says nothing. What is actually
+ * wrong is gathered into "Worth a look" at the foot, which *is* the board. */
+
+.home__cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s7);
+  align-items: start;
+}
+
+/* The two columns are read side by side or not at all: at this width the right
+ * one has lost enough room that its figures wrap mid-sentence, which costs more
+ * than the comparison is worth. */
+@media (max-width: 1100px) {
+  .home__cols {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+}
+
+/* Each block owns its own top margin through `.section`; inside the grid the
+ * first row would then start twice as far down as the metrics line above it. */
+.home__block {
+  margin-top: var(--s6);
+}
+
+.home__list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--slab);
+  overflow: hidden;
+}
+
+.home__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s4);
+  padding: var(--s3) var(--s4);
+  border-bottom: 1px solid var(--line);
+}
+
+.home__row:last-child {
+  border-bottom: none;
+}
+
+/* Name over its own provenance: two facts about one thing, so they share a
+ * block rather than sitting as two columns that happen to be adjacent. */
+.home__what {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.home__name {
+  font-size: var(--size-body);
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home__name:hover {
+  color: var(--interactive);
+}
+
+.home__when {
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+  white-space: nowrap;
+}
+
+/* Separators are their own element rather than punctuation in the text, so a
+ * fact that is dropped takes its separator with it instead of leaving a stray
+ * middot behind — the rule the chrome's facts strip already follows. */
+.home__dot {
+  margin: 0 var(--s2);
+  opacity: 0.55;
+}
+
+.home__says {
+  flex: none;
+  font-size: var(--size-body);
+  color: var(--text-secondary);
+  text-align: right;
+}
+
+/* A count of failures, inline among the figures it belongs with. `--danger-text`
+ * and not `--danger`: the fill colour does not reach 4.5:1 as small text, which
+ * the token file says in as many words. */
+.home__failed {
+  color: var(--danger-text);
+}
+
+.home__more {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  margin: var(--s3) 0 0;
+  font-size: var(--size-label);
+}
+
+/* Ink at rest, accent on hover — the rule `.link` sets for every other link in
+ * the product. These two were painted the accent standing still, which was
+ * invisible on the workspace board where they were the only accented things and
+ * became a problem the moment that board folded into the arrival: a page whose
+ * primary action is the accent cannot also have two links wearing it. */
+.home__link {
+  color: var(--chalk);
+  font-weight: 500;
+  transition: color var(--motion-fast) var(--ease);
+}
+.home__link:hover {
+  color: var(--spark);
+}
+
+/* What the list above it does not show. Quieter than the link it follows: it is
+ * a qualification of that count, not a second destination. */
+.home__aside {
+  color: var(--chalk-faint);
+}
+
+.home__note {
+  margin: var(--s3) 0 0;
+  max-width: 62ch;
+  font-size: var(--size-body);
+  line-height: 1.6;
+  color: var(--chalk-dim);
+}

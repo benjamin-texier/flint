@@ -1,0 +1,64 @@
+/* ── What Flint is watching ────────────────────────────────────────────────
+   Only the unhappy ones. A list of things that are fine is a vanity number. */
+.watch {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  list-style: none;
+}
+
+.watch__item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  padding: 6px var(--s3);
+  border-left: 2px solid var(--line-strong);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--bg-surface-2);
+}
+/* Firing is the alarm; the rest are amber, because "ran with gaps" and "cannot
+   run" are problems with the watching rather than with the thing watched. */
+.watch__item--firing {
+  border-left-color: var(--danger);
+}
+.watch__item--broken,
+.watch__item--failed,
+.watch__item--partial,
+.watch__item--erroring {
+  border-left-color: var(--warning);
+}
+
+.watch__name {
+  flex: none;
+  font-family: var(--font-sans);
+  font-size: var(--size-data);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.watch__name:hover {
+  color: var(--accent-strong);
+}
+
+.watch__says {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--size-data);
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chrome__badge {
+  display: inline-block;
+  min-width: 17px;
+  margin-left: 5px;
+  padding: 0 4px;
+  border-radius: var(--radius-pill);
+  background: var(--danger-weak);
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  color: var(--danger-text);
+}

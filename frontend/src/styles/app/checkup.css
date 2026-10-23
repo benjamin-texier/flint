@@ -1,0 +1,307 @@
+/* ═══ The checkup ═════════════════════════════════════════════════════════
+ * One page for "what do I have to do". Its whole layout is the refusal to
+ * produce a score: findings sit in the four questions a reader actually has,
+ * and what acting gives back is printed with its unit attached — never as a
+ * bare number that could be read against another kind. */
+
+.chrome__checkup {
+  padding: 4px var(--s3);
+  font-size: var(--size-label);
+  font-weight: 500;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+  transition: color var(--motion-fast) var(--ease);
+}
+.chrome__checkup:hover,
+.chrome__checkup.active {
+  color: var(--accent-strong);
+  border-color: var(--accent);
+}
+
+.checkup__asks {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  margin-bottom: var(--s4);
+}
+
+/* The sentence beside the button needs room to be one: as a bare flex item it
+ * shrank to its content box and wrapped every four words. */
+.checkup__asks .says {
+  flex: 1 1 22rem;
+  min-width: 0;
+  max-width: 48rem;
+}
+
+/* The session: a mark, and a window computed from it. Set apart from the
+ * seven-day button because it answers a different question — "what did *this*
+ * do" rather than "what has been happening". */
+.checkup__session {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  padding: var(--s3);
+  margin-bottom: var(--s4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-2);
+}
+
+.checkup__session .says {
+  flex: 1 1 22rem;
+  min-width: 0;
+  max-width: 48rem;
+}
+
+/* A running session says so in the accent, because the page looks otherwise
+ * identical whether one is running or not — and forgetting a mark from an
+ * hour ago is how somebody reads an hour as ten minutes. */
+.checkup__watching {
+  color: var(--accent-strong);
+}
+
+.checkup__window {
+  margin-bottom: var(--s3);
+}
+
+.checkup__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  margin: var(--s3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.checkup__row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  padding: var(--s3);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+/* The only visual difference between the two urgencies, and it is a rule and
+ * not a colour wash: something already happening gets the danger edge, and
+ * everything else is left alone. A page where every row is coloured is a page
+ * where the colour says nothing. */
+.checkup__row--now {
+  border-left-color: var(--danger);
+}
+
+/* A second finding about the table the card above is about, joined to it: the
+   gap between them closes and the seam squares off, so two cards read as one
+   table with two things to change. */
+.checkup__row--follows {
+  margin-top: calc(-1 * var(--s2) - 1px);
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+.checkup__list > :has(+ .checkup__row--follows) {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+/* Where the sure findings end, in this area. See `.strata__band`. */
+.checkup__band {
+  padding: var(--s3) 0 0;
+  font-size: var(--size-label);
+  line-height: 1.55;
+  color: var(--chalk-faint);
+}
+
+/* Unsure: the card keeps its words and gives up its weight — no surface of its
+   own, a dashed edge, the figure in the dim ink. */
+.checkup__row--tentative {
+  background: transparent;
+  border-style: dashed;
+  border-left-style: solid;
+}
+.checkup__row--tentative .checkup__worth {
+  color: var(--chalk-dim);
+}
+
+.checkup__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s3);
+}
+
+.checkup__title {
+  font-size: var(--size-body);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* The figure and its unit are one thing, stacked, so the unit cannot be lost
+ * to a line break and read against a different kind. */
+.checkup__worth {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex: none;
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.checkup__worthlabel {
+  font-family: var(--font-sans);
+  font-size: var(--size-label);
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+/* A finding's reasoning is prose, not a caption, and `.says` caps a caption at
+ * 34ch — which is right under a button and wrong inside a card the width of the
+ * page. It read as a broken layout: a 1,350px panel with its text wrapping at
+ * 280px, four lines where one would do. 68ch is a comfortable measure and stops
+ * short of the wall-to-wall line nobody's eye can track back from.
+ *
+ * On the checkup as well as the arrival, deliberately: it was wrong there too,
+ * and only looked less wrong because that page is narrower. */
+/* Two classes, not one, and that is the point rather than an accident: `.says`
+ * is defined further down this file, so a single-class rule here loses to it on
+ * source order and the cap stayed at 34ch. */
+.checkup__row .says {
+  max-width: 68ch;
+}
+
+.checkup__why {
+  color: var(--text-secondary);
+}
+
+.checkup__evidence {
+  font-family: var(--font-data);
+  color: var(--text-muted);
+}
+
+.checkup__act {
+  align-self: flex-start;
+  font-size: var(--size-label);
+}
+
+/* ── Answering a finding ──────────────────────────────────────────────────
+ * The controls sit on the row's own line, beside the link that acts on it:
+ * going to fix something and deciding not to are two answers to one question,
+ * and putting them in two places would make one of them look like the page's
+ * and the other like the reader's. */
+.checkup__acts {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  flex-wrap: wrap;
+}
+
+/* The two answers in the act's own size and in ink. `.linkish` is the accent,
+   and here it came twice a finding — forty green words down a page whose one
+   colour rule is the danger edge, and a size up from the link beside them, so
+   "Put away" outweighed the thing the finding asks you to go and do. Still
+   underlined: that is what says they can be pressed. */
+.checkup__acts .linkish {
+  font-size: var(--size-label);
+  color: var(--chalk-dim);
+}
+.checkup__acts .linkish:hover {
+  color: var(--chalk);
+}
+
+/* An answered row is quieter than an open one, and only in weight — no wash,
+ * no second colour. The page's one colour rule is the danger edge on what is
+ * already happening, and an answer must not compete with it. */
+.checkup__row--away,
+.checkup__row--accepted {
+  opacity: 0.82;
+}
+
+/* Except the one that came back. A dismissal whose figure has moved is the
+ * page telling the reader their own decision no longer fits, which is the
+ * only thing here worth an edge of its own. */
+.checkup__row--stale {
+  border-left-color: var(--warning);
+}
+
+.checkup__mark {
+  color: var(--text-muted);
+}
+
+.checkup__mark--stale {
+  color: var(--warning);
+}
+
+/* `--text-muted`, not `--text-faint`: this is 11px body text, and faint at
+ * that size measures 3.2:1 against the surface — under AA, in both themes.
+ * Caught by the contrast audit the moment this page joined it, which is the
+ * argument for the page being in it. */
+.checkup__markwhen {
+  color: var(--text-muted);
+}
+
+/* The count of what is not listed, which is a sentence rather than a control
+ * until somebody wants it. */
+.checkup__putaway {
+  color: var(--text-muted);
+}
+
+.checkup__list--away {
+  margin-top: var(--s2);
+}
+
+/* The note, asked for on the row rather than in a dialog: a decision made in
+ * a modal is a decision made away from the evidence it is about. */
+.checkup__answer {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-wrap: wrap;
+}
+
+.checkup__answer .input {
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+
+/* What was said before, oldest at the bottom: a list read top-down where the
+ * newest answer is the one in force. Indented under the row it belongs to
+ * rather than in a panel, because it is about that row and nothing else. */
+.checkup__history {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  margin: 0;
+  padding: var(--s2) 0 0 var(--s3);
+  list-style: none;
+  border-left: 1px solid var(--border);
+}
+
+.checkup__past {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  flex-wrap: wrap;
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+.checkup__paststate {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.checkup__pastwhen,
+.checkup__pastsaid {
+  font-family: var(--font-data);
+}
+
+.checkup__pastsaid {
+  color: var(--text-muted);
+}

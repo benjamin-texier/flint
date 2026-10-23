@@ -1,0 +1,492 @@
+/* ═══ Cards & code ═══════════════════════════════════════════════════════ */
+
+.card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+}
+
+.card__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s3) var(--s4);
+  border-bottom: 1px solid var(--divider);
+}
+
+.card__title {
+  flex: 1;
+  font-size: var(--size-body);
+  color: var(--chalk-dim);
+}
+
+.card__line {
+  display: flex;
+  gap: var(--s2);
+  align-items: baseline;
+  margin: 0;
+  padding: var(--s2) var(--s4);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+}
+
+.code {
+  margin: 0;
+  padding: var(--s4);
+  overflow-x: auto;
+  font-size: var(--size-data);
+  line-height: 1.75;
+  color: var(--chalk-dim);
+  tab-size: 2;
+}
+.code--wrap {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* A formatted statement: the breaks are meaningful, so they are kept, and a
+   line too long for the panel wraps under its own indentation rather than
+   pushing a horizontal scrollbar under the whole thing. */
+.code--sql {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+  color: var(--chalk);
+}
+
+/* The same palette the editor's highlighter uses, so a statement read here and
+   the same statement pasted there are the same colours. */
+.sql--keyword {
+  color: var(--t-bool);
+  font-weight: 500;
+}
+.sql--type {
+  color: var(--t-nested);
+}
+.sql--function {
+  color: var(--t-time);
+}
+.sql--string {
+  color: var(--t-string);
+}
+.sql--number {
+  color: var(--t-number);
+}
+.sql--quoted,
+.sql--name {
+  color: var(--chalk);
+}
+.sql--comment {
+  color: var(--chalk-faint);
+  font-style: italic;
+}
+.sql--punct {
+  color: var(--chalk-dim);
+}
+
+/* A panel that starts closed. Used for the full CREATE statement, which is the
+   definition above it plus what ClickHouse added. */
+.fold {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+}
+.fold__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  padding: var(--s3) var(--s4);
+  font-size: var(--size-body);
+  font-weight: 500;
+  color: var(--chalk);
+  cursor: pointer;
+}
+.fold[open] .fold__head {
+  border-bottom: 1px solid var(--divider);
+}
+.fold__hint {
+  flex: 1;
+  min-width: 12ch;
+  font-size: var(--size-label);
+  font-weight: 400;
+  color: var(--chalk-faint);
+}
+.fold .card {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.card__head--bare {
+  justify-content: flex-end;
+}
+
+/* ── A view's sources ───────────────────────────────────────────────────── */
+
+.src__alias {
+  font-weight: 400;
+  color: var(--chalk-faint);
+}
+
+.src__facts {
+  flex: none;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+/* An engine name is an identifier. `SystemColumns` upper-cased into
+   SYSTEMCOLUMNS is a different word. */
+.src__engine {
+  font-family: var(--font-data);
+  color: var(--chalk-dim);
+}
+
+.src__feeds {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk-dim);
+}
+.src__feed {
+  white-space: nowrap;
+}
+
+/* Said only when the type changes on the way through — which is the whole
+   point of saying it. */
+.src__cast {
+  color: var(--t-nested);
+}
+
+/* A column read by a join or a filter but never returned. It is still a
+   dependency — dropping it breaks the view — so it is listed, quietly. */
+.src__only {
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.src__note {
+  margin: 0;
+  padding: var(--s3) var(--s4);
+  border-top: 1px solid var(--divider);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.src__rest {
+  border-top: 1px solid var(--divider);
+}
+.src__resthead {
+  padding: var(--s2) var(--s4);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+  cursor: pointer;
+}
+.src__resthead:hover {
+  color: var(--chalk-dim);
+}
+.src__restlist {
+  margin: 0;
+  padding: 0 var(--s4) var(--s3);
+  font-size: var(--size-label);
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+/* ── Where the rows really are ─────────────────────────────────────────────
+   For the engines that store nothing of their own, the address is the
+   identity: two Kafka tables differ by their brokers and by nothing else on
+   the page. So it reads as a plaque rather than as another card — no shadow,
+   no heading, one rule down the left saying that what it describes is
+   outside. */
+.xsrc {
+  margin: var(--s4) 0 0;
+  padding: var(--s2) 0 var(--s2) var(--s4);
+  max-width: 74ch;
+  border-left: 2px solid var(--line-strong);
+}
+
+.xsrc__kind {
+  margin: 0;
+  font-size: var(--size-label);
+  font-weight: 500;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+/* In the data font, and selectable: the next thing anybody does with a bucket
+   path is paste it into a terminal. */
+.xsrc__where {
+  margin: var(--s2) 0 0;
+  font-family: var(--font-data);
+  font-size: var(--size-head);
+  line-height: 1.45;
+  color: var(--chalk);
+  overflow-wrap: anywhere;
+}
+
+.xsrc__at {
+  color: var(--chalk-faint);
+}
+
+.xsrc__on {
+  display: inline-block;
+  padding: 0 var(--s2);
+  font-family: var(--font-ui);
+  font-size: var(--size-body);
+}
+
+.xsrc__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1) var(--s4);
+  margin: var(--s3) 0 0;
+}
+
+.xsrc__fact {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+}
+
+.xsrc__label {
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+.xsrc__value {
+  margin: 0;
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk-dim);
+}
+
+.xsrc__note {
+  margin: var(--s2) 0 0;
+  max-width: 68ch;
+  font-size: var(--size-label);
+  line-height: 1.6;
+  color: var(--chalk-faint);
+}
+
+/* Asking the far end. On its own line under the notes, because the answer is a
+   sentence rather than a chip: three of the four outcomes send the reader
+   somewhere different, and a tick cannot say which. */
+.xsrc__check {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--s2) var(--s3);
+  margin-top: var(--s3);
+}
+
+.xsrc__verdict {
+  flex: 1 1 34ch;
+  font-size: var(--size-label);
+  line-height: 1.6;
+  color: var(--chalk-dim);
+  overflow-wrap: anywhere;
+}
+
+.xsrc__verdict--failed {
+  color: var(--alarm-text);
+}
+
+/* Reached and empty are both successes, and only one of them is the one
+   somebody hoped for. The quieter colour is not a warning — it is the reading
+   that "there is nothing there" deserves its own weight. */
+.xsrc__verdict--reached {
+  color: var(--success-text);
+}
+
+/* A refusal is not a failure: Flint did not try. It reads as a note. */
+.xsrc__verdict--refused {
+  color: var(--chalk-faint);
+}
+
+/* The same address on the diagram's side panel, where it gets one line and has
+   to sit beside the keys, the traffic and the sample. */
+.xsrcline {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: var(--s2) 0 0;
+  padding-left: var(--s2);
+  border-left: 2px solid var(--line-strong);
+}
+
+.xsrcline__kind {
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+.xsrcline__where {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk-dim);
+  overflow-wrap: anywhere;
+}
+
+/* ── What a streaming table is doing ───────────────────────────────────────
+   Almost all of this tab is the shared table and note vocabulary, because it
+   is a list of readings like every other list of readings here. What it needs
+   of its own is a chain, an identifier long enough to wrap, and a quiet clause
+   for "the same error ten times". */
+.strm__chains {
+  padding: var(--s3) var(--s4);
+}
+
+.strm__chain {
+  margin: 0;
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk-dim);
+  overflow-wrap: anywhere;
+}
+
+.strm__arrow {
+  padding: 0 var(--s2);
+  color: var(--chalk-faint);
+}
+
+/* Said where the answer is that nothing does — which is a finding, not an
+   empty list, so it is a sentence rather than a dash. */
+.strm__none {
+  margin: 0;
+  max-width: 68ch;
+  font-size: var(--size-body);
+  line-height: 1.6;
+  color: var(--chalk-dim);
+}
+
+/* A consumer id is 70 characters of host, table and uuid. It wraps rather than
+   widening the column past everything beside it. */
+.strm__id {
+  font-family: var(--font-data);
+  overflow-wrap: anywhere;
+}
+
+.strm__repeat {
+  color: var(--chalk-faint);
+}
+
+/* -- Where this server reads from ----------------------------------------
+   Grouped by the far end, so the heading is an address and the rows under it
+   are the tables that share it. Deliberately not a card per group: twelve
+   cards is a wall, and what the eye is doing here is scanning a list of
+   addresses. */
+.out__bar {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  margin-bottom: var(--s3);
+}
+
+.out__says {
+  margin: 0;
+  font-size: var(--size-body);
+  color: var(--chalk-dim);
+}
+
+.out__none {
+  margin: 0;
+  max-width: 74ch;
+  font-size: var(--size-body);
+  line-height: 1.6;
+  color: var(--chalk-faint);
+}
+
+.out__group {
+  margin-top: var(--s4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--slab);
+  overflow: hidden;
+}
+
+.out__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  padding: var(--s2) var(--s4);
+  border-bottom: 1px solid var(--divider);
+  background: var(--slab-raised);
+}
+
+/* An address is an identifier: it is the thing somebody copies into a terminal
+   to find out whether the host is really gone. */
+.out__where {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+  overflow-wrap: anywhere;
+}
+
+.out__what,
+.out__count {
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.out__target {
+  width: 40%;
+  overflow-wrap: anywhere;
+}
+
+/* The same three readings the object page uses, so a verdict means the same
+   thing in both places. */
+.out__verdict--failed {
+  color: var(--alarm-text);
+}
+
+.out__verdict--reached {
+  color: var(--success-text);
+}
+
+.out__verdict--refused {
+  color: var(--chalk-faint);
+}
+
+/* Where a view's column came from. One source per line: a single expression can
+   draw on three columns of two tables, and a comma-separated run of those is
+   not readable at this width. */
+.origin {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.origin__ref {
+  white-space: nowrap;
+}
+.origin__dot {
+  color: var(--chalk-faint);
+}
+.origin__unplaced {
+  color: var(--chalk-faint);
+}
+
+.shape__source {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--chalk-faint);
+}
+
+.plain {
+  margin: 0;
+  padding: var(--s4);
+  list-style: none;
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+}

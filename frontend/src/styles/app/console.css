@@ -1,0 +1,774 @@
+/* ═══ Console ═════════════════════════════════════════════════════════════
+   A prompt on ClickHouse, on every page. The drawer is `position: fixed` and
+   never unmounted — see `components/Console` for why — so the shell reserves
+   its height through `--console-h` rather than by containing it. Nothing on a
+   page ever ends up underneath it. */
+
+.shell__body {
+  padding-bottom: var(--console-h, 0);
+  transition: padding-bottom var(--motion-panel) var(--ease);
+}
+
+/* ── The launcher ─────────────────────────────────────────────────────────
+   A pill that reads as a caret until you approach it, then says its own name
+   and the key that saves the click. Bottom left, out of the way of everything
+   this product puts on the right. */
+
+/* Fixed to the corner of the window, which on a page with a rail is the corner
+   of the *rail* — the launcher was covering the rail's last object and half of
+   the "All databases" link under it, on every Data page. It steps past the rail
+   instead of the rail giving up 38px of list for it: the console belongs to the
+   session rather than to the page, and a control that reserves space in
+   somebody's navigator has stopped being a floating one. `--rail-w` rather than
+   a measured offset, so the two cannot drift; `.shell--railed` is set in `App`
+   from the same expression that decides whether the rail renders at all. */
+.cfab {
+  position: fixed;
+  bottom: var(--s5);
+  left: var(--s5);
+  z-index: 60;
+  display: inline-flex;
+  align-items: center;
+  /* No gap: the label and the key are collapsed to zero width at rest, and a
+     flex gap is spent between them anyway — three of them turned a caret into
+     an 84px pill with nothing in its right half, sitting over the last line of
+     every page. The spacing travels with the parts that are shown instead, so
+     at rest it is the caret and its padding and nothing else. */
+  gap: 0;
+  height: 38px;
+  min-width: 38px;
+  padding: 0 var(--s3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: var(--slab-raised);
+  box-shadow: var(--shadow-pop);
+  color: var(--chalk-dim);
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  cursor: pointer;
+  transition:
+    transform var(--motion-panel) var(--ease),
+    opacity var(--motion-base) var(--ease),
+    border-color var(--motion-fast) var(--ease),
+    color var(--motion-fast) var(--ease),
+    /* Crossing from a Data page to an Infrastructure one moves it by the width
+       of the rail that just left. A jump reads as a second button appearing;
+       a slide reads as the same one following you. */
+    left var(--motion-panel) var(--ease);
+}
+
+.shell--railed .cfab {
+  left: calc(var(--rail-w) + var(--s5));
+}
+
+/* Where the rail stacks above the page it has no width to step past, and the
+   offset above put the launcher in the middle of a phone's screen. */
+@media (max-width: 820px) {
+  .shell--railed .cfab {
+    left: var(--s5);
+  }
+}
+
+.cfab:hover,
+.cfab:focus-visible {
+  color: var(--chalk);
+  border-color: var(--spark-line);
+}
+
+.cfab:hover .cfab__glyph,
+.cfab:focus-visible .cfab__glyph {
+  color: var(--spark);
+}
+
+/* Gone while the drawer is up — it is the same object, and two of it on screen
+   is one too many. Down and slightly smaller rather than a plain fade, so the
+   eye follows it into the panel that replaced it. */
+.cfab.is-away {
+  transform: translateY(160%) scale(0.9);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Quiet at rest, and that is a rule rather than a taste: the accent marks the
+   one thing a page wants you to do, and a floating button that lights it on
+   every page in the product would be arguing with each page's own primary
+   action. It lights when you approach it, which is when it *is* the thing you
+   are about to do. */
+.cfab__glyph {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--chalk-dim);
+  font-size: var(--size-body);
+  line-height: 1;
+  transition: color var(--motion-fast) var(--ease);
+}
+
+/* The cursor that says this is a place to type. The one blinking thing in the
+   product, and it earns it. */
+.cfab__bar {
+  width: 6px;
+  height: 2px;
+  background: currentcolor;
+  animation: cfab-blink var(--loop-blink) step-end infinite;
+}
+
+@keyframes cfab-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* The name and the key are the reward for approaching, not furniture that sits
+   there. Collapsed to nothing until then — `max-width` rather than `display`
+   so there is something to animate. */
+.cfab__label,
+.cfab__key {
+  max-width: 0;
+  margin-left: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  opacity: 0;
+  transition:
+    max-width var(--motion-panel) var(--ease),
+    margin-left var(--motion-panel) var(--ease),
+    opacity var(--motion-fast) var(--ease);
+}
+
+.cfab:hover .cfab__label,
+.cfab:focus-visible .cfab__label {
+  max-width: 6rem;
+  margin-left: var(--s2);
+  opacity: 1;
+}
+
+.cfab:hover .cfab__key,
+.cfab:focus-visible .cfab__key {
+  max-width: 3rem;
+  margin-left: var(--s2);
+  opacity: 1;
+}
+
+.cfab__key {
+  /* Its padding and border would survive a zero max-width and hold 18px of
+     the resting pill open, so they arrive with the key rather than before it. */
+  padding: 1px 0;
+  border: 0 solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--chalk-faint);
+  font-family: inherit;
+  font-size: var(--size-label);
+}
+
+.cfab:hover .cfab__key,
+.cfab:focus-visible .cfab__key {
+  padding: 1px var(--s2);
+  border-width: 1px;
+}
+
+/* A statement is running behind a hidden console. The one thing the launcher
+   has to be able to say without being opened. */
+.cfab__pip {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--slab-raised);
+  border-radius: 50%;
+  background: var(--warning);
+  animation: cons-breathe var(--loop-breathe) var(--ease-inout) infinite;
+}
+
+@keyframes cons-breathe {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* ── The drawer ───────────────────────────────────────────────────────────── */
+
+.cons {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 70;
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  border-top: 1px solid var(--line-strong);
+  background: var(--slab);
+  box-shadow: var(--shadow-pop);
+  transform: translateY(100%);
+  /* Hidden, not unmounted, and not merely transparent: `visibility` takes it
+     out of the hit-testing and the accessibility tree while every piece of its
+     state — the transcript, the draft, the query in flight — stays exactly
+     where it was. The zero-length delay is what holds it visible for the
+     length of the slide out. */
+  visibility: hidden;
+  transition:
+    transform var(--motion-panel) var(--ease),
+    visibility 0s linear var(--motion-panel);
+}
+
+.cons.is-open {
+  transform: none;
+  visibility: visible;
+  transition:
+    transform var(--motion-panel) var(--ease),
+    visibility 0s;
+}
+
+.cons__grip {
+  position: relative;
+  height: 8px;
+  flex: none;
+  margin-top: -4px;
+  cursor: ns-resize;
+}
+
+/* The handle only appears once there is a reason to think about it. */
+.cons__grip::after {
+  position: absolute;
+  top: 3px;
+  left: 50%;
+  width: 36px;
+  height: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--line-strong);
+  content: '';
+  opacity: 0;
+  transform: translateX(-50%);
+  transition: opacity var(--motion-fast) var(--ease);
+}
+
+.cons__grip:hover::after,
+.cons__grip:focus-visible::after {
+  background: var(--spark);
+  opacity: 1;
+}
+
+.cons__bar {
+  display: flex;
+  height: 34px;
+  flex: none;
+  align-items: center;
+  gap: var(--s3);
+  padding: 0 var(--s4);
+  border-bottom: 1px solid var(--line);
+  color: var(--chalk-dim);
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+}
+
+.cons__dot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--success);
+}
+
+.cons__dot[data-state='busy'] {
+  background: var(--warning);
+  animation: cons-breathe var(--loop-breathe) var(--ease-inout) infinite;
+}
+
+.cons__who {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--chalk);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cons__at {
+  color: var(--chalk-faint);
+}
+
+.cons__db select {
+  min-width: 0;
+  max-width: 14rem;
+  padding: 2px var(--s2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--slab-raised);
+  color: var(--chalk);
+  font-family: inherit;
+  font-size: inherit;
+}
+
+.cons__unpin {
+  padding: 0 var(--s2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--chalk-faint);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: inherit;
+}
+
+.cons__unpin:hover {
+  border-color: var(--line);
+  color: var(--chalk);
+}
+
+/* What the console is carrying, said on the bar because it changes the meaning
+   of every statement below it. */
+.cons__chip {
+  padding: 1px var(--s2);
+  border: 1px solid var(--spark-line);
+  border-radius: var(--radius-pill);
+  background: var(--spark-wash);
+  color: var(--chalk);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--size-label);
+  white-space: nowrap;
+}
+
+.cons__chip:hover {
+  border-color: var(--spark);
+}
+
+.cons__gap {
+  flex: 1;
+}
+
+/* What the last statement cost, said once, quietly, and announced to a screen
+   reader that cannot watch the table appear. */
+.cons__live {
+  margin: 0;
+  overflow: hidden;
+  color: var(--chalk-faint);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cons__act {
+  padding: 2px var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--chalk-dim);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: inherit;
+}
+
+.cons__act:hover:not(:disabled) {
+  border-color: var(--spark-line);
+  color: var(--chalk);
+}
+
+/* Still legible. A disabled control is exempt from WCAG's contrast rule and is
+   not exempt from being read: "Clear" that you cannot make out is a button
+   whose state you cannot tell from its absence. Quieter than the enabled one by
+   a step, not by disappearing. */
+.cons__act:disabled {
+  color: var(--chalk-faint);
+  cursor: default;
+}
+
+.cons__act--icon {
+  padding: 2px var(--s2);
+}
+
+/* ── The transcript ───────────────────────────────────────────────────────── */
+
+.cons__log {
+  flex: 1;
+  min-height: 0;
+  padding: var(--s3) var(--s4);
+  overflow: auto;
+  color: var(--chalk);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  font-variant-ligatures: none;
+  line-height: 1.6;
+}
+
+.cons__empty,
+.cons__dropped {
+  margin: 0 0 var(--s3);
+  color: var(--chalk-faint);
+}
+
+.cons__empty code {
+  color: var(--chalk-dim);
+}
+
+.cons__entry {
+  padding: var(--s2) 0;
+}
+
+.cons__entry + .cons__entry {
+  border-top: 1px solid var(--divider);
+}
+
+.cons__said {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+}
+
+/* Without this the tools — `flex: none` and pinned right — squeeze the
+   statement to about one character wide, and a `SELECT 1` comes down the left
+   edge one letter per line. */
+.cons__sql {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.cons__cue {
+  flex: none;
+  color: var(--chalk-faint);
+  white-space: nowrap;
+}
+
+.cons__caret {
+  color: var(--spark);
+}
+
+/* The statement, and a way of getting it back. A button rather than a `<pre>`
+   because putting it back in the prompt is the thing people do most with the
+   line above the one they are typing. */
+.cons__sql {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--chalk);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.cons__sql:hover {
+  color: var(--spark);
+}
+
+/* Always there, at the far right, with the hover tools appearing to its left.
+   Quiet, but not below the contrast floor — a timestamp nobody can read is
+   furniture. */
+.cons__when {
+  flex: none;
+  color: var(--chalk-faint);
+  font-size: var(--size-label);
+  font-variant-numeric: tabular-nums;
+}
+
+.cons__tools {
+  display: flex;
+  flex: none;
+  margin-left: auto;
+  gap: var(--s2);
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease);
+}
+
+/* `:focus-within` matters as much as the hover: these buttons stay in the tab
+   order whether or not a mouse ever comes near them. */
+.cons__entry:hover .cons__tools,
+.cons__entry:focus-within .cons__tools {
+  opacity: 1;
+}
+
+.cons__tools button {
+  padding: 0 var(--s2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--slab-raised);
+  color: var(--chalk-faint);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--size-label);
+  white-space: nowrap;
+}
+
+.cons__tools button:hover {
+  border-color: var(--spark-line);
+  color: var(--chalk);
+}
+
+/* ── A printed result ─────────────────────────────────────────────────────
+   `clickhouse-client`'s own box, because that is the shape everybody reaching
+   for a prompt already reads. It scrolls sideways rather than dropping columns:
+   a console is the one surface in Flint where the answer is the whole row. */
+
+.cons__table {
+  margin-top: var(--s2);
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.cons__row {
+  width: max-content;
+}
+
+.cons__rule {
+  color: var(--chalk-faint);
+}
+
+.cons__head {
+  color: var(--chalk-dim);
+  font-weight: 500;
+}
+
+.cons__cell.is-null,
+.cons__cell.is-empty {
+  color: var(--chalk-faint);
+  font-style: italic;
+}
+
+.cons__stat {
+  margin: var(--s2) 0 0;
+  color: var(--chalk-faint);
+  font-size: var(--size-label);
+}
+
+/* The cap gets its own line and its own colour. It is the sentence that must
+   not be skimmed past. */
+.cons__capped {
+  display: block;
+  color: var(--warning);
+}
+
+.cons__error {
+  margin: var(--s2) 0 0;
+  color: var(--alarm-text);
+}
+
+.cons__errorHead,
+.cons__errorRest {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+/* Named when a statement fails while the console is carrying settings. The
+   second failure of a poisoned console looks nothing like its cause, so the
+   cause is put next to it. */
+.cons__blame {
+  margin: var(--s1) 0 0;
+  color: var(--chalk-faint);
+}
+
+.cons__blame code {
+  color: var(--chalk-dim);
+}
+
+/* The grammar, once somebody has asked for it. Quieter than the sentence above
+   it, because it is the part that is usually not the answer. */
+.cons__errorRest {
+  margin-top: var(--s1);
+  color: var(--chalk-faint);
+}
+
+.cons__note {
+  margin: 0;
+  color: var(--chalk-dim);
+  white-space: pre-wrap;
+}
+
+.cons__entry--note {
+  color: var(--chalk-dim);
+}
+
+.cons__running {
+  display: flex;
+  align-items: center;
+  margin: var(--s2) 0 0;
+  gap: var(--s2);
+  color: var(--chalk-faint);
+}
+
+.cons__ticker {
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--spark-line);
+  border-radius: 50%;
+  border-top-color: var(--spark);
+  animation: cons-spin var(--loop-spin) linear infinite;
+}
+
+@keyframes cons-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+.cons__linkish {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--spark);
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+}
+
+/* ── The prompt ───────────────────────────────────────────────────────────── */
+
+.cons__prompt {
+  display: flex;
+  flex: none;
+  align-items: flex-start;
+  gap: var(--s2);
+  padding: var(--s3) var(--s4);
+  border-top: 1px solid var(--line);
+  background: var(--slab-sunk);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  line-height: 1.6;
+}
+
+.cons__input {
+  min-width: 0;
+  flex: 1;
+}
+
+.cons__stop {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--s2);
+  padding: 0 var(--s3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--slab-raised);
+  color: var(--chalk-dim);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--size-label);
+}
+
+.cons__stop:hover {
+  border-color: var(--alarm);
+  color: var(--alarm-text);
+}
+
+.cons__stop kbd {
+  color: var(--chalk-faint);
+  font-family: inherit;
+}
+
+/* Narrow windows, and screens with no pointer at all.
+   The bar loses its furniture before it loses its controls: at 420px the
+   account and the server version pushed `Clear` and the hide button clean off
+   the right edge, which left no way to put the console away except the
+   keyboard. And hover-revealed tools are not a thing a touch screen has, so
+   there they are simply shown — wrapped onto their own line under the
+   statement rather than competing with it for width. */
+@media (max-width: 720px) {
+  .cons__who,
+  .cfab__key {
+    display: none;
+  }
+
+  .cons__said {
+    flex-wrap: wrap;
+  }
+
+  /* The picker is the widest thing on the bar and the one that can afford to
+     ellipsise: a database name you can half-read beside a control you cannot
+     reach at all is the wrong trade. */
+  .cons__db select {
+    max-width: 8rem;
+  }
+}
+
+@media (hover: none), (max-width: 720px) {
+  .cons__tools {
+    opacity: 1;
+  }
+}
+
+/* What the tables do not agree about. Above the findings rather than among
+ * them, because it is not one: nothing follows from it automatically, and a
+ * card with no tick on it sitting in a column of cards with ticks would read as
+ * a finding somebody forgot to make actionable. */
+.sweep__split {
+  padding: var(--s3);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+}
+
+.sweep__splittitle {
+  margin: 0;
+  font-size: var(--size-body);
+  color: var(--chalk);
+}
+
+.sweep__splitwhy {
+  margin: var(--s1) 0 0;
+  font-size: var(--size-label);
+  line-height: 1.55;
+  color: var(--chalk-faint);
+}
+
+.sweep__splits {
+  margin: var(--s2) 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}
+
+.sweep__splitrow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  font-size: var(--size-label);
+}
+
+.sweep__splitside {
+  font-family: var(--font-data);
+  color: var(--chalk-dim);
+}
+
+/* One change, on its way to where structure may be written. Quiet: the SQL
+ * block at the foot is the hand-over this page is built around, and a link
+ * shouting on every row would argue otherwise. */
+.sweep__malter {
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+  white-space: nowrap;
+  transition: color var(--motion-fast) var(--ease);
+}
+.sweep__malter:hover,
+.sweep__malter:focus-visible {
+  color: var(--spark);
+}
+
+/* What verifying moved under a tick that was already made. Above the SQL and in
+ * the warning colour, because it is the one thing on this page that changes a
+ * statement the reader believes they have already read. */
+.sweep__moved {
+  margin: 0;
+  padding: var(--s2) var(--s3);
+  border-left: 2px solid var(--warning);
+  border-radius: var(--radius-sm);
+  background: var(--warning-weak);
+  font-size: var(--size-label);
+  line-height: 1.55;
+  color: var(--chalk);
+}
+
+/* A disagreement between tables that are variants of one another — where one of
+ * them is simply wrong, rather than two unrelated tables sharing a common noun.
+ * Marked rather than merely sorted first, because the list is read by scanning
+ * and a position in an order is not a label. */
+.sweep__drift {
+  padding: 1px var(--s2);
+  border-radius: var(--radius-pill);
+  background: var(--warning-weak);
+  color: var(--warning);
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+}

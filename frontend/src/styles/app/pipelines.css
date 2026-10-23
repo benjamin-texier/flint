@@ -1,0 +1,89 @@
+/* ── Pipelines ─────────────────────────────────────────────────────────────
+   One card per materialized view, verdict first: the numbers are how it was
+   reached, not the answer. */
+.pipe {
+  margin-top: var(--s3);
+  padding: var(--s3) var(--s4);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--slab-raised);
+}
+.pipe--broken {
+  border-left-color: var(--danger);
+}
+.pipe--flowing {
+  border-left-color: var(--success);
+}
+.pipe--idle,
+.pipe--unknown {
+  border-left-color: var(--warning);
+}
+
+/* Replica health, on the same block. Data lost and a read-only replica are both
+   somebody-act-now; falling behind and a missing replica are both watch. */
+.pipe--lost,
+.pipe--stuck {
+  border-left-color: var(--danger);
+}
+.pipe--keeping-up {
+  border-left-color: var(--success);
+}
+.pipe--behind,
+.pipe--thin {
+  border-left-color: var(--warning);
+}
+
+.pipe__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.pipe__name {
+  font-family: var(--font-mono);
+  font-size: var(--size-data);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.pipe__says {
+  margin-top: var(--s2);
+  max-width: 88ch;
+  font-size: var(--size-data);
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.pipe__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s3);
+  margin-top: var(--s2);
+  font-size: var(--size-label);
+}
+
+.pipe__backfill {
+  margin-top: var(--s3);
+}
+
+/* The warning comes before the statement, because the statement is the
+   dangerous part. */
+.pipe__warn {
+  max-width: 86ch;
+  font-size: var(--size-label);
+  line-height: 1.55;
+  color: var(--warning);
+}
+
+.pipe__sql {
+  margin-top: var(--s2);
+  padding: var(--s2) var(--s3);
+  overflow-x: auto;
+  border-radius: var(--radius-sm);
+  background: var(--fill);
+  font-family: var(--font-mono);
+  font-size: var(--size-data);
+  color: var(--text-primary);
+  white-space: pre-wrap;
+}

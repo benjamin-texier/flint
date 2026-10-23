@@ -1,0 +1,131 @@
+/* ═══ The ring ════════════════════════════════════════════════════════════ */
+
+/* Shards across, replicas down inside each one — the shape of the thing rather
+ * than a table of it. A table can say the same facts, but nobody can see from a
+ * table that one shard has two replicas and its neighbour has one, which is the
+ * question this drawing exists to answer at a glance. */
+.ring {
+  margin-top: var(--s4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+
+.ring__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  padding: var(--s3) var(--s4);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-surface-2);
+}
+
+.ring__name {
+  font-family: var(--font-data);
+  font-size: var(--size-body);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.ring__count {
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+.ring__shards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s4);
+  padding: var(--s4);
+}
+
+.shard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  min-width: 180px;
+}
+
+.shard__num {
+  font-size: var(--size-label);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.shard__replicas {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* One endpoint. The local one is marked because every other page in
+ * Infrastructure is about that machine and no other. */
+.rnode {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 6px var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--text-primary);
+}
+
+.rnode--here {
+  border-color: var(--accent);
+}
+
+.rnode--watch {
+  border-color: var(--warning);
+}
+
+.rnode--bad {
+  border-color: var(--danger);
+}
+
+.rnode__port,
+.rnode__here,
+.rnode__says {
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+/* "this server" — a you-are-here on the cluster diagram, and so ink rather than
+   accent, like the nav pill and the open editor tab. It only appears on a real
+   cluster, which is why the spark guard cannot catch it on a single node. */
+.rnode__here {
+  color: var(--chalk);
+}
+
+.rnode__says {
+  color: var(--warning);
+}
+
+/* The controls on a replica row. `Restart replica` is pushed away from the
+ * routine three: re-initialising a replica from Keeper is what you do when
+ * something is already wrong, and it should not sit shoulder to shoulder with
+ * "Sync". */
+.racts {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-wrap: wrap;
+  margin-top: var(--s3);
+  padding-top: var(--s3);
+  border-top: 1px solid var(--line);
+}
+
+.racts__gap {
+  flex: 1;
+  min-width: var(--s4);
+}
+
+.racts__error {
+  font-size: var(--size-label);
+  color: var(--danger-text);
+  max-width: 46ch;
+}

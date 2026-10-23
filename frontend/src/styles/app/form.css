@@ -1,0 +1,455 @@
+/* ═══ The form ═══════════════════════════════════════════════════════════
+ * The query page's other face, and the reason it is a switch rather than a
+ * second page: this occupies exactly the band CodeMirror occupies, above the
+ * same grip, the same clause strip and the same results.
+ *
+ * Two panes, not five columns — see `editor/BuildPane.tsx` for why. On the left
+ * the question as a stack of clauses, each one line tall until it holds
+ * something; on the right the table's columns, which is the pane the clicking
+ * happens in and so the pane that gets the room. Each scrolls on its own, so a
+ * table with ninety columns cannot push the limit field off the bottom. The page
+ * itself never scrolls.
+ */
+
+.buildband {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── The question ─────────────────────────────────────────────────────────
+ * Wide enough for a filter row — a column, an operator, a value and its ×
+ * without wrapping — and no wider: past that it is just a long line to read. */
+.qform {
+  flex: 1 1 620px;
+  min-width: 0;
+  max-width: 780px;
+  overflow-y: auto;
+  border-right: 1px solid var(--divider);
+}
+
+/* The clauses, in a box of their own with no height constraint on it — which is
+ * what lets the form measure what it wants and hand the number up. The padding
+ * lives here rather than on the scroller so the measurement includes it. */
+.qform__inner {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--s3) var(--s3) var(--s4);
+}
+
+/* One clause: the keyword in the gutter, the controls beside it. The gutter is
+ * a fixed width so the controls of every clause line up — a stack whose fields
+ * start at seven different left edges reads as seven unrelated forms. */
+.clause {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  padding: var(--s1) 0;
+}
+
+/* `--chalk-faint`, not `--chalk-ghost`: the ghost tier is 3.3:1 and the token
+ * file says in as many words that it is for marks nobody reads — a hairline, a
+ * dot. This is a word, and it is the word the form exists to teach. The repo's
+ * own browser check caught it at 3.25:1. */
+.clause__key {
+  flex: none;
+  width: 9ch;
+  padding-top: 7px;
+  text-align: right;
+  color: var(--chalk-faint);
+}
+
+.clause__body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+  flex: 1;
+  min-width: 0;
+}
+/* The rows inside a clause are full-width blocks; the pills that add one are
+ * not. `> *` rather than a class on each, because a clause holds three
+ * different kinds of child and they all obey the same rule. */
+.clause__body > .brow {
+  flex-basis: 100%;
+  min-width: 0;
+  margin-bottom: 0;
+}
+.clause__body > .bpill {
+  margin-bottom: 0;
+}
+
+/* Its own line under the controls. `flex-basis: 100%` alone does not do it: a
+ * flex line breaks on the *hypothetical* main size, which `max-width` clamps
+ * before the break is decided — so a hint capped at 62ch sat beside the pill it
+ * was explaining. The reading width comes from `.qform`'s own max-width
+ * instead, which is what caps every other line in this pane. */
+.clause__hint {
+  flex-basis: 100%;
+  min-width: 0;
+  margin: 0;
+}
+
+.qform__field {
+  flex: 1 1 18ch;
+  min-width: 0;
+  height: 30px;
+}
+/* A row count is four digits. A field sized for a table name is a field with
+ * nine tenths of it empty. */
+.qform__limit {
+  flex: none;
+  width: 12ch;
+  height: 30px;
+}
+
+/* ── The columns ──────────────────────────────────────────────────────────
+ * A palette you can type into. The search is pinned, the list scrolls, and the
+ * count sits under the list where a count belongs. */
+.palette {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  flex: 1 1 380px;
+  min-width: 220px;
+  padding: var(--s3);
+  overflow: hidden;
+}
+
+.palette__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex: none;
+}
+
+.palette__find {
+  width: 100%;
+  height: 30px;
+  padding: 0 var(--s3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: var(--slab);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+.palette__find::placeholder {
+  font-family: var(--font-ui);
+  color: var(--chalk-faint);
+}
+
+.palette__list {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: var(--s1);
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.palette__count {
+  flex: none;
+  margin: 0;
+  padding-top: var(--s2);
+  border-top: 1px solid var(--divider);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.bhint {
+  margin: 0 0 var(--s2);
+  font-size: var(--size-label);
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+.bfield {
+  width: 100%;
+  height: 30px;
+  margin-bottom: var(--s2);
+}
+.bfield--sm {
+  width: auto;
+  /* Wide enough for the longest operator label ("does not contain"), which was
+   * being clipped to something that read as its opposite. */
+  flex: 0 1 auto;
+  min-width: 9ch;
+}
+
+.brow {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  margin-bottom: var(--s2);
+}
+
+/* The window shortcuts, wrapping under their own row. Solid when chosen, so the
+ * active window reads at a glance. */
+/* Its own line under the column and the operator: six chips beside two selects
+ * in a 300px rail wrap into a staircase. */
+.bwin {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s1);
+  flex-basis: 100%;
+  min-width: 0;
+  order: 1;
+}
+
+.bpill--sm {
+  height: 22px;
+  padding: 0 var(--s2);
+  margin-bottom: 0;
+  font-size: 11px;
+}
+.bpill.is-on {
+  border-style: solid;
+  border-color: var(--accent);
+  color: var(--accent-strong);
+  background: var(--spark-wash);
+}
+
+/* The values a column actually holds, on their own line under the row. */
+.bvals {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s1);
+  flex-basis: 100%;
+  min-width: 0;
+  order: 1;
+}
+
+.bvals__ask {
+  order: 1;
+}
+
+/* One sentence where a distinction actually bites. */
+.bhint {
+  margin: var(--s1) 0 0;
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--chalk-faint);
+}
+
+.bhint--inline {
+  margin: 0 0 0 var(--s1);
+}
+.brow .bfield {
+  margin-bottom: 0;
+}
+
+/* One projection, on one line: the column, what is being done to it, and the ×.
+ * The name takes a fixed share so the dropdowns of every row line up — a stack
+ * whose selects start wherever the name above them happened to end reads as a
+ * list of unrelated controls. */
+.brow--proj {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 3px var(--s2);
+  border-radius: var(--radius-sm);
+  background: var(--fill);
+}
+.brow--proj .brow__name {
+  flex: 0 0 20ch;
+}
+.brow--proj .brow__controls {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-top: 0;
+}
+/* Sized for their longest label, not for the room left over. The old rule grew
+ * them to fill a 264px column, which in a 780px pane made a two-word dropdown
+ * five hundred pixels wide. */
+.brow--proj .brow__controls .bfield {
+  flex: 0 1 auto;
+  min-width: 15ch;
+}
+.brow--proj .brow__controls:empty {
+  /* `rows` has no aggregate to pick and no bucket to place, so its row is the
+   * name and the ×. Kept in the layout rather than hidden, so the × stays where
+   * every other row's × is. */
+  display: block;
+}
+
+/* A filter row wraps rather than crushing its value box. */
+.brow--cond {
+  flex-wrap: wrap;
+}
+.brow--cond .bfield {
+  flex: 1 1 7ch;
+}
+
+.brow__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+}
+
+.brow__controls {
+  display: flex;
+  gap: var(--s1);
+  margin-top: 5px;
+}
+.brow__controls:empty {
+  display: none;
+}
+.brow__controls .bfield {
+  margin-bottom: 0;
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.brow__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.brow__x {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-sm);
+  font-size: 0.9375rem;
+  line-height: 1;
+  color: var(--text-muted);
+}
+.brow__x:hover {
+  color: var(--danger-text);
+  background: var(--fill);
+}
+
+.bpill {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 var(--s3);
+  margin-bottom: var(--s2);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  color: var(--text-secondary);
+  transition: color var(--motion-fast) var(--ease), border-color var(--motion-fast) var(--ease);
+}
+.bpill:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.bpill--quiet {
+  border-style: solid;
+  margin-bottom: 0;
+}
+
+
+.bcol {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  background: var(--fill);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  max-width: 100%;
+  transition: background var(--motion-fast) var(--ease), color var(--motion-fast) var(--ease);
+}
+.bcol:hover {
+  background: var(--accent-weak);
+  color: var(--accent-strong);
+}
+
+/* A column the table is sorted by. Marked rather than sorted to the front: the
+ * order of a table's columns is information too, and shuffling it would cost
+ * more than the mark is worth. An underline on the name, because at 11px in a
+ * 24px chip there is no room for a badge and a badge here would be louder than
+ * the name it qualifies. */
+.bcol--key .bcol__name {
+  text-decoration: underline;
+  text-decoration-color: var(--chalk-ghost);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+.bcol--key:hover .bcol__name {
+  text-decoration-color: var(--accent);
+}
+
+.bcol__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  height: 100%;
+  min-height: 0;
+}
+
+.rview__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex: none;
+}
+
+.rview__why {
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+/* Download: the sentence and the three formats, on one line with the rest of
+   the bar. The sentence is muted because it is a caveat rather than a label —
+   what it says is worth reading once, before the first click, and not every
+   time afterwards. */
+.dl {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+/* The cost of the preview and the size of the download, on one line: both
+   answer "how much is this", and a reader comparing them should not have to
+   look in two places. Wraps rather than squeezing, because on a narrow window
+   the sentence matters more than the row. */
+.explore__notebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  flex-wrap: wrap;
+}
+
+.dl__says {
+  font-size: var(--size-label);
+  color: var(--text-muted);
+  /* A long note must not push the buttons off the bar; the buttons are the
+     thing you came for. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rview__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}

@@ -1,0 +1,335 @@
+/* ── The clause strip ─────────────────────────────────────────────────── */
+
+.qstrip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s1) var(--s2);
+  flex: none;
+  padding: var(--s2) var(--s3);
+  background: var(--slab);
+  border-bottom: 1px solid var(--line);
+}
+
+.qstrip--closed {
+  padding: var(--s2) var(--s3);
+}
+
+.qstrip__note {
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.qstrip__key {
+  color: var(--chalk-faint);
+  /* Uppercase and tracked like every other key in the app, from `.label`. */
+}
+
+.qstrip__from {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+
+.qstrip__pick {
+  position: relative;
+}
+
+.qstrip__limit {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin-left: auto;
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}
+
+/* Stated, not removable: a DISTINCT or a WITH TOTALS changes what a row *is*,
+ * and an × beside it would offer a change nobody browsing filters intended. */
+.qstrip__flag {
+  padding: 1px var(--s2);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-pill);
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-dim);
+}
+
+.qstrip__skipped {
+  flex: none;
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.qchip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  max-width: 34ch;
+  padding: 1px var(--s1) 1px var(--s2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: var(--slab-raised);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+
+.qchip__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* A chip quotes the statement, so it obeys the editor's rule: JetBrains Mono
+     renders `>=` as `≥`, and a filter that says something the SQL does not is
+     the one thing this strip must not do. */
+  font-variant-ligatures: none;
+}
+
+.qchip__x {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-pill);
+  line-height: 1;
+  color: var(--chalk-faint);
+  transition:
+    color var(--motion-fast) var(--ease),
+    background var(--motion-fast) var(--ease);
+}
+.qchip__x:hover {
+  color: var(--alarm);
+  background: var(--slab-hover);
+}
+
+.qchip--button {
+  padding: 1px var(--s2);
+  cursor: pointer;
+}
+.qchip--button:hover {
+  border-color: var(--spark-line);
+}
+.qchip--button.is-on {
+  border-color: var(--spark-line);
+  background: var(--spark-wash);
+  color: var(--accent-strong);
+}
+
+.selpick {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + var(--s1));
+  left: 0;
+  width: 260px;
+  padding: var(--s2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--slab-raised);
+  box-shadow: var(--shadow-3);
+  animation: popIn var(--motion-fast) var(--ease) both;
+}
+
+.selpick__list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.selpick__item {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 3px var(--s1);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.selpick__item:hover {
+  background: var(--slab-hover);
+}
+
+.selpick__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+
+/* ── The statement changed, the rows did not ──────────────────────────── */
+
+.stats__changed {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  color: var(--warning);
+}
+
+.stats__why {
+  color: var(--chalk-faint);
+}
+
+/* ── The grid's per-column menu ───────────────────────────────────────── */
+
+.grid__more {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  opacity: 0;
+  color: var(--chalk-faint);
+  transition:
+    opacity var(--motion-fast) var(--ease),
+    color var(--motion-fast) var(--ease);
+}
+.grid__more svg {
+  width: 12px;
+  height: 12px;
+  display: block;
+}
+.grid__headcell:hover .grid__more,
+.grid__more:focus-visible,
+.grid__more.is-on {
+  opacity: 1;
+}
+.grid__more:hover,
+.grid__more.is-on {
+  color: var(--spark);
+}
+
+/* Fixed to the screen rather than to the grid: the result area clips, and on a
+ * short answer this menu is taller than the box it hangs in. See `menuAt` in
+ * `ResultsGrid` — the same reasoning the diagram's node menu already carries. */
+.colmenu {
+  position: fixed;
+  z-index: 24;
+  padding: var(--s2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--slab-raised);
+  box-shadow: var(--shadow-3);
+  animation: popIn var(--motion-fast) var(--ease) both;
+}
+
+.colmenu__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding-bottom: var(--s2);
+  border-bottom: 1px solid var(--divider);
+}
+
+.colmenu__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+
+/* As in the analyses panel: an Enum8's type is a three-hundred-character value
+ * list, and the column's name is what has to survive. */
+.colmenu__type {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+}
+
+.colmenu__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: var(--s2) 0;
+}
+
+.colmenu__row {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  justify-content: space-between;
+}
+
+.colmenu__value {
+  height: 28px;
+  padding: 0 var(--s2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--slab);
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+
+.colmenu__go {
+  justify-content: center;
+}
+
+.colmenu__acts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  padding-top: var(--s2);
+  border-top: 1px solid var(--divider);
+}
+
+.colmenu__act {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: var(--s1) var(--s2);
+  border-radius: var(--radius-sm);
+  text-align: left;
+  font-size: var(--size-body);
+  color: var(--chalk);
+}
+.colmenu__act:hover {
+  background: var(--slab-hover);
+}
+
+.colmenu__hint {
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+/* ── Filter to the cell under the caret ───────────────────────────────── */
+
+.gridshell__chips {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-width: 0;
+}
+
+.gridshell__chipkey {
+  color: var(--chalk-faint);
+}
+
+.gridshell__chip {
+  max-width: 28ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 1px var(--s2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: var(--slab-raised);
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-dim);
+  white-space: nowrap;
+  transition:
+    color var(--motion-fast) var(--ease),
+    border-color var(--motion-fast) var(--ease);
+}
+.gridshell__chip:hover {
+  color: var(--accent-strong);
+  border-color: var(--spark-line);
+}

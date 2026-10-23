@@ -1,0 +1,424 @@
+/* ═══ Charts ═════════════════════════════════════════════════════════════
+ * Every number in here is a spec, not a preference: 2px lines, bars capped at
+ * 24px with a 4px rounded data-end, markers at 8px carrying a 2px surface ring,
+ * hairline solid gridlines one step off the surface, area fills at a 10% wash.
+ * Text wears text tokens — a categorical hue is illegible as type. */
+
+/* Fills its parent, which is the whole reason the chart has a size at all.
+ * `.chart` is a flex item of `.rview__main`, and a flex item with no width takes
+ * its content's — the SVG's, which asks for 100% of its parent. That loop
+ * settled at the 720px the width state opens on, so every chart in the product
+ * was drawn at 720×300 whatever room it had: a quarter of the query page's
+ * result card, with the rest white. See `plotHeight` for the height. */
+.chart {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  /* Sized to include the x-axis band, so the card never grows a nested
+   * scrollbar just to show its labels. */
+  padding: var(--s4);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+}
+
+/* Always present for two or more series; absent for one, where the title
+ * already says what is plotted. */
+.chart__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2) var(--s4);
+  font-size: var(--size-label);
+  color: var(--text-secondary);
+}
+
+.chart__key {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chart__swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.chart__omitted {
+  color: var(--text-muted);
+}
+
+.chart__body {
+  position: relative;
+}
+
+.chart__svg {
+  display: block;
+  overflow: visible;
+}
+
+.chart__grid,
+.chart__axis {
+  stroke: var(--divider);
+  stroke-width: 1;
+}
+.chart__axis {
+  stroke: var(--border-strong);
+}
+/* The vertical ones are a reading aid, not a grid to measure against — the
+ * horizontals carry the scale. Quieter than them on purpose: a full lattice
+ * behind a two-pixel line is a lattice you read instead of the line. */
+.chart__grid--x {
+  stroke: color-mix(in srgb, var(--divider) 62%, transparent);
+  stroke-dasharray: 2 4;
+}
+
+.chart__tick {
+  fill: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The value at the tip. Text token, never the series colour. */
+.chart__value {
+  fill: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart__line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.chart__area {
+  opacity: 0.1;
+  stroke: none;
+}
+
+/* The ring is what keeps a marker legible where it crosses its own line, and
+ * it is part of the hit target rather than decoration. */
+.chart__end,
+.chart__dot {
+  stroke: var(--bg-surface);
+  stroke-width: 2;
+}
+.chart__dot {
+  opacity: 0.85;
+  transition: opacity var(--motion-fast) var(--ease);
+}
+.chart__dot.is-lit {
+  opacity: 1;
+  stroke: var(--text-primary);
+}
+
+.chart__bar {
+  transition: opacity var(--motion-fast) var(--ease);
+}
+.chart__bar.is-lit {
+  opacity: 0.78;
+}
+
+.chart__cross {
+  stroke: var(--border-strong);
+  stroke-width: 1;
+}
+
+/* A stacked band. The stroke is the 2px surface gap the marks spec asks for
+ * between adjacent fills — drawn as a stroke rather than as a real gap so the
+ * bands still meet edge to edge and the top edge stays the sum. */
+.chart__band {
+  opacity: 0.82;
+}
+
+/* The gap between two bands. A line of its own rather than a stroke around
+ * each polygon: stroking scalloped the boundary — a round join is a 1px arc at
+ * every vertex, and a dense series puts a vertex every three pixels. */
+.chart__seam {
+  fill: none;
+  stroke: var(--bg-surface);
+  stroke-width: 2;
+}
+
+/* The total in a stacked tooltip: the figure the top edge asserts, set apart
+ * from the measures it is the sum of. */
+.chartip__row--total {
+  margin-top: var(--s1);
+  padding-top: var(--s1);
+  border-top: 1px solid var(--divider);
+}
+.chartip__key--none {
+  background: transparent;
+}
+
+/* ═══ The donut ══════════════════════════════════════════════════════════
+ * Named for the kind and not for the shape, because `.ring` is already the
+ * Clusters page's shards-and-replicas drawing — and that one defines a
+ * `.ring__name` of its own, which this would have inherited a serif weight and
+ * a border from.
+ *
+ * Shares of a whole, with the whole in the hole. Six slices at most — the cap
+ * lives in `suggestCharts`, which withholds the form rather than trimming the
+ * ring, so nothing here has to say what was left out. */
+
+.donut {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s4);
+}
+
+.donut__svg {
+  flex: none;
+}
+
+/* Same 2px surface gap as every other adjacent fill in the product. */
+.donut__slice {
+  stroke: var(--bg-surface);
+  stroke-width: 2;
+  transition: opacity var(--motion-fast) var(--ease);
+}
+.donut__slice.is-lit {
+  opacity: 0.78;
+}
+
+/* Outside the ring and in a text token. On the band it would be type on a
+ * categorical hue, which is the one thing this stylesheet never does — and it
+ * measured below AA on two of the six slots. */
+.donut__share {
+  fill: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.donut__total {
+  fill: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 1.375rem;
+  font-weight: 600;
+}
+.donut__totallabel {
+  fill: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: var(--size-label);
+  text-anchor: middle;
+}
+
+.donut__legend {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--s1) var(--s3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--size-label);
+  color: var(--text-secondary);
+  min-width: 200px;
+}
+
+.donut__key {
+  display: contents;
+}
+.donut__key.is-lit .donut__name,
+.donut__key.is-lit .donut__figure {
+  color: var(--text-primary);
+}
+
+.donut__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.donut__figure,
+.donut__pct {
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.donut__pct {
+  color: var(--text-muted);
+}
+
+/* ═══ The grid ═══════════════════════════════════════════════════════════
+ * One hue, more-is-darker: a heatmap encodes magnitude, so the colour job is
+ * sequential and the categorical palette is the wrong tool — six hues across a
+ * grid would say the cells are six different kinds of thing.
+ *
+ * It scrolls rather than truncating a label. Every other axis here has a fixed
+ * band to fit into and drops its labels when they do not fit; a grid has a
+ * scroll container, so the room is there for the asking. */
+
+.heat {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.heat__svg {
+  display: block;
+}
+
+.heat__cell {
+  fill: var(--cell-ink);
+}
+
+/* A crossing the query never returned, which is not a crossing that returned
+ * nothing: an outline rather than the palest step of the ramp, because the
+ * palest step is what a real zero wears. */
+.heat__none {
+  fill: none;
+  stroke: var(--divider);
+  stroke-width: 1;
+}
+
+.heat__x {
+  text-anchor: start;
+}
+
+.heat__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2) var(--s3);
+  font-size: var(--size-label);
+  color: var(--text-secondary);
+}
+
+.heat__ramp {
+  display: inline-flex;
+  gap: 2px;
+}
+.heat__ramp i {
+  width: 18px;
+  height: 10px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--cell-ink) calc(var(--fill, 0) * 100%), transparent);
+}
+
+.heat__scale {
+  font-variant-numeric: tabular-nums;
+}
+
+.facet + .facet {
+  margin-top: var(--s2);
+}
+
+.facet__name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: var(--size-label);
+  color: var(--text-secondary);
+}
+
+/* One shared x axis under the stack, since every panel spans the same range. */
+.chart__facetaxis {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
+.chart__note,
+.chart__none {
+  margin: 0;
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+/* Values lead, names follow — the legend's hierarchy inverted, because here the
+ * reader already has the series and wants the number. */
+.chartip {
+  position: absolute;
+  top: 0;
+  z-index: 4;
+  min-width: 108px;
+  padding: var(--s2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-pop);
+  pointer-events: none;
+}
+
+.chartip__x {
+  margin: 0 0 5px;
+  font-family: var(--font-mono);
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+
+.chartip__row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0;
+}
+
+/* A short stroke, not a filled box: at tooltip density a box is data-weight ink
+ * doing a label's job. */
+.chartip__key {
+  width: 10px;
+  height: 2px;
+  border-radius: 1px;
+  transform: translateY(-3px);
+}
+
+.chartip__value {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.chartip__name {
+  font-size: var(--size-label);
+  color: var(--text-secondary);
+}
+
+/* The figure form. Proportional figures, because tabular ones make a large
+ * standalone number look loose, and the interface sans — never a display face. */
+.hero {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: var(--s4) 0;
+}
+
+.hero__value {
+  font-size: 3rem;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: var(--text-primary);
+}
+
+.hero__label {
+  font-family: var(--font-mono);
+  font-size: var(--size-body);
+  color: var(--text-secondary);
+}
+
+.hero__exact {
+  font-family: var(--font-mono);
+  font-size: var(--size-label);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}

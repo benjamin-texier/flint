@@ -1,0 +1,106 @@
+/* ═══ Metric line ═════════════════════════════════════════════════════════
+ * Deliberately not KPI cards. Figures sit on one hairline-divided line so the
+ * numbers carry the emphasis, not chrome around them. */
+
+/* No box, no rules between: spacing alone separates the figures, and the
+ * numbers get to be the loudest thing on the page. */
+.metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s3) var(--s8);
+  margin: 0;
+  padding: 0;
+}
+
+/* The one arrival on the page, and it is the figures rather than the chrome:
+   they land left to right, a beat apart, and the plate follows them. A page of
+   measurements should look like it just finished measuring. The stagger stops
+   at six because a seventh figure would still be arriving after the reader has
+   started reading — and the kill switch in the reduced-motion block flattens
+   the whole sequence to one frame for anyone who asked for that. */
+.metrics__item {
+  padding: 0;
+  animation: rise var(--motion-panel) var(--ease-out) both;
+}
+.metrics__item:nth-child(1) {
+  animation-delay: 0ms;
+}
+.metrics__item:nth-child(2) {
+  animation-delay: var(--beat);
+}
+.metrics__item:nth-child(3) {
+  animation-delay: calc(var(--beat) * 2);
+}
+.metrics__item:nth-child(4) {
+  animation-delay: calc(var(--beat) * 3);
+}
+.metrics__item:nth-child(5) {
+  animation-delay: calc(var(--beat) * 4);
+}
+.metrics__item:nth-child(n + 6) {
+  animation-delay: calc(var(--beat) * 5);
+}
+
+/* Small, and the same for everything that arrives: eight pixels of travel is a
+   thing settling into place, twenty is a thing being thrown at the reader. */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+.metrics__value {
+  margin: 0;
+  font-size: var(--size-metric);
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  color: var(--chalk);
+}
+
+/* The page's own headline line. Bigger than the title above it on purpose: the
+   name of a table is a label, and `316 M rows` is the fact. */
+.metrics--lead {
+  gap: var(--s4) var(--s7);
+  margin-top: var(--s5);
+}
+.metrics--lead .metrics__value {
+  font-size: 2.125rem;
+  letter-spacing: -0.035em;
+}
+.metrics--lead .metrics__unit {
+  margin-left: 5px;
+  font-size: 1rem;
+}
+.metrics--lead .metrics__label {
+  margin-top: 7px;
+}
+/* A figure with a verdict, in the product's own three tones. There is no fourth
+   rule for "the important one": the value is already 1.5rem at 600 against a
+   label in small caps, and a colour on top of that said the same thing twice —
+   in the one colour that is supposed to mean "you can touch this". */
+.metrics__value--watch {
+  color: var(--warning);
+}
+
+.metrics__value--delay,
+.metrics__value--throw {
+  color: var(--alarm-text);
+}
+
+.metrics__unit {
+  margin-left: 3px;
+  font-size: 0.8125rem;
+  font-weight: 400;
+  color: var(--chalk-faint);
+}
+
+.metrics__label {
+  margin-top: 5px;
+  font-size: var(--size-label);
+  font-weight: 500;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--chalk-faint);
+}

@@ -1,0 +1,18 @@
+/* ── The whole path ────────────────────────────────────────────────────────
+   A chain, not a diagram: on an object's own page the question is sequential —
+   where do these rows come from and where do they end up — and a chain is also
+   honest about depth in a way a picture is not. */
+ /* The whole path through one object. The drawing is the canvas's own; what
+  * is left here is the sentence under it that the drawing cannot say — that the
+  * path may continue past an object whose database was never loaded. */
+.lpath {
+  padding: var(--s2) 0;
+}
+
+.lpath__note {
+  margin-top: var(--s3);
+  max-width: 84ch;
+  font-size: var(--size-label);
+  line-height: 1.55;
+  color: var(--text-muted);
+}

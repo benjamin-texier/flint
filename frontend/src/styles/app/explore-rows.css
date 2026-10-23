@@ -1,0 +1,208 @@
+/* ── Looking at the rows ───────────────────────────────────────────────────
+   A small explorer over one table. Every control states what it costs, because
+   on a column store "newest first" is nearly free on one table and a full scan
+   on the next, and nothing on screen would otherwise say which. */
+.explore {
+  padding: var(--s2) 0;
+}
+
+.explore__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.explore__field {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+}
+.explore__field .input {
+  width: auto;
+  min-height: 28px;
+  padding: 3px var(--s2);
+}
+
+.explore__columns {
+  margin-top: var(--s3);
+  padding: var(--s3);
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface-2);
+}
+
+.explore__hint {
+  max-width: 84ch;
+  font-size: var(--size-label);
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+.explore__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: var(--s2);
+}
+
+.chip {
+  padding: 2px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface);
+  font-family: var(--font-mono);
+  font-size: var(--size-label);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.chip:hover {
+  border-color: var(--accent);
+}
+.chip.is-on {
+  border-color: var(--accent);
+  background: var(--accent-weak);
+  color: var(--text-primary);
+}
+
+.explore__filters {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  margin-top: var(--s3);
+}
+
+.explore__filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+}
+.explore__filter .input {
+  width: auto;
+  min-height: 28px;
+  padding: 3px var(--s2);
+}
+
+/* The cost, in the tone of what it costs. */
+.explore__cost {
+  margin-top: var(--s3);
+  max-width: 90ch;
+  font-size: var(--size-data);
+  line-height: 1.5;
+}
+.explore__cost--cheap {
+  color: var(--text-secondary);
+}
+.explore__cost--scan {
+  color: var(--warning);
+}
+
+.explore__sql {
+  margin-top: var(--s2);
+  font-size: var(--size-label);
+  color: var(--text-muted);
+}
+.explore__sql summary {
+  cursor: pointer;
+}
+.explore__sql pre {
+  margin-top: var(--s2);
+  padding: var(--s2) var(--s3);
+  overflow-x: auto;
+  border-radius: var(--radius-sm);
+  background: var(--fill);
+  font-family: var(--font-mono);
+  font-size: var(--size-data);
+  color: var(--text-primary);
+}
+
+.explore__note {
+  margin-top: var(--s3);
+  color: var(--text-muted);
+}
+
+.explore__grid {
+  display: flex;
+  margin-top: var(--s2);
+}
+
+/* The ceiling belongs on the scroller, never on this wrapper: a flex item does
+   not shrink below its content on the cross axis, so a wrapper ceiling lets the
+   grid paint over whatever follows it. Same trap as the report snapshots. */
+.explore__grid .grid {
+  max-height: min(520px, 58vh);
+}
+
+.explore__rows {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: var(--s3);
+}
+
+/* One row, read down. Thirty-six columns across is not reading. */
+.rowin {
+  margin-top: var(--s3);
+  padding: var(--s3) var(--s4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--slab-raised);
+}
+
+.rowin__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: var(--s2);
+  border-bottom: 1px solid var(--divider);
+}
+
+.rowin__title {
+  font-family: var(--font-sans);
+  font-size: var(--size-body);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.rowin__body {
+  display: grid;
+  grid-template-columns: minmax(14ch, 22ch) 1fr;
+  gap: 0;
+  margin-top: var(--s2);
+}
+
+.rowin__item {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--divider);
+}
+
+.rowin__key {
+  font-family: var(--font-mono);
+  font-size: var(--size-data);
+  color: var(--text-secondary);
+}
+
+.rowin__value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: var(--size-data);
+  color: var(--text-primary);
+}
+.rowin__value--empty {
+  color: var(--text-muted);
+}
+
+/* A heading inside a diagnostics section: the section answers one question and
+   these are its parts. */
+.diag__sub2 {
+  margin-top: var(--s4);
+  font-family: var(--font-sans);
+  font-size: var(--size-body);
+  font-weight: 600;
+  color: var(--text-primary);
+}

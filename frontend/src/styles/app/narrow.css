@@ -1,0 +1,39 @@
+/* ═══ Narrow viewports ═══════════════════════════════════════════════════
+ * Flint is a desktop tool, but a rail eating half a laptop screen is still
+ * wrong. Below 1180px the rail narrows; below 820px it stacks. */
+
+@media (max-width: 1180px) {
+  :root {
+    --rail-w: 232px;
+  }
+  .page {
+    padding: var(--s5) var(--s5) var(--s8);
+  }
+  .page__title--hero {
+    font-size: 1.875rem;
+  }
+  .tbl__bar {
+    display: none;
+  }
+}
+
+@media (max-width: 820px) {
+  .shell__body {
+    flex-direction: column;
+  }
+  .rail {
+    width: 100%;
+    max-height: 34vh;
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+  }
+  .metrics__item {
+    padding: 0 var(--s4);
+  }
+  .chrome__facts {
+    display: none;
+  }
+  .canvas {
+    height: 48vh;
+  }
+}

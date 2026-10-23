@@ -1,0 +1,28 @@
+/* ═══ Operations ══════════════════════════════════════════════════════════ */
+
+/* A job's state, in its own vocabulary. Not the merge-tree `Level` — `delay` and
+ * `throw` mean "inserts are being slowed" and "inserts are being refused", and
+ * borrowing either for a job that failed would be a word that means something
+ * else on the same page. */
+.flag--job-busy {
+  color: var(--accent-ink);
+  background: var(--accent);
+}
+.flag--job-ok {
+  color: var(--success-text);
+  background: var(--success-weak);
+}
+.flag--job-watch {
+  color: var(--warning);
+  background: var(--warning-weak);
+}
+.flag--job-bad {
+  color: var(--danger-text);
+  background: var(--danger-weak);
+}
+
+/* What a merge would rewrite: information, not a warning — unlike the cost of a
+ * drop, which is in `--danger-text` because it is one. */
+.pacts__cost--plain {
+  color: var(--text-muted);
+}

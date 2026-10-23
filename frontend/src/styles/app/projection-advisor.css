@@ -1,0 +1,416 @@
+/* ── The projection advisor ──────────────────────────────────────────────────
+ *
+ * A column of arguments, each one built the same way: what the workload did,
+ * what it cost, what would follow, what it would not answer. The visual weight
+ * follows that order rather than the order of interest — the button is not the
+ * loudest thing on the card, because a projection is a permanent cost and the
+ * evidence has to be read before it.
+ *
+ * Two colours carry meaning here and no others. The left edge separates a
+ * pre-aggregated proposal from a re-sorted one, since a column of cards is
+ * scanned before it is read; and the caveat is warning-coloured because every
+ * one of them is a reason the proposal might not work as written.
+ */
+.padv {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+}
+
+.padv__head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s4);
+  flex-wrap: wrap;
+}
+
+.padv__scope {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.padv__claim {
+  margin: 0;
+  max-width: 78ch;
+  font-size: var(--size-body);
+  line-height: 1.55;
+  color: var(--chalk);
+}
+
+.padv__facts {
+  margin: 0;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+/* The window the workload is read over. A segmented control rather than a
+ * select: there are three of them, and which one is active is the fact worth
+ * seeing without opening anything. */
+.padv__window {
+  flex: none;
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+.padv__win {
+  padding: var(--s1) var(--s3);
+  border: 0;
+  background: transparent;
+  color: var(--chalk-faint);
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
+}
+
+.padv__win:hover {
+  background: var(--slab-hover);
+  color: var(--chalk-dim);
+}
+
+/* `--accent-strong` and not `--spark`, which is the step the schema review's own
+   filter chips take for the same reason: a selected segment is *state*, not the
+   thing you are being asked to do, and the palette spends the accent itself once
+   per page. It reads as accented either way. */
+.padv__win.is-on {
+  background: var(--spark-wash);
+  color: var(--accent-strong);
+}
+
+.padv__tally {
+  margin: 0;
+  max-width: 86ch;
+  font-size: var(--size-body);
+  line-height: 1.55;
+  color: var(--chalk-dim);
+}
+
+.padv__subtitle {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  margin: 0 0 var(--s2);
+  font-size: var(--size-head);
+  color: var(--chalk);
+}
+
+.padv__note {
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.padv__have {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+/* Declared and holding nothing. Not an error — the statement succeeded — so it
+ * is not the alarm colour; it is the one state on this page where a figure
+ * would be actively misleading, so it is words. */
+.padv__inert {
+  color: var(--warning);
+}
+
+.padv__unused {
+  color: var(--chalk-faint);
+}
+
+.padv__hint {
+  margin: 0;
+  max-width: 78ch;
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--chalk-faint);
+}
+
+.padv__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.padv__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: var(--s3);
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--slab);
+}
+
+.padv__card--aggregate {
+  border-left-color: var(--k-matview);
+}
+
+.padv__card--sort {
+  border-left-color: var(--k-table);
+}
+
+/* Not the alarm colour for either. Neither of these is broken — one statement
+   succeeded and the other is doing exactly what it was told — and a column of
+   red over a schema somebody thought about reads as an accusation. */
+.padv__card--inert,
+.padv__card--unused {
+  border-left-color: var(--warning);
+}
+
+.padv__cardhead {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-wrap: wrap;
+}
+
+.padv__key {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  font-weight: 600;
+  color: var(--chalk);
+  font-variant-ligatures: none;
+}
+
+.padv__spent {
+  flex: none;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.padv__evidence {
+  margin: 0;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk);
+}
+
+.padv__why,
+.padv__limits {
+  margin: 0;
+  max-width: 78ch;
+  font-size: var(--size-body);
+  line-height: 1.55;
+  color: var(--chalk-dim);
+}
+
+.padv__limits {
+  color: var(--chalk-faint);
+}
+
+.padv__covered {
+  margin: 0;
+  max-width: 78ch;
+  font-size: var(--size-body);
+  line-height: 1.55;
+  color: var(--chalk-dim);
+}
+
+.padv__caveat {
+  margin: 0;
+  max-width: 78ch;
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--warning);
+}
+
+.padv__measure {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s2);
+  padding-top: var(--s1);
+}
+
+/* The button is not the loudest thing on the card, and a full-width accent bar
+ * is exactly that. The evidence above it is what should be read first — a
+ * projection is a permanent cost, and the control that proposes measuring one
+ * has no business out-shouting the reason to. */
+.padv__measure > .btn {
+  align-self: flex-start;
+}
+
+.padv__also {
+  margin: 0;
+  max-width: 78ch;
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--chalk-faint);
+}
+
+/* Inside the fold the cards are already qualified by the summary above them,
+ * so they step back rather than repeating the point in colour. */
+.padv__list--thin {
+  margin-top: var(--s2);
+}
+
+.padv__list--thin .padv__card {
+  border-left-color: var(--line);
+}
+
+.padv__reading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  margin: 0;
+  max-width: 78ch;
+  font-size: var(--size-body);
+  line-height: 1.5;
+  color: var(--chalk);
+}
+
+.padv__headline {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  flex-wrap: wrap;
+}
+
+.padv__figs {
+  font-family: var(--font-data);
+  font-size: var(--size-data);
+  color: var(--chalk);
+}
+
+.padv__aside {
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--chalk-faint);
+}
+
+/* The second, optional price. Inline with the asides it sits among, because it
+   is a continuation of the reading rather than a new section — and quiet,
+   because the measurement above it has already answered the question most
+   readers came with. */
+.padv__weigh {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--s2);
+  flex-wrap: wrap;
+  margin-top: var(--s1);
+}
+
+.padv__aside--warn {
+  color: var(--warning);
+}
+
+.padv__built > summary {
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+  cursor: pointer;
+}
+
+.padv__built > summary:hover {
+  color: var(--chalk-dim);
+}
+
+.padv__built .code {
+  margin-top: var(--s1);
+}
+
+.padv__ddl {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+}
+
+.padv__ddl .code {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+
+.padv__second {
+  margin: 0;
+  max-width: 78ch;
+  font-size: var(--size-label);
+  line-height: 1.5;
+  color: var(--chalk-faint);
+}
+
+.padv__inline {
+  font-family: var(--font-data);
+  font-variant-ligatures: none;
+}
+
+.padv__act {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-wrap: wrap;
+}
+
+.padv__actnote {
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.padv__toggle {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--chalk-faint);
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  cursor: pointer;
+  transition: color var(--motion-fast) var(--ease-out);
+}
+
+.padv__toggle:hover {
+  color: var(--spark);
+}
+
+.padv__twist {
+  font-size: 0.6rem;
+}
+
+.padv__shapes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.padv__shape {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  padding: var(--s2) 0 0;
+  border-top: 1px solid var(--line);
+}
+
+.padv__shapefacts {
+  margin: 0;
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--chalk-faint);
+}
+
+.padv__whynot {
+  color: var(--warning);
+}
+
+.padv__open {
+  align-self: flex-start;
+  font-size: var(--size-label);
+}
